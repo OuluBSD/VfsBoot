@@ -655,6 +655,10 @@ R"(Tools:
 - C++ AST ops via shell: cpp.tu /astcpp/X ; cpp.include TU header [0/1] ; cpp.func TU name rettype ; cpp.param FN type name ; cpp.print FN text ; cpp.vardecl scope type name [init] ; cpp.expr scope expr ; cpp.stmt scope raw ; cpp.return scope [expr] ; cpp.returni scope int ; cpp.rangefor scope name decl | range ; cpp.dump TU /cpp/file.cpp
 )";
 }
+static std::string system_prompt_text(){
+    return std::string("You are a codex-like assistant embedded in a tiny single-binary IDE.\n") +
+           tool_list_text() + "\nRespond concisely in Finnish.";
+}
 std::string json_escape(const std::string& s){
     std::string o; o.reserve(s.size()+8);
     for(char c: s){
@@ -670,13 +674,76 @@ std::string json_escape(const std::string& s){
     return o;
 }
 std::string build_responses_payload(const std::string& model, const std::string& user_prompt){
-    std::string sys = std::string("You are a codex-like assistant embedded in a tiny single-binary IDE.\n") +
-                      tool_list_text() + "\nRespond concisely in Finnish.";
+    std::string sys = system_prompt_text();
     std::string js = std::string("{")+
         "\"model\":\""+json_escape(model)+"\","+
         "\"input\":[{\"role\":\"system\",\"content\":[{\"type\":\"text\",\"text\":\""+json_escape(sys)+"\"}]},"+
         "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\""+json_escape(user_prompt)+"\"}]}]}";
     return js;
+}
+static std::string build_chat_payload(const std::string& model, const std::string& system_prompt, const std::string& user_prompt){
+    return std::string("{") +
+        "\"model\":\"" + json_escape(model) + "\"," +
+        "\"messages\":[" +
+            "{\"role\":\"system\",\"content\":\"" + json_escape(system_prompt) + "\"}," +
+            "{\"role\":\"user\",\"content\":\"" + json_escape(user_prompt) + "\"}" +
+        "]," +
+        "\"temperature\":0.0" +
+    "}";
+}
+static std::optional<std::string> decode_json_string(const std::string& raw, size_t quote_pos){
+    if(quote_pos>=raw.size() || raw[quote_pos] != '"') return std::nullopt;
+    std::string out;
+    bool escape=false;
+    for(size_t i = quote_pos + 1; i < raw.size(); ++i){
+        char c = raw[i];
+        if(escape){
+            switch(c){
+                case 'n': out.push_back('\n'); break;
+                case 'r': out.push_back('\r'); break;
+                case 't': out.push_back('\t'); break;
+                case 'b': out.push_back('\b'); break;
+                case 'f': out.push_back('\f'); break;
+                case 'v': out.push_back('\v'); break;
+                case 'a': out.push_back('\a'); break;
+                case '\\': out.push_back('\\'); break;
+                case '"': out.push_back('"'); break;
+                case 'u':
+                    out.push_back('\\');
+                    out.push_back('u');
+                    break;
+                default:
+                    out.push_back(c);
+                    break;
+            }
+            escape=false;
+            continue;
+        }
+        if(c=='\\'){
+            escape=true;
+            continue;
+        }
+        if(c=='"') return out;
+        out.push_back(c);
+    }
+    return std::nullopt;
+}
+static std::optional<std::string> find_json_string_field(const std::string& raw, const std::string& field, size_t startPos=0){
+    std::string marker = std::string("\"") + field + "\"";
+    size_t pos = raw.find(marker, startPos);
+    if(pos==std::string::npos) return std::nullopt;
+    size_t colon = raw.find(':', pos + marker.size());
+    if(colon==std::string::npos) return std::nullopt;
+    size_t quote = raw.find('"', colon+1);
+    if(quote==std::string::npos) return std::nullopt;
+    return decode_json_string(raw, quote);
+}
+static std::string build_llama_completion_payload(const std::string& system_prompt, const std::string& user_prompt){
+    std::string prompt = std::string("<|system|>\n") + system_prompt + "\n<|user|>\n" + user_prompt + "\n<|assistant|>";
+    return std::string("{") +
+        "\"prompt\":\"" + json_escape(prompt) + "\"," +
+        "\"temperature\":0.0,\"stream\":false" +
+    "}";
 }
 static std::optional<std::string> load_openai_key(){
     if(const char* envKey = std::getenv("OPENAI_API_KEY")){ if(*envKey) return std::string(envKey); }
@@ -735,6 +802,101 @@ std::string call_openai(const std::string& prompt){
     return raw + "\n";
 }
 
+std::string call_llama(const std::string& prompt){
+    auto env_or_empty = [](const char* name) -> std::string {
+        if(const char* val = std::getenv(name); val && *val) return std::string(val);
+        return {};
+    };
+    std::string base = env_or_empty("LLAMA_BASE_URL");
+    if(base.empty()) base = env_or_empty("LLAMA_SERVER");
+    if(base.empty()) base = env_or_empty("LLAMA_URL");
+    if(base.empty()) base = "http://192.168.1.169:8080";
+    if(!base.empty() && base.back()=='/') base.pop_back();
+
+    std::string model = env_or_empty("LLAMA_MODEL");
+    if(model.empty()) model = "coder";
+
+    bool curl_ok = has_cmd("curl"); bool wget_ok = has_cmd("wget");
+    if(!curl_ok && !wget_ok) return "error: curl tai wget ei löydy PATHista";
+
+    std::string system_prompt = system_prompt_text();
+
+    static unsigned long long llama_req_counter = 0;
+    auto send_request = [&](const std::string& endpoint, const std::string& payload) -> std::string {
+        std::string tmp = "/tmp/llama_req_" + std::to_string(::getpid()) + "_" + std::to_string(++llama_req_counter) + ".json";
+        {
+            std::ofstream f(tmp, std::ios::binary);
+            if(!f) return std::string();
+            f.write(payload.data(), static_cast<std::streamsize>(payload.size()));
+        }
+        std::string url = base + endpoint;
+        std::string cmd;
+        if(curl_ok){
+            cmd = std::string("curl -sS -X POST \"") + url + "\" -H \"Content-Type: application/json\" --data-binary @" + tmp;
+        } else {
+            cmd = std::string("wget -qO- --method=POST --header=Content-Type:application/json --body-file=") + tmp + " \"" + url + "\"";
+        }
+        std::string raw = exec_capture(cmd);
+        std::remove(tmp.c_str());
+        return raw;
+    };
+
+    auto parse_chat_response = [&](const std::string& raw) -> std::optional<std::string> {
+        if(raw.empty()) return std::nullopt;
+        if(auto err = find_json_string_field(raw, "error")) return std::string("error: llama: ") + *err;
+        size_t assistantPos = raw.find("\"role\":\"assistant\"");
+        size_t searchPos = assistantPos==std::string::npos ? 0 : assistantPos;
+        if(auto content = find_json_string_field(raw, "content", searchPos)) return std::string("AI: ") + *content;
+        if(auto text = find_json_string_field(raw, "text", searchPos)) return std::string("AI: ") + *text;
+        if(auto generic = find_json_string_field(raw, "result")) return std::string("AI: ") + *generic;
+        return std::nullopt;
+    };
+
+    std::string chat_payload = build_chat_payload(model, system_prompt, prompt);
+    std::string chat_raw = send_request("/v1/chat/completions", chat_payload);
+    if(auto parsed = parse_chat_response(chat_raw)){
+        if(parsed->rfind("error:", 0)==0) return *parsed + "\n";
+        return *parsed + "\n";
+    }
+
+    std::string comp_payload = build_llama_completion_payload(system_prompt, prompt);
+    std::string comp_raw = send_request("/completion", comp_payload);
+    if(comp_raw.empty()){
+        if(!chat_raw.empty()) return std::string("error: llama: unexpected response: ") + chat_raw + "\n";
+        return "error: tyhjä vastaus llama-palvelimelta\n";
+    }
+    if(auto err = find_json_string_field(comp_raw, "error")) return std::string("error: llama: ") + *err + "\n";
+    if(auto completion = find_json_string_field(comp_raw, "completion")) return std::string("AI: ") + *completion + "\n";
+    size_t choicesPos = comp_raw.find("\"choices\"");
+    if(auto text = find_json_string_field(comp_raw, "text", choicesPos==std::string::npos ? 0 : choicesPos))
+        return std::string("AI: ") + *text + "\n";
+    return std::string("error: llama: unexpected response: ") + comp_raw + "\n";
+}
+
+static bool env_truthy(const char* name){
+    if(const char* val = std::getenv(name)) return *val != '\0';
+    return false;
+}
+
+std::string call_ai(const std::string& prompt){
+    std::string provider;
+    if(const char* p = std::getenv("CODEX_AI_PROVIDER")) provider = p;
+    std::transform(provider.begin(), provider.end(), provider.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+
+    if(provider == "llama") return call_llama(prompt);
+    if(provider == "openai") return call_openai(prompt);
+
+    bool llama_hint = env_truthy("LLAMA_BASE_URL") || env_truthy("LLAMA_SERVER") || env_truthy("LLAMA_URL");
+    auto keyOpt = load_openai_key();
+
+    if(!keyOpt){
+        return call_llama(prompt);
+    }
+
+    if(llama_hint) return call_llama(prompt);
+    return call_openai(prompt);
+}
+
 // ====== REPL ======
 static void help(){
     std::cout <<
@@ -768,7 +930,8 @@ R"(Commands:
   cpp.rangefor <scope-path> <loop-name> <decl> | <range>
   cpp.dump <tu-path> <vfs-file-path>
 Notes:
-  - OPENAI_API_KEY pakollinen 'ai' komentoon. OPENAI_MODEL (oletus gpt-4o-mini), OPENAI_BASE_URL (oletus https://api.openai.com/v1).
+  - OPENAI_API_KEY pakollinen 'ai' komentoon OpenAI-tilassa. OPENAI_MODEL (oletus gpt-4o-mini), OPENAI_BASE_URL (oletus https://api.openai.com/v1).
+  - Llama-palvelin: LLAMA_BASE_URL / LLAMA_SERVER (oletus http://192.168.1.169:8080), LLAMA_MODEL (oletus coder), CODEX_AI_PROVIDER=llama pakottaa käyttöön.
 )"<<std::endl;
 }
 
@@ -817,7 +980,7 @@ int main(){
 
             } else if(cmd=="ai"){ string prompt; std::getline(ss, prompt); if(!prompt.empty()&&prompt[0]==' ') prompt.erase(0,1);
                 if(prompt.empty()){ std::cout<<"anna promptti.\n"; continue; }
-                std::cout<<call_openai(prompt);
+                std::cout<<call_ai(prompt);
 
             } else if(cmd=="tools"){ std::cout<<tool_list_text()<<"\n";
 

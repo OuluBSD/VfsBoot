@@ -37,8 +37,9 @@ python tools/test_harness.py tests/001-*.sexp     # run a subset of specs
 
 Environment variables:
 
-- `OPENAI_API_KEY` (required) plus optional `OPENAI_MODEL` and `OPENAI_BASE_URL` feed the OpenAI Responses API client.
-- `LLAMA_MODEL` selects the model name when hitting OpenAI-compatible llama endpoints listed in the test files.
+- `OPENAI_API_KEY` (required for OpenAI mode) plus optional `OPENAI_MODEL` and `OPENAI_BASE_URL` feed the Responses API client used by `codex` and the test harness.
+- `LLAMA_BASE_URL` / `LLAMA_SERVER` point to a llama.cpp HTTP server (defaults to `http://192.168.1.169:8080` if unset). `LLAMA_MODEL` picks the hosted model name (defaults to `coder`, matching `qwen2.5-coder-7b-instruct-q4_k_m.gguf`).
+- `CODEX_AI_PROVIDER` force-selects `openai` or `llama` for the Stage1 `ai` command; omit to auto-detect based on available credentials.
 - The harness assumes the Stage1 binary lives at `./codex`; override with `--binary` if needed.
 
 ## Extended C++ Builder Surface
