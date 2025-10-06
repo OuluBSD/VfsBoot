@@ -573,9 +573,23 @@ std::string build_responses_payload(const std::string& model, const std::string&
         "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\""+json_escape(user_prompt)+"\"}]}]}";
     return js;
 }
+static std::optional<std::string> load_openai_key(){
+    if(const char* envKey = std::getenv("OPENAI_API_KEY")){ if(*envKey) return std::string(envKey); }
+    const char* home = std::getenv("HOME");
+    if(!home || !*home) return std::nullopt;
+    std::string path = std::string(home) + "/openai-key.txt";
+    std::ifstream f(path, std::ios::binary);
+    if(!f) return std::nullopt;
+    std::string contents((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    while(!contents.empty() && (contents.back()=='\n' || contents.back()=='\r')) contents.pop_back();
+    if(contents.empty()) return std::nullopt;
+    return contents;
+}
+
 std::string call_openai(const std::string& prompt){
-    const char* key = std::getenv("OPENAI_API_KEY");
-    if(!key || !*key) return "error: OPENAI_API_KEY puuttuu ympäristöstä";
+    auto keyOpt = load_openai_key();
+    if(!keyOpt) return "error: OPENAI_API_KEY puuttuu ympäristöstä tai ~/openai-key.txt-tiedostosta";
+    const std::string& key = *keyOpt;
     std::string base = std::getenv("OPENAI_BASE_URL") ? std::getenv("OPENAI_BASE_URL") : std::string("https://api.openai.com/v1");
     if(base.size() && base.back()=='/') base.pop_back();
     std::string model = std::getenv("OPENAI_MODEL") ? std::getenv("OPENAI_MODEL") : std::string("gpt-4o-mini");
