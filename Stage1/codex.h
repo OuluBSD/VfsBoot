@@ -217,6 +217,12 @@ struct CppStreamOut : CppExpr {
     std::string dump(int) const override;
 };
 
+struct CppRawExpr : CppExpr {
+    std::string text;
+    CppRawExpr(std::string n, std::string t);
+    std::string dump(int) const override;
+};
+
 struct CppStmt : CppNode { using CppNode::CppNode; };
 struct CppExprStmt : CppStmt {
     std::shared_ptr<CppExpr> e;
@@ -228,9 +234,25 @@ struct CppReturn : CppStmt {
     CppReturn(std::string n, std::shared_ptr<CppExpr> E);
     std::string dump(int indent) const override;
 };
+struct CppRawStmt : CppStmt {
+    std::string text;
+    CppRawStmt(std::string n, std::string t);
+    std::string dump(int indent) const override;
+};
+struct CppVarDecl : CppStmt {
+    std::string type;
+    std::string name;
+    std::string init;
+    bool hasInit;
+    CppVarDecl(std::string n, std::string ty, std::string nm, std::string in, bool has);
+    std::string dump(int indent) const override;
+};
 struct CppCompound : CppStmt {
     std::vector<std::shared_ptr<CppStmt>> stmts;
     explicit CppCompound(std::string n);
+    std::map<std::string, std::shared_ptr<VfsNode>> ch;
+    bool isDir() const override { return true; }
+    std::map<std::string, std::shared_ptr<VfsNode>>& children() override { return ch; }
     std::string dump(int indent) const override;
 };
 struct CppParam { std::string type, name; };
@@ -238,7 +260,20 @@ struct CppFunction : CppNode {
     std::string retType, name;
     std::vector<CppParam> params;
     std::shared_ptr<CppCompound> body;
+    std::map<std::string, std::shared_ptr<VfsNode>> ch;
     CppFunction(std::string n, std::string rt, std::string nm);
+    bool isDir() const override { return true; }
+    std::map<std::string, std::shared_ptr<VfsNode>>& children() override { return ch; }
+    std::string dump(int indent) const override;
+};
+struct CppRangeFor : CppStmt {
+    std::string decl;
+    std::string range;
+    std::shared_ptr<CppCompound> body;
+    std::map<std::string, std::shared_ptr<VfsNode>> ch;
+    CppRangeFor(std::string n, std::string d, std::string r);
+    bool isDir() const override { return true; }
+    std::map<std::string, std::shared_ptr<VfsNode>>& children() override { return ch; }
     std::string dump(int indent) const override;
 };
 struct CppTranslationUnit : CppNode {
@@ -254,6 +289,7 @@ struct CppTranslationUnit : CppNode {
 // helpers
 std::shared_ptr<CppTranslationUnit> expect_tu(std::shared_ptr<VfsNode> n);
 std::shared_ptr<CppFunction>        expect_fn(std::shared_ptr<VfsNode> n);
+std::shared_ptr<CppCompound>        expect_block(std::shared_ptr<VfsNode> n);
 void vfs_add(Vfs& vfs, const std::string& path, std::shared_ptr<VfsNode> node);
 void cpp_dump_to_vfs(Vfs& vfs, const std::string& tuPath, const std::string& filePath);
 
@@ -266,4 +302,3 @@ std::string build_responses_payload(const std::string& model, const std::string&
 std::string call_openai(const std::string& prompt);
 
 #endif
-

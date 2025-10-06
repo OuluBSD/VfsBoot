@@ -4,6 +4,43 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+static std::string trim_copy(const std::string& s){
+    size_t a = 0, b = s.size();
+    while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
+    while (b > a && std::isspace(static_cast<unsigned char>(s[b-1]))) --b;
+    return s.substr(a, b - a);
+}
+static std::string join_path(const std::string& base, const std::string& leaf){
+    if (base.empty() || base == "/") return std::string("/") + leaf;
+    if (!leaf.empty() && leaf[0]=='/') return leaf;
+    if (base.back()=='/') return base + leaf;
+    return base + "/" + leaf;
+}
+static std::string unescape_meta(const std::string& s){
+    std::string out; out.reserve(s.size());
+    for(size_t i=0;i<s.size();++i){
+        char c = s[i];
+        if(c=='\\' && i+1<s.size()){
+            char n = s[++i];
+            switch(n){
+                case 'n': out.push_back('\n'); break;
+                case 't': out.push_back('\t'); break;
+                case 'r': out.push_back('\r'); break;
+                case '\\': out.push_back('\\'); break;
+                case '"': out.push_back('"'); break;
+                case 'b': out.push_back('\b'); break;
+                case 'f': out.push_back('\f'); break;
+                case 'v': out.push_back('\v'); break;
+                case 'a': out.push_back('\a'); break;
+                default: out.push_back(n); break;
+            }
+        } else {
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
 // ====== Value::show ======
 std::string Value::show() const {
     if (std::holds_alternative<int64_t>(v)) return std::to_string(std::get<int64_t>(v));
@@ -506,12 +543,48 @@ CppStreamOut::CppStreamOut(std::string n, std::vector<std::shared_ptr<CppExpr>> 
 std::string CppStreamOut::dump(int) const {
     std::string s="std::cout"; for(auto& e: chain){ s+=" << "; s+=e->dump(); } return s;
 }
+CppRawExpr::CppRawExpr(std::string n, std::string t)
+    : CppExpr(std::move(n)), text(std::move(t)) { kind=Kind::Ast; }
+std::string CppRawExpr::dump(int) const { return text; }
 CppExprStmt::CppExprStmt(std::string n, std::shared_ptr<CppExpr> E)
     : CppStmt(std::move(n)), e(std::move(E)) { kind=Kind::Ast; }
 std::string CppExprStmt::dump(int indent) const { return ind(indent)+e->dump()+";\n"; }
 CppReturn::CppReturn(std::string n, std::shared_ptr<CppExpr> E)
     : CppStmt(std::move(n)), e(std::move(E)) { kind=Kind::Ast; }
-std::string CppReturn::dump(int indent) const { return ind(indent)+std::string("return ")+(e?e->dump():"")+";\n"; }
+std::string CppReturn::dump(int indent) const {
+    std::string s = ind(indent) + "return";
+    if (e) s += " " + e->dump();
+    s += ";\n";
+    return s;
+}
+CppRawStmt::CppRawStmt(std::string n, std::string t)
+    : CppStmt(std::move(n)), text(std::move(t)) { kind=Kind::Ast; }
+std::string CppRawStmt::dump(int indent) const {
+    std::string pad = ind(indent);
+    std::string out;
+    size_t start = 0;
+    while (start <= text.size()){
+        size_t end = text.find('\n', start);
+        std::string line = end==std::string::npos ? text.substr(start) : text.substr(start, end-start);
+        if(!line.empty() || end!=std::string::npos) out += pad + line + "\n";
+        if (end==std::string::npos) break;
+        start = end + 1;
+    }
+    if(out.empty()) out = pad + "\n";
+    return out;
+}
+CppVarDecl::CppVarDecl(std::string n, std::string ty, std::string nm, std::string in, bool has)
+    : CppStmt(std::move(n)), type(std::move(ty)), name(std::move(nm)), init(std::move(in)), hasInit(has) { kind=Kind::Ast; }
+std::string CppVarDecl::dump(int indent) const {
+    std::string s = ind(indent) + type + " " + name;
+    if (hasInit){
+        if (!init.empty() && (init[0]=='{' || init[0]=='(')) s += init;
+        else if (!init.empty() && init[0]=='=') s += " " + init;
+        else if (!init.empty()) s += " = " + init;
+    }
+    s += ";\n";
+    return s;
+}
 CppCompound::CppCompound(std::string n) : CppStmt(std::move(n)) { kind=Kind::Ast; }
 std::string CppCompound::dump(int indent) const {
     std::string s = ind(indent) + "{\n";
@@ -524,6 +597,13 @@ std::string CppFunction::dump(int indent) const {
     std::string s; s += retType + " " + name + "(";
     for(size_t i=0;i<params.size();++i){ if(i) s += ", "; s += params[i].type + " " + params[i].name; }
     s += ")\n"; s += body->dump(indent); return s;
+}
+CppRangeFor::CppRangeFor(std::string n, std::string d, std::string r)
+    : CppStmt(std::move(n)), decl(std::move(d)), range(std::move(r)), body(std::make_shared<CppCompound>("body")) { kind=Kind::Ast; }
+std::string CppRangeFor::dump(int indent) const {
+    std::string s = ind(indent) + "for (" + decl + " : " + range + ")\n";
+    s += body->dump(indent);
+    return s;
 }
 CppTranslationUnit::CppTranslationUnit(std::string n) : CppNode(std::move(n)) { kind=Kind::Ast; }
 std::string CppTranslationUnit::dump(int) const {
@@ -543,6 +623,12 @@ std::shared_ptr<CppFunction> expect_fn(std::shared_ptr<VfsNode> n){
     auto fn = std::dynamic_pointer_cast<CppFunction>(n);
     if(!fn) throw std::runtime_error("not a CppFunction node");
     return fn;
+}
+std::shared_ptr<CppCompound> expect_block(std::shared_ptr<VfsNode> n){
+    if(auto fn = std::dynamic_pointer_cast<CppFunction>(n)) return fn->body;
+    if(auto block = std::dynamic_pointer_cast<CppCompound>(n)) return block;
+    if(auto loop = std::dynamic_pointer_cast<CppRangeFor>(n)) return loop->body;
+    throw std::runtime_error("node does not own a compound body");
 }
 void vfs_add(Vfs& vfs, const std::string& path, std::shared_ptr<VfsNode> node){
     std::string dir = path.substr(0, path.find_last_of('/')); if(dir.empty()) dir = "/";
@@ -566,7 +652,7 @@ R"(Tools:
 - Builtins: + - * = < print, if, lambda(1), strings, bool #t/#f
 - Lists: list cons head tail null? ; Strings: str.cat str.sub str.find
 - VFS ops: vfs-write vfs-read vfs-ls
-- C++ AST ops via shell: cpp.tu /astcpp/X ; cpp.include TU header [0/1] ; cpp.func TU name rettype ; cpp.param FN type name ; cpp.print FN text ; cpp.returni FN int ; cpp.dump TU /cpp/file.cpp
+- C++ AST ops via shell: cpp.tu /astcpp/X ; cpp.include TU header [0/1] ; cpp.func TU name rettype ; cpp.param FN type name ; cpp.print FN text ; cpp.vardecl scope type name [init] ; cpp.expr scope expr ; cpp.stmt scope raw ; cpp.return scope [expr] ; cpp.returni scope int ; cpp.rangefor scope name decl | range ; cpp.dump TU /cpp/file.cpp
 )";
 }
 std::string json_escape(const std::string& s){
@@ -673,8 +759,13 @@ R"(Commands:
   cpp.include <tu-path> <header> [angled0/1]
   cpp.func <tu-path> <name> <ret>
   cpp.param <fn-path> <type> <name>
-  cpp.print <fn-path> <text>
-  cpp.returni <fn-path> <int>
+  cpp.print <scope-path> <text>
+  cpp.vardecl <scope-path> <type> <name> [init]
+  cpp.expr <scope-path> <expression>
+  cpp.stmt <scope-path> <raw>
+  cpp.return <scope-path> [expression]
+  cpp.returni <scope-path> <int>
+  cpp.rangefor <scope-path> <loop-name> <decl> | <range>
   cpp.dump <tu-path> <vfs-file-path>
 Notes:
   - OPENAI_API_KEY pakollinen 'ai' komentoon. OPENAI_MODEL (oletus gpt-4o-mini), OPENAI_BASE_URL (oletus https://api.openai.com/v1).
@@ -741,23 +832,69 @@ int main(){
 
             } else if(cmd=="cpp.func"){ string tuP, name, ret; ss>>tuP>>name>>ret;
                 auto tu = expect_tu(vfs.resolve(tuP)); auto fn = std::make_shared<CppFunction>(name, ret, name);
-                vfs_add(vfs, tuP+"/"+name, fn); tu->funcs.push_back(fn); std::cout<<"+func "<<name<<"\n";
+                std::string fnPath = join_path(tuP, name);
+                vfs_add(vfs, fnPath, fn); tu->funcs.push_back(fn);
+                vfs_add(vfs, join_path(fnPath, "body"), fn->body);
+                std::cout<<"+func "<<name<<"\n";
 
             } else if(cmd=="cpp.param"){ string fnP, ty, nm; ss>>fnP>>ty>>nm;
                 auto fn = expect_fn(vfs.resolve(fnP)); fn->params.push_back(CppParam{ty, nm}); std::cout<<"+param "<<ty<<" "<<nm<<"\n";
 
-            } else if(cmd=="cpp.print"){ string fnP; ss>>fnP; string text; std::getline(ss, text); if(!text.empty()&&text[0]==' ') text.erase(0,1);
-                auto fn = expect_fn(vfs.resolve(fnP));
-                auto s = std::make_shared<CppString>("s", text);
+            } else if(cmd=="cpp.print"){ string scope; ss>>scope; string text; std::getline(ss, text); if(!text.empty()&&text[0]==' ') text.erase(0,1);
+                auto block = expect_block(vfs.resolve(scope));
+                std::string payload = unescape_meta(text);
+                auto s = std::make_shared<CppString>("s", payload);
                 auto chain = std::vector<std::shared_ptr<CppExpr>>{ s, std::make_shared<CppId>("endl","std::endl") };
                 auto coutline = std::make_shared<CppStreamOut>("cout", chain);
-                fn->body->stmts.push_back(std::make_shared<CppExprStmt>("es", coutline));
-                std::cout<<"+print '"<<text<<"'\n";
+                block->stmts.push_back(std::make_shared<CppExprStmt>("es", coutline));
+                std::cout<<"+print '"<<payload<<"'\n";
 
-            } else if(cmd=="cpp.returni"){ string fnP; long long x; ss>>fnP>>x;
-                auto fn = expect_fn(vfs.resolve(fnP));
-                fn->body->stmts.push_back(std::make_shared<CppReturn>("ret", std::make_shared<CppInt>("i", x)));
+            } else if(cmd=="cpp.returni"){ string scope; long long x; ss>>scope>>x;
+                auto block = expect_block(vfs.resolve(scope));
+                block->stmts.push_back(std::make_shared<CppReturn>("ret", std::make_shared<CppInt>("i", x)));
                 std::cout<<"+return "<<x<<"\n";
+
+            } else if(cmd=="cpp.return"){ string scope; ss>>scope; string rest; std::getline(ss, rest); if(!rest.empty()&&rest[0]==' ') rest.erase(0,1);
+                auto block = expect_block(vfs.resolve(scope));
+                std::shared_ptr<CppExpr> expr;
+                std::string trimmed = trim_copy(rest);
+                trimmed = unescape_meta(trimmed);
+                if(!trimmed.empty()) expr = std::make_shared<CppRawExpr>("rexpr", trimmed);
+                block->stmts.push_back(std::make_shared<CppReturn>("ret", expr));
+                std::cout<<"+return expr\n";
+
+            } else if(cmd=="cpp.expr"){ string scope; ss>>scope; string rest; std::getline(ss, rest); if(!rest.empty()&&rest[0]==' ') rest.erase(0,1);
+                auto block = expect_block(vfs.resolve(scope));
+                block->stmts.push_back(std::make_shared<CppExprStmt>("expr", std::make_shared<CppRawExpr>("rexpr", unescape_meta(rest))));
+                std::cout<<"+expr "<<scope<<"\n";
+
+            } else if(cmd=="cpp.vardecl"){ string scope, ty, nm; ss>>scope>>ty>>nm; string rest; std::getline(ss, rest); if(!rest.empty()&&rest[0]==' ') rest.erase(0,1);
+                auto block = expect_block(vfs.resolve(scope));
+                std::string init = trim_copy(rest);
+                init = unescape_meta(init);
+                bool hasInit = !init.empty();
+                block->stmts.push_back(std::make_shared<CppVarDecl>("var", ty, nm, init, hasInit));
+                std::cout<<"+vardecl "<<ty<<" "<<nm<<"\n";
+
+            } else if(cmd=="cpp.stmt"){ string scope; ss>>scope; string rest; std::getline(ss, rest); if(!rest.empty()&&rest[0]==' ') rest.erase(0,1);
+                auto block = expect_block(vfs.resolve(scope));
+                block->stmts.push_back(std::make_shared<CppRawStmt>("stmt", unescape_meta(rest)));
+                std::cout<<"+stmt "<<scope<<"\n";
+
+            } else if(cmd=="cpp.rangefor"){ string scope, nm; ss>>scope>>nm; string rest; std::getline(ss, rest); if(!rest.empty()&&rest[0]==' ') rest.erase(0,1);
+                std::string trimmed = trim_copy(rest);
+                auto bar = trimmed.find('|');
+                if(bar==std::string::npos) throw std::runtime_error("cpp.rangefor expects 'decl | range'");
+                std::string decl = unescape_meta(trim_copy(trimmed.substr(0, bar)));
+                std::string range = unescape_meta(trim_copy(trimmed.substr(bar+1)));
+                if(decl.empty() || range.empty()) throw std::runtime_error("cpp.rangefor missing decl or range");
+                auto block = expect_block(vfs.resolve(scope));
+                auto loop = std::make_shared<CppRangeFor>(nm, decl, range);
+                block->stmts.push_back(loop);
+                std::string loopPath = join_path(scope, nm);
+                vfs_add(vfs, loopPath, loop);
+                vfs_add(vfs, join_path(loopPath, "body"), loop->body);
+                std::cout<<"+rangefor "<<nm<<"\n";
 
             } else if(cmd=="cpp.dump"){ string tuP, outP; ss>>tuP>>outP;
                 cpp_dump_to_vfs(vfs, tuP, outP); std::cout<<"dump -> "<<outP<<"\n";
