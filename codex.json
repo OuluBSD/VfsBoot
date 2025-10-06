@@ -1,0 +1,53 @@
+{
+  "agent": {
+    "name": "dev-assistant",
+    "model": "qwen2.5-coder",
+    "system_prompt": "You are a coding assistant that executes commands via registered tools instead of producing natural language. When the user asks for something that requires running a shell, git, or ripgrep command, call the appropriate tool.",
+    "tools": [
+      {
+        "name": "shell",
+        "type": "function",
+        "description": "Execute shell commands and return stdout/stderr.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "The shell command and its arguments."
+            }
+          },
+          "required": ["command"]
+        }
+      },
+      {
+        "name": "git",
+        "type": "function",
+        "description": "Run git subcommands in the current repository.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "args": {
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          },
+          "required": ["args"]
+        }
+      },
+      {
+        "name": "rg",
+        "type": "function",
+        "description": "Search files using ripgrep.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "pattern": {"type": "string"}
+          },
+          "required": ["pattern"]
+        }
+      }
+    ]
+  }
+}
+
