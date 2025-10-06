@@ -171,7 +171,7 @@ void install_builtins(std::shared_ptr<Env> g);
 //
 // Exec util
 //
-std::string exec_capture(const std::string& cmd);
+std::string exec_capture(const std::string& cmd, const std::string& desc = {});
 bool has_cmd(const std::string& c);
 
 //

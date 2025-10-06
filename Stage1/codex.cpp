@@ -1,6 +1,10 @@
 #include "codex.h"
 #include <fstream>
 #include <sstream>
+#include <atomic>
+#include <chrono>
+#include <mutex>
+#include <thread>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -469,16 +473,47 @@ void install_builtins(std::shared_ptr<Env> g){
 }
 
 // ====== Exec utils ======
-std::string exec_capture(const std::string& cmd){
+std::string exec_capture(const std::string& cmd, const std::string& desc){
     std::array<char, 4096> buf{};
     std::string out;
     FILE* pipe = popen(cmd.c_str(), "r");
     if(!pipe) return out;
+
+    static std::mutex output_mutex;
+    std::atomic<bool> done{false};
+    auto start_time = std::chrono::steady_clock::now();
+    std::string label = desc.empty() ? std::string("external command") : desc;
+
+    std::thread keep_alive([&](){
+        using namespace std::chrono_literals;
+        bool warned=false;
+        auto next_report = std::chrono::steady_clock::now() + 10s;
+        while(!done.load(std::memory_order_relaxed)){
+            std::this_thread::sleep_for(200ms);
+            if(done.load(std::memory_order_relaxed)) break;
+            auto now = std::chrono::steady_clock::now();
+            if(now < next_report) continue;
+            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time).count();
+            {
+                std::lock_guard<std::mutex> lock(output_mutex);
+                std::cout << "[keepalive] " << label << " running for " << elapsed << "s...\n";
+                if(!warned && elapsed >= 300){
+                    std::cout << "[keepalive] " << label << " exceeded 300s; check connectivity or abort if needed.\n";
+                    warned=true;
+                }
+                std::cout.flush();
+            }
+            next_report = now + 10s;
+        }
+    });
+
     while(true){
         size_t n = fread(buf.data(), 1, buf.size(), pipe);
         if(n>0) out.append(buf.data(), n);
         if(n<buf.size()) break;
     }
+    done.store(true, std::memory_order_relaxed);
+    if(keep_alive.joinable()) keep_alive.join();
     pclose(pipe);
     return out;
 }
@@ -782,7 +817,7 @@ std::string call_openai(const std::string& prompt){
               std::string("--header=Authorization:'Bearer ")+key+"' "+base+"/responses --body-file="+tmp;
     }
 
-    std::string raw = exec_capture(cmd);
+    std::string raw = exec_capture(cmd, "ai:openai");
     std::remove(tmp.c_str());
     if(raw.empty()) return "error: tyhjä vastaus OpenAI:lta\n";
 
@@ -836,7 +871,7 @@ std::string call_llama(const std::string& prompt){
         } else {
             cmd = std::string("wget -qO- --method=POST --header=Content-Type:application/json --body-file=") + tmp + " \"" + url + "\"";
         }
-        std::string raw = exec_capture(cmd);
+        std::string raw = exec_capture(cmd, std::string("ai:llama ")+endpoint);
         std::remove(tmp.c_str());
         return raw;
     };
