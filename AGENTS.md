@@ -28,3 +28,5 @@
 1. Harden the C++ AST string escaping and scan dumps for malformed literals.
 2. Broaden the λ-syntax (multi-arg lambdas, let-binding sugar) to reduce ceremony in larger programs.
 3. Design Stage2 agent goals (e.g. richer codegen, persistence, higher-level scripting) on top of the Stage1 substrate.
+
+OpenAI API Key is in ~/openai-key.txt

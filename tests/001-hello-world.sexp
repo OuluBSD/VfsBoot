@@ -31,6 +31,7 @@
       (step "(cmd \"ls\" \"/cpp\") and (cmd \"ls\" \"/astcpp\") → inspect relevant areas")
       (step "Use mkdir/touch or cpp.* commands to create/update AST nodes")
       (step "Emit final C++ source with cpp.dump and verify with cat if needed")
+      (step "Close with (comment \"std::cout handles the greeting\") to narrate the stream")
       (step "Only send the S-expression; no trailing commentary")))
   (prompt "Build a translation unit under /astcpp/tests/hello that prints \"Hello from tests!\" and returns 0. Use the S-expression command format above. Ensure the generated /cpp/tests/hello.cpp contains #include <iostream>, defines int main(), streams the greeting via std::cout, and ends with return 0.")
   (expected-output
@@ -44,7 +45,7 @@
     (contains "(cmd \"cpp.returni\" \"/astcpp/tests/hello/main\" 0)")
     (contains "(cmd \"cpp.dump\" \"/astcpp/tests/hello\" \"/cpp/tests/hello.cpp\")")
     (contains "Hello from tests!")
-    (contains "std::cout")
+    (contains "(comment \"std::cout handles the greeting\")")
     (contains ")"))
   (assertions
     (contains "/cpp/tests/hello.cpp" "#include <iostream>")

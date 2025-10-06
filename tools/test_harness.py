@@ -375,8 +375,8 @@ def call_openai(prompt: str, system_prompt: str, model: Optional[str] = None, ba
     payload = {
         'model': model,
         'input': [
-            {'role': 'system', 'content': [{'type': 'text', 'text': system_prompt}]},
-            {'role': 'user', 'content': [{'type': 'text', 'text': prompt}]},
+            {'role': 'system', 'content': [{'type': 'input_text', 'text': system_prompt}]},
+            {'role': 'user', 'content': [{'type': 'input_text', 'text': prompt}]},
         ],
         'temperature': 0.0,
     }
@@ -397,7 +397,7 @@ def call_openai(prompt: str, system_prompt: str, model: Optional[str] = None, ba
     for item in obj['output']:
         if item.get('type') == 'message':
             for content in item.get('content', []):
-                if content.get('type') == 'text':
+                if content.get('type') == 'output_text':
                     segments.append(content.get('text', ''))
     if not segments:
         raise RuntimeError('OpenAI response missing text content')
@@ -544,7 +544,7 @@ def evaluate_assertions(assertions: Sequence[Assertion], cat_outputs: Dict[str, 
     return failures
 
 
-def run_test_on_target(test: TestCase, target: LlmTarget, binary_path: str) -> Tuple[bool, Dict[str, Any]]:
+def run_test_on_target(test: TestCase, target: LlmTarget, binary_path: str, *, verbose: bool = False) -> Tuple[bool, Dict[str, Any]]:
     system_prompt = (
         "Respond with exactly one S-expression matching this template.\n"
         "(begin\n"
@@ -555,7 +555,18 @@ def run_test_on_target(test: TestCase, target: LlmTarget, binary_path: str) -> T
         "Never emit bare tool forms like (vfs-write ...) or (ls ...); wrap them in cmd.\n"
         "Follow the task instructions literally, executing the suggested workflow steps in order.\n"
         "If the instructions mention running (cmd \"tools\") or similar setup commands, include them before other actions.\n"
-        "Use (comment \"...\") only for optional narration."
+        "Use (comment \"...\") only for optional narration.\n"
+        "Output MUST be a raw S-expression without markdown fences or extra prose.\n"
+        "Execute every workflow step exactly once, in the listed order, even if it feels redundant, and avoid injecting unrelated commands.\n"
+        "Use the precise paths provided by the prompt and expectations (e.g. /astcpp/tests/hello) without inventing extra suffixes.\n"
+        "Create translation units at the exact path requested (e.g. /astcpp/tests/hello) and nest functions beneath them (e.g. /astcpp/tests/hello/main).\n"
+        "For cpp.include pass the header name without angle brackets and set the trailing flag to 1 for angled includes—never 0 when using <...> headers.\n"
+        "For cpp.print provide the literal message text once, without additional escaping or quotes.\n"
+        "When referencing AST nodes after creation, reuse their absolute VFS paths (e.g. /astcpp/tests/hello/main) rather than bare identifiers.\n"
+        "After cpp.dump, run cat on the generated file path to verify its contents when the workflow mentions verification.\n"
+        "Do not create auxiliary directories with mkdir unless the workflow requires it.\n"
+        "Invoke cpp.tu with the translation unit path alone (e.g. /astcpp/tests/hello) and reserve child paths (e.g. /astcpp/tests/hello/main) for functions."
+        "Conclude with the exact final form (comment \"std::cout handles the greeting\")."
     )
     prompt = build_prompt_text(test)
     if target.kind == 'openai':
@@ -566,6 +577,10 @@ def run_test_on_target(test: TestCase, target: LlmTarget, binary_path: str) -> T
     else:
         raise RuntimeError(f'unsupported llm target kind: {target.kind}')
     response = response.strip()
+    if verbose:
+        print("--- LLM response ---")
+        print(response)
+        print("--- end response ---")
     expected_failures = validate_expected(response, test.expected)
     if expected_failures:
         return False, {'response': response, 'errors': expected_failures}
@@ -580,13 +595,26 @@ def run_test_on_target(test: TestCase, target: LlmTarget, binary_path: str) -> T
         for cmd in commands:
             out = session.run_command(cmd)
             command_outputs.append((cmd, out))
+            if verbose:
+                print(f"$ {cmd}")
+                if out.strip():
+                    print(out.rstrip())
+                else:
+                    print("(no output)")
             if 'error:' in out:
                 errors.append(f"command {cmd!r} failed: {out.strip()}")
         cat_paths = collect_assertion_paths(test.assertions)
         for path in cat_paths:
-            out = session.run_command(f'cat {path}')
+            cat_cmd = f'cat {path}'
+            out = session.run_command(cat_cmd)
             cat_outputs_entry = (f'cat {path}', out)
             command_outputs.append(cat_outputs_entry)
+            if verbose:
+                print(f"$ {cat_cmd}")
+                if out.strip():
+                    print(out.rstrip())
+                else:
+                    print("(no output)")
             if 'error:' in out:
                 errors.append(f"cat {path} failed: {out.strip()}")
             cat_results[path] = out
@@ -622,6 +650,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument('paths', nargs='*', default=['tests'], help='Test files or directories to run')
     parser.add_argument('--binary', default='./codex', help='Path to codex binary')
     parser.add_argument('--target', action='append', help='Restrict to specific LLM target kinds (openai, llama)')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Log LLM responses and command output during tests')
     args = parser.parse_args(argv)
 
     tests = discover_tests(args.paths)
@@ -644,7 +673,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 continue
             start = time.time()
             try:
-                success, details = run_test_on_target(case, target, args.binary)
+                success, details = run_test_on_target(case, target, args.binary, verbose=args.verbose)
                 status = 'PASS' if success else 'FAIL'
                 duration = time.time() - start
                 print(f"[{status}] {target.kind} {target.identifier} ({duration:.2f}s)")

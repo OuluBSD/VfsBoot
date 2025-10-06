@@ -2,3 +2,5 @@
 
 codex
 build/
+tools/__pycache__/**
+
