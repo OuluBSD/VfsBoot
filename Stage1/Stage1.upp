@@ -1,0 +1,7 @@
+file
+	codex.h,
+	codex.cpp;
+
+mainconfig
+	"" = "";
+
