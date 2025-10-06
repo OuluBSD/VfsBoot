@@ -643,6 +643,7 @@ R"(Commands:
   rm <path>
   mv <src> <dst>
   link <src> <dst>
+  export <vfs> <host>
   parse <src-file> <dst-ast>
   eval <ast-path>
   # AI
@@ -686,6 +687,13 @@ int main(){
             } else if(cmd=="rm"){ string p; ss>>p; vfs.rm(p);
             } else if(cmd=="mv"){ string a,b; ss>>a>>b; vfs.mv(a,b);
             } else if(cmd=="link"){ string a,b; ss>>a>>b; vfs.link(a,b);
+            } else if(cmd=="export"){ string vpath, host; ss>>vpath>>host;
+                if(vpath.empty() || host.empty()) throw std::runtime_error("export <vfs> <host>");
+                std::string data = vfs.read(vpath);
+                std::ofstream out(host, std::ios::binary);
+                if(!out) throw std::runtime_error("export: cannot open host file");
+                out.write(data.data(), static_cast<std::streamsize>(data.size()));
+                std::cout<<"export -> "<<host<<"\n";
 
             } else if(cmd=="parse"){ string src,dst; ss>>src>>dst; auto text=vfs.read(src); auto ast=parse(text);
                 auto holder=std::make_shared<AstHolder>(dst.substr(dst.find_last_of('/')+1), ast);

@@ -244,7 +244,10 @@ struct CppFunction : CppNode {
 struct CppTranslationUnit : CppNode {
     std::vector<std::shared_ptr<CppInclude>> includes;
     std::vector<std::shared_ptr<CppFunction>> funcs;
+    std::map<std::string, std::shared_ptr<VfsNode>> ch;
     explicit CppTranslationUnit(std::string n);
+    bool isDir() const override { return true; }
+    std::map<std::string, std::shared_ptr<VfsNode>>& children() override { return ch; }
     std::string dump(int) const override;
 };
 
@@ -263,5 +266,4 @@ std::string build_responses_payload(const std::string& model, const std::string&
 std::string call_openai(const std::string& prompt);
 
 #endif
-
 
