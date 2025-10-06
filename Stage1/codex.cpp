@@ -461,11 +461,30 @@ CppId::CppId(std::string n, std::string i) : CppExpr(std::move(n)), id(std::move
 std::string CppId::dump(int) const { return id; }
 CppString::CppString(std::string n, std::string v) : CppExpr(std::move(n)), s(std::move(v)) { kind=Kind::Ast; }
 std::string CppString::esc(const std::string& x){
-    std::string o; o.reserve(x.size()+8);
-    for(char c: x){
-        if(c=='"'||c=='\\') { o.push_back('\\'); o.push_back(c); }
-        else if(c=='\n') o += "\\n";
-        else o.push_back(c);
+    std::string o;
+    o.reserve(x.size()+8);
+    for(unsigned char uc : x){
+        switch(uc){
+            case '"': o += "\\\""; break;
+            case '\\': o += "\\\\"; break;
+            case '\n': o += "\\n"; break;
+            case '\r': o += "\\r"; break;
+            case '\t': o += "\\t"; break;
+            case '\b': o += "\\b"; break;
+            case '\f': o += "\\f"; break;
+            case '\v': o += "\\v"; break;
+            case '\a': o += "\\a"; break;
+            default:
+                if(uc < 0x20 || uc >= 0x7f){
+                    // Emit octal escape so adjacent hex digits cannot bleed into the literal.
+                    o.push_back('\\');
+                    o.push_back(static_cast<char>('0' + ((uc >> 6) & 0x7)));
+                    o.push_back(static_cast<char>('0' + ((uc >> 3) & 0x7)));
+                    o.push_back(static_cast<char>('0' + (uc & 0x7)));
+                } else {
+                    o.push_back(static_cast<char>(uc));
+                }
+        }
     }
     return o;
 }
