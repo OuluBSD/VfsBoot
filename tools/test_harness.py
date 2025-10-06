@@ -545,7 +545,18 @@ def evaluate_assertions(assertions: Sequence[Assertion], cat_outputs: Dict[str, 
 
 
 def run_test_on_target(test: TestCase, target: LlmTarget, binary_path: str) -> Tuple[bool, Dict[str, Any]]:
-    system_prompt = "Respond with a single (begin ...) S-expression that follows the provided format."
+    system_prompt = (
+        "Respond with exactly one S-expression matching this template.\n"
+        "(begin\n"
+        "  (cmd \"tool\" arg...)\n"
+        "  ...\n"
+        ")\n"
+        "Every actionable step MUST be wrapped as (cmd \"tool\" ...).\n"
+        "Never emit bare tool forms like (vfs-write ...) or (ls ...); wrap them in cmd.\n"
+        "Follow the task instructions literally, executing the suggested workflow steps in order.\n"
+        "If the instructions mention running (cmd \"tools\") or similar setup commands, include them before other actions.\n"
+        "Use (comment \"...\") only for optional narration."
+    )
     prompt = build_prompt_text(test)
     if target.kind == 'openai':
         response = call_openai(prompt, system_prompt)
