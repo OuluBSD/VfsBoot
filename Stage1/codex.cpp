@@ -393,7 +393,25 @@ static std::filesystem::path ai_cache_root(){
     return std::filesystem::path("cache") / "ai";
 }
 
-static std::filesystem::path ai_cache_file_path(const std::string& providerLabel, const std::string& key_material){
+static std::filesystem::path ai_cache_base_path(const std::string& providerLabel, const std::string& key_material){
+    std::filesystem::path dir = ai_cache_root() / sanitize_component(providerLabel);
+    std::string hash = hash_hex(fnv1a64(key_material));
+    return dir / hash;
+}
+
+static std::filesystem::path ai_cache_output_path(const std::string& providerLabel, const std::string& key_material){
+    auto base = ai_cache_base_path(providerLabel, key_material);
+    base += "-out.txt";
+    return base;
+}
+
+static std::filesystem::path ai_cache_input_path(const std::string& providerLabel, const std::string& key_material){
+    auto base = ai_cache_base_path(providerLabel, key_material);
+    base += "-in.txt";
+    return base;
+}
+
+static std::filesystem::path ai_cache_legacy_output_path(const std::string& providerLabel, const std::string& key_material){
     std::filesystem::path dir = ai_cache_root() / sanitize_component(providerLabel);
     std::string hash = hash_hex(fnv1a64(key_material));
     return dir / (hash + ".txt");
@@ -404,19 +422,28 @@ static std::string make_cache_key_material(const std::string& providerSignature,
 }
 
 static std::optional<std::string> ai_cache_read(const std::string& providerLabel, const std::string& key_material){
-    auto path = ai_cache_file_path(providerLabel, key_material);
-    std::ifstream in(path, std::ios::binary);
-    if(!in) return std::nullopt;
+    auto out_path = ai_cache_output_path(providerLabel, key_material);
+    std::ifstream in(out_path, std::ios::binary);
+    if(!in){
+        auto legacy = ai_cache_legacy_output_path(providerLabel, key_material);
+        in.open(legacy, std::ios::binary);
+        if(!in) return std::nullopt;
+    }
     std::ostringstream buffer;
     buffer << in.rdbuf();
     return buffer.str();
 }
 
-static void ai_cache_write(const std::string& providerLabel, const std::string& key_material, const std::string& payload){
-    auto path = ai_cache_file_path(providerLabel, key_material);
+static void ai_cache_write(const std::string& providerLabel, const std::string& key_material, const std::string& prompt, const std::string& payload){
+    auto out_path = ai_cache_output_path(providerLabel, key_material);
+    auto in_path = ai_cache_input_path(providerLabel, key_material);
     std::error_code ec;
-    std::filesystem::create_directories(path.parent_path(), ec);
-    std::ofstream out(path, std::ios::binary);
+    std::filesystem::create_directories(out_path.parent_path(), ec);
+    {
+        std::ofstream in(in_path, std::ios::binary);
+        if(in) in.write(prompt.data(), static_cast<std::streamsize>(prompt.size()));
+    }
+    std::ofstream out(out_path, std::ios::binary);
     if(!out) return;
     out.write(payload.data(), static_cast<std::streamsize>(payload.size()));
 }
@@ -1416,7 +1443,7 @@ std::string call_ai(const std::string& prompt){
             return *cached;
         }
         std::string response = fn();
-        ai_cache_write(providerLabel, key_material, response);
+        ai_cache_write(providerLabel, key_material, prompt, response);
         return response;
     };
 
