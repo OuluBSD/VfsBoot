@@ -3,7 +3,6 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 
 ## Upcoming: important
-- add shell commands ctrl+u and ctrl+k for clearing text
 - vfs as persistent file. have single and/or multiple files, which encodes the content of the data in a way, that git commits work well (diffs or binary diffs?), and is size efficient too
 	- autoload, if the app is ran in a directory with a default name file. (default name is yet to be decided; maybe like title of the directory + ".cx" ext)
 	- autosave, backup save, restore from crash,
@@ -60,6 +59,7 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 ## 
 
 ## Completed
+- add shell commands ctrl+u and ctrl+k for clearing text
 - AI bridge prompt & tests: added scripts/examples/ai-hello-world.sexp and tests/011-ai-bridge-hello.sexp to exercise cpp.* helpers via the ai command.
 - `AGENTS.md` drafted from discussion notes to document Stage1 agent scope.
 - Build tooling pipeline now operational:
