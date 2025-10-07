@@ -1030,15 +1030,34 @@ R"(Commands:
   cpp.rangefor <scope-path> <loop-name> <decl> | <range>
   cpp.dump <tu-path> <vfs-file-path>
 Notes:
+  - ./codex <skripti> suorittaa komennot tiedostosta ilman REPL-kehotetta.
   - OPENAI_API_KEY pakollinen 'ai' komentoon OpenAI-tilassa. OPENAI_MODEL (oletus gpt-4o-mini), OPENAI_BASE_URL (oletus https://api.openai.com/v1).
   - Llama-palvelin: LLAMA_BASE_URL / LLAMA_SERVER (oletus http://192.168.1.169:8080), LLAMA_MODEL (oletus coder), CODEX_AI_PROVIDER=llama pakottaa käyttöön.
 )"<<std::endl;
 }
 
-int main(){
+int main(int argc, char** argv){
     TRACE_FN();
     using std::string; using std::shared_ptr;
     std::ios::sync_with_stdio(false); std::cin.tie(nullptr);
+
+    if(argc > 2){
+        std::cerr << "usage: " << argv[0] << " [script-file]\n";
+        return 1;
+    }
+
+    bool interactive = true;
+    std::unique_ptr<std::ifstream> scriptStream;
+    std::istream* input = &std::cin;
+    if(argc == 2){
+        scriptStream = std::make_unique<std::ifstream>(argv[1]);
+        if(!*scriptStream){
+            std::cerr << "failed to open script '" << argv[1] << "'\n";
+            return 1;
+        }
+        input = scriptStream.get();
+        interactive = false;
+    }
 
     Vfs vfs; auto env = std::make_shared<Env>(); install_builtins(env);
     vfs.mkdir("/src"); vfs.mkdir("/ast"); vfs.mkdir("/env"); vfs.mkdir("/astcpp"); vfs.mkdir("/cpp");
@@ -1049,8 +1068,10 @@ int main(){
     while(true){
         TRACE_LOOP("repl.iter", std::string("iter=") + std::to_string(repl_iter));
         ++repl_iter;
-        std::cout << "> " << std::flush;
-        if(!std::getline(std::cin, line)) break;
+        if(interactive){
+            std::cout << "> " << std::flush;
+        }
+        if(!std::getline(*input, line)) break;
         if(line.empty()) continue;
         std::stringstream ss(line);
         string cmd; ss >> cmd;
