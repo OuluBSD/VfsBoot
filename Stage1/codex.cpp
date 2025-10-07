@@ -68,6 +68,31 @@ static std::string join_path(const std::string& base, const std::string& leaf){
     if (base.back()=='/') return base + leaf;
     return base + "/" + leaf;
 }
+static std::string normalize_path(const std::string& cwd, const std::string& operand){
+    auto stack = (operand.empty() || operand[0]!='/') ? Vfs::splitPath(cwd.empty() ? "/" : cwd)
+                                                    : std::vector<std::string>{};
+    auto apply = [&stack](const std::string& part){
+        if(part.empty() || part==".") return;
+        if(part==".."){ if(!stack.empty()) stack.pop_back(); return; }
+        stack.push_back(part);
+    };
+    if(!operand.empty()){
+        for(auto& part : Vfs::splitPath(operand)) apply(part);
+    }
+    if(stack.empty()) return "/";
+    std::string out;
+    for(const auto& part : stack){
+        out.push_back('/');
+        out += part;
+    }
+    return out.empty() ? std::string("/") : out;
+}
+static std::string path_basename(const std::string& path){
+    if(path.empty() || path=="/") return "/";
+    auto pos = path.find_last_of('/');
+    if(pos==std::string::npos) return path;
+    return path.substr(pos+1);
+}
 static std::string unescape_meta(const std::string& s){
     std::string out; out.reserve(s.size());
     for(size_t i=0;i<s.size();++i){
@@ -874,7 +899,7 @@ void cpp_dump_to_vfs(Vfs& vfs, const std::string& tuPath, const std::string& fil
 std::string tool_list_text(){
     return
 R"(Tools:
-- ls /path, tree, mkdir /path, touch /path, cat /path, echo /path <data>, rm /path, mv /src /dst, link /src /dst
+- cd <dir>, pwd, ls [path], tree [path], mkdir <path>, touch <path>, cat <path>, echo <path> <data>, rm <path>, mv <src> <dst>, link <src> <dst>
 - parse /src/file.sexp /ast/name, eval /ast/name
 - export <vfs> <host>, sys "<cmd>"
 - Builtins: + - * = < print, if, lambda(1), strings, bool #t/#f
@@ -1176,8 +1201,10 @@ static void help(){
     TRACE_FN();
     std::cout <<
 R"(Commands:
-  ls <path>
-  tree
+  pwd
+  cd [path]
+  ls [path]
+  tree [path]
   mkdir <path>
   touch <path>
   cat <path>
@@ -1205,6 +1232,7 @@ R"(Commands:
   cpp.rangefor <scope-path> <loop-name> <decl> | <range>
   cpp.dump <tu-path> <vfs-file-path>
 Notes:
+  - Polut voivat olla suhteellisia nykyiseen VFS-hakemistoon (cd).
   - ./codex <skripti> suorittaa komennot tiedostosta ilman REPL-kehotetta.
   - ./codex <skripti> - suorittaa skriptin ja palaa interaktiiviseen tilaan.
   - OPENAI_API_KEY pakollinen 'ai' komentoon OpenAI-tilassa. OPENAI_MODEL (oletus gpt-4o-mini), OPENAI_BASE_URL (oletus https://api.openai.com/v1).
@@ -1258,6 +1286,7 @@ int main(int argc, char** argv){
     std::cout << "codex-mini 🌲 VFS+AST+AI — 'help' kertoo karun totuuden.\n";
     string line;
     size_t repl_iter = 0;
+    std::string cwd = "/";
     while(true){
         TRACE_LOOP("repl.iter", std::string("iter=") + std::to_string(repl_iter));
         ++repl_iter;
@@ -1280,29 +1309,67 @@ int main(int argc, char** argv){
         std::stringstream ss(line);
         string cmd; ss >> cmd;
         try{
-            if(cmd=="ls"){ string p; ss>>p; if(p.empty()) p="/"; vfs.ls(p);
-            } else if(cmd=="tree"){ vfs.tree();
-            } else if(cmd=="mkdir"){ string p; ss>>p; vfs.mkdir(p);
-            } else if(cmd=="touch"){ string p; ss>>p; vfs.touch(p);
-            } else if(cmd=="cat"){ string p; ss>>p; std::cout<<vfs.read(p)<<"\n";
-            } else if(cmd=="echo"){ string p; ss>>p; string rest; std::getline(ss,rest); if(!rest.empty()&&rest[0]==' ') rest.erase(0,1); vfs.write(p,rest);
-            } else if(cmd=="rm"){ string p; ss>>p; vfs.rm(p);
-            } else if(cmd=="mv"){ string a,b; ss>>a>>b; vfs.mv(a,b);
-            } else if(cmd=="link"){ string a,b; ss>>a>>b; vfs.link(a,b);
+            if(cmd=="pwd"){ std::cout<<cwd<<"\n";
+            } else if(cmd=="cd"){ string target; if(!(ss>>target)) target = "/";
+                std::string abs = normalize_path(cwd, target);
+                auto node = vfs.resolve(abs);
+                if(!node->isDir()) throw std::runtime_error("cd: not a directory");
+                cwd = abs;
+
+            } else if(cmd=="ls"){ string p; if(!(ss>>p)) p.clear();
+                std::string abs = p.empty() ? cwd : normalize_path(cwd, p);
+                vfs.ls(abs);
+
+            } else if(cmd=="tree"){ string p; if(!(ss>>p) || p.empty()){
+                    vfs.tree();
+                } else {
+                    std::string abs = normalize_path(cwd, p);
+                    vfs.tree(vfs.resolve(abs));
+                }
+
+            } else if(cmd=="mkdir"){ string p; ss>>p; if(p.empty()) throw std::runtime_error("mkdir <path>");
+                vfs.mkdir(normalize_path(cwd, p));
+
+            } else if(cmd=="touch"){ string p; ss>>p; if(p.empty()) throw std::runtime_error("touch <path>");
+                vfs.touch(normalize_path(cwd, p));
+
+            } else if(cmd=="cat"){ string p; ss>>p; if(p.empty()) throw std::runtime_error("cat <path>");
+                std::cout<<vfs.read(normalize_path(cwd, p))<<"\n";
+
+            } else if(cmd=="echo"){ string p; ss>>p; if(p.empty()) throw std::runtime_error("echo <path> <data>");
+                string rest; std::getline(ss,rest); if(!rest.empty()&&rest[0]==' ') rest.erase(0,1);
+                vfs.write(normalize_path(cwd, p), rest);
+
+            } else if(cmd=="rm"){ string p; ss>>p; if(p.empty()) throw std::runtime_error("rm <path>");
+                vfs.rm(normalize_path(cwd, p));
+
+            } else if(cmd=="mv"){ string a,b; ss>>a>>b; if(a.empty()||b.empty()) throw std::runtime_error("mv <src> <dst>");
+                vfs.mv(normalize_path(cwd, a), normalize_path(cwd, b));
+
+            } else if(cmd=="link"){ string a,b; ss>>a>>b; if(a.empty()||b.empty()) throw std::runtime_error("link <src> <dst>");
+                vfs.link(normalize_path(cwd, a), normalize_path(cwd, b));
+
             } else if(cmd=="export"){ string vpath, host; ss>>vpath>>host;
                 if(vpath.empty() || host.empty()) throw std::runtime_error("export <vfs> <host>");
-                std::string data = vfs.read(vpath);
+                std::string abs = normalize_path(cwd, vpath);
+                std::string data = vfs.read(abs);
                 std::ofstream out(host, std::ios::binary);
                 if(!out) throw std::runtime_error("export: cannot open host file");
                 out.write(data.data(), static_cast<std::streamsize>(data.size()));
                 std::cout<<"export -> "<<host<<"\n";
 
-            } else if(cmd=="parse"){ string src,dst; ss>>src>>dst; auto text=vfs.read(src); auto ast=parse(text);
-                auto holder=std::make_shared<AstHolder>(dst.substr(dst.find_last_of('/')+1), ast);
-                string dir=dst.substr(0, dst.find_last_of('/')); if(dir.empty()) dir="/"; vfs.addNode(dir, holder);
-                std::cout<<"AST @ "<<dst<<" valmis.\n";
+            } else if(cmd=="parse"){ string src,dst; ss>>src>>dst; if(src.empty()||dst.empty()) throw std::runtime_error("parse <src> <dst>");
+                std::string absSrc = normalize_path(cwd, src);
+                std::string absDst = normalize_path(cwd, dst);
+                auto text=vfs.read(absSrc);
+                auto ast=parse(text);
+                auto holder=std::make_shared<AstHolder>(path_basename(absDst), ast);
+                std::string dir=absDst.substr(0, absDst.find_last_of('/')); if(dir.empty()) dir="/";
+                vfs.addNode(dir, holder);
+                std::cout<<"AST @ "<<absDst<<" valmis.\n";
 
-            } else if(cmd=="eval"){ string p; ss>>p; auto n=vfs.resolve(p);
+            } else if(cmd=="eval"){ string p; ss>>p; if(p.empty()) throw std::runtime_error("eval <path>");
+                auto n=vfs.resolve(normalize_path(cwd, p));
                 if(n->kind!=VfsNode::Kind::Ast) throw std::runtime_error("not AST");
                 auto a=std::dynamic_pointer_cast<AstNode>(n); auto val=a->eval(env);
                 std::cout<<val.show()<<"\n";
@@ -1314,26 +1381,33 @@ int main(int argc, char** argv){
             } else if(cmd=="tools"){ std::cout<<tool_list_text()<<"\n";
 
             // ---- C++ builder ----
-            } else if(cmd=="cpp.tu"){ string p; ss>>p;
-                auto tu = std::make_shared<CppTranslationUnit>(p.substr(p.find_last_of('/')+1)); vfs_add(vfs, p, tu);
-                std::cout<<"cpp tu @ "<<p<<"\n";
+            } else if(cmd=="cpp.tu"){ string p; ss>>p; if(p.empty()) throw std::runtime_error("cpp.tu <path>");
+                std::string abs = normalize_path(cwd, p);
+                auto tu = std::make_shared<CppTranslationUnit>(path_basename(abs));
+                vfs_add(vfs, abs, tu);
+                std::cout<<"cpp tu @ "<<abs<<"\n";
 
-            } else if(cmd=="cpp.include"){ string tuP, hdr; int ang=0; ss>>tuP>>hdr; if(!(ss>>ang)) ang=0;
-                auto tu = expect_tu(vfs.resolve(tuP)); auto inc = std::make_shared<CppInclude>("include", hdr, ang!=0);
+            } else if(cmd=="cpp.include"){ string tuP, hdr; int ang=0; ss>>tuP>>hdr; if(hdr.empty()) throw std::runtime_error("cpp.include <tu> <header> [angled]"); if(!(ss>>ang)) ang=0;
+                auto tu = expect_tu(vfs.resolve(normalize_path(cwd, tuP)));
+                auto inc = std::make_shared<CppInclude>("include", hdr, ang!=0);
                 tu->includes.push_back(inc); std::cout<<"+include "<<hdr<<"\n";
 
-            } else if(cmd=="cpp.func"){ string tuP, name, ret; ss>>tuP>>name>>ret;
-                auto tu = expect_tu(vfs.resolve(tuP)); auto fn = std::make_shared<CppFunction>(name, ret, name);
-                std::string fnPath = join_path(tuP, name);
+            } else if(cmd=="cpp.func"){ string tuP, name, ret; ss>>tuP>>name>>ret; if(tuP.empty()||name.empty()||ret.empty()) throw std::runtime_error("cpp.func <tu> <name> <ret>");
+                std::string absTu = normalize_path(cwd, tuP);
+                auto tu = expect_tu(vfs.resolve(absTu));
+                auto fn = std::make_shared<CppFunction>(name, ret, name);
+                std::string fnPath = join_path(absTu, name);
                 vfs_add(vfs, fnPath, fn); tu->funcs.push_back(fn);
                 vfs_add(vfs, join_path(fnPath, "body"), fn->body);
                 std::cout<<"+func "<<name<<"\n";
 
-            } else if(cmd=="cpp.param"){ string fnP, ty, nm; ss>>fnP>>ty>>nm;
-                auto fn = expect_fn(vfs.resolve(fnP)); fn->params.push_back(CppParam{ty, nm}); std::cout<<"+param "<<ty<<" "<<nm<<"\n";
+            } else if(cmd=="cpp.param"){ string fnP, ty, nm; ss>>fnP>>ty>>nm; if(fnP.empty()||ty.empty()||nm.empty()) throw std::runtime_error("cpp.param <fn> <type> <name>");
+                auto fn = expect_fn(vfs.resolve(normalize_path(cwd, fnP)));
+                fn->params.push_back(CppParam{ty, nm}); std::cout<<"+param "<<ty<<" "<<nm<<"\n";
 
-            } else if(cmd=="cpp.print"){ string scope; ss>>scope; string text; std::getline(ss, text); if(!text.empty()&&text[0]==' ') text.erase(0,1);
-                auto block = expect_block(vfs.resolve(scope));
+            } else if(cmd=="cpp.print"){ string scope; ss>>scope; if(scope.empty()) throw std::runtime_error("cpp.print <scope> <text>");
+                string text; std::getline(ss, text); if(!text.empty()&&text[0]==' ') text.erase(0,1);
+                auto block = expect_block(vfs.resolve(normalize_path(cwd, scope)));
                 std::string payload = unescape_meta(text);
                 auto s = std::make_shared<CppString>("s", payload);
                 auto chain = std::vector<std::shared_ptr<CppExpr>>{ s, std::make_shared<CppId>("endl","std::endl") };
@@ -1341,13 +1415,14 @@ int main(int argc, char** argv){
                 block->stmts.push_back(std::make_shared<CppExprStmt>("es", coutline));
                 std::cout<<"+print '"<<payload<<"'\n";
 
-            } else if(cmd=="cpp.returni"){ string scope; long long x; ss>>scope>>x;
-                auto block = expect_block(vfs.resolve(scope));
+            } else if(cmd=="cpp.returni"){ string scope; long long x; ss>>scope>>x; if(scope.empty()) throw std::runtime_error("cpp.returni <scope> <int>");
+                auto block = expect_block(vfs.resolve(normalize_path(cwd, scope)));
                 block->stmts.push_back(std::make_shared<CppReturn>("ret", std::make_shared<CppInt>("i", x)));
                 std::cout<<"+return "<<x<<"\n";
 
-            } else if(cmd=="cpp.return"){ string scope; ss>>scope; string rest; std::getline(ss, rest); if(!rest.empty()&&rest[0]==' ') rest.erase(0,1);
-                auto block = expect_block(vfs.resolve(scope));
+            } else if(cmd=="cpp.return"){ string scope; ss>>scope; if(scope.empty()) throw std::runtime_error("cpp.return <scope> [expr]");
+                string rest; std::getline(ss, rest); if(!rest.empty()&&rest[0]==' ') rest.erase(0,1);
+                auto block = expect_block(vfs.resolve(normalize_path(cwd, scope)));
                 std::shared_ptr<CppExpr> expr;
                 std::string trimmed = trim_copy(rest);
                 trimmed = unescape_meta(trimmed);
@@ -1355,41 +1430,48 @@ int main(int argc, char** argv){
                 block->stmts.push_back(std::make_shared<CppReturn>("ret", expr));
                 std::cout<<"+return expr\n";
 
-            } else if(cmd=="cpp.expr"){ string scope; ss>>scope; string rest; std::getline(ss, rest); if(!rest.empty()&&rest[0]==' ') rest.erase(0,1);
-                auto block = expect_block(vfs.resolve(scope));
+            } else if(cmd=="cpp.expr"){ string scope; ss>>scope; if(scope.empty()) throw std::runtime_error("cpp.expr <scope> <expr>");
+                string rest; std::getline(ss, rest); if(!rest.empty()&&rest[0]==' ') rest.erase(0,1);
+                auto block = expect_block(vfs.resolve(normalize_path(cwd, scope)));
                 block->stmts.push_back(std::make_shared<CppExprStmt>("expr", std::make_shared<CppRawExpr>("rexpr", unescape_meta(rest))));
                 std::cout<<"+expr "<<scope<<"\n";
 
-            } else if(cmd=="cpp.vardecl"){ string scope, ty, nm; ss>>scope>>ty>>nm; string rest; std::getline(ss, rest); if(!rest.empty()&&rest[0]==' ') rest.erase(0,1);
-                auto block = expect_block(vfs.resolve(scope));
+            } else if(cmd=="cpp.vardecl"){ string scope, ty, nm; ss>>scope>>ty>>nm; if(scope.empty()||ty.empty()||nm.empty()) throw std::runtime_error("cpp.vardecl <scope> <type> <name> [init]");
+                string rest; std::getline(ss, rest); if(!rest.empty()&&rest[0]==' ') rest.erase(0,1);
+                auto block = expect_block(vfs.resolve(normalize_path(cwd, scope)));
                 std::string init = trim_copy(rest);
                 init = unescape_meta(init);
                 bool hasInit = !init.empty();
                 block->stmts.push_back(std::make_shared<CppVarDecl>("var", ty, nm, init, hasInit));
                 std::cout<<"+vardecl "<<ty<<" "<<nm<<"\n";
 
-            } else if(cmd=="cpp.stmt"){ string scope; ss>>scope; string rest; std::getline(ss, rest); if(!rest.empty()&&rest[0]==' ') rest.erase(0,1);
-                auto block = expect_block(vfs.resolve(scope));
+            } else if(cmd=="cpp.stmt"){ string scope; ss>>scope; if(scope.empty()) throw std::runtime_error("cpp.stmt <scope> <stmt>");
+                string rest; std::getline(ss, rest); if(!rest.empty()&&rest[0]==' ') rest.erase(0,1);
+                auto block = expect_block(vfs.resolve(normalize_path(cwd, scope)));
                 block->stmts.push_back(std::make_shared<CppRawStmt>("stmt", unescape_meta(rest)));
                 std::cout<<"+stmt "<<scope<<"\n";
 
-            } else if(cmd=="cpp.rangefor"){ string scope, nm; ss>>scope>>nm; string rest; std::getline(ss, rest); if(!rest.empty()&&rest[0]==' ') rest.erase(0,1);
+            } else if(cmd=="cpp.rangefor"){ string scope, nm; ss>>scope>>nm; if(scope.empty()||nm.empty()) throw std::runtime_error("cpp.rangefor <scope> <loop> decl | range");
+                string rest; std::getline(ss, rest); if(!rest.empty()&&rest[0]==' ') rest.erase(0,1);
                 std::string trimmed = trim_copy(rest);
                 auto bar = trimmed.find('|');
                 if(bar==std::string::npos) throw std::runtime_error("cpp.rangefor expects 'decl | range'");
                 std::string decl = unescape_meta(trim_copy(trimmed.substr(0, bar)));
                 std::string range = unescape_meta(trim_copy(trimmed.substr(bar+1)));
                 if(decl.empty() || range.empty()) throw std::runtime_error("cpp.rangefor missing decl or range");
-                auto block = expect_block(vfs.resolve(scope));
+                std::string absScope = normalize_path(cwd, scope);
+                auto block = expect_block(vfs.resolve(absScope));
                 auto loop = std::make_shared<CppRangeFor>(nm, decl, range);
                 block->stmts.push_back(loop);
-                std::string loopPath = join_path(scope, nm);
+                std::string loopPath = join_path(absScope, nm);
                 vfs_add(vfs, loopPath, loop);
                 vfs_add(vfs, join_path(loopPath, "body"), loop->body);
                 std::cout<<"+rangefor "<<nm<<"\n";
 
-            } else if(cmd=="cpp.dump"){ string tuP, outP; ss>>tuP>>outP;
-                cpp_dump_to_vfs(vfs, tuP, outP); std::cout<<"dump -> "<<outP<<"\n";
+            } else if(cmd=="cpp.dump"){ string tuP, outP; ss>>tuP>>outP; if(tuP.empty()||outP.empty()) throw std::runtime_error("cpp.dump <tu> <out>");
+                std::string absTu = normalize_path(cwd, tuP);
+                std::string absOut = normalize_path(cwd, outP);
+                cpp_dump_to_vfs(vfs, absTu, absOut); std::cout<<"dump -> "<<absOut<<"\n";
 
             } else if(cmd=="help"){ help();
             } else if(cmd=="quit" || cmd=="exit"){ break;
