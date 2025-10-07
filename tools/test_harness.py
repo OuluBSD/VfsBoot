@@ -31,9 +31,13 @@ class SExprParser:
 
     def parse(self) -> Any:
         node = self._parse_expr()
-        self._skip_ws()
-        if self.pos != self.length:
-            raise ValueError("unexpected trailing content in S-expression")
+        while True:
+            self._skip_ws()
+            if self.pos >= self.length:
+                break
+            trailing = self._parse_expr()
+            if not self._is_comment_form(trailing):
+                raise ValueError("unexpected trailing content in S-expression")
         return node
 
     def _skip_ws(self) -> None:
@@ -120,6 +124,16 @@ class SExprParser:
         if re.fullmatch(r'-?[0-9]+', token):
             return int(token)
         return Symbol(token)
+
+    @staticmethod
+    def _is_comment_form(expr: Any) -> bool:
+        # Permit trailing (comment ...) forms so mildly off-spec assistants do not fail outright.
+        return (
+            isinstance(expr, list)
+            and expr
+            and isinstance(expr[0], Symbol)
+            and str(expr[0]) == 'comment'
+        )
 
 
 @dataclasses.dataclass

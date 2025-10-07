@@ -1,1 +1,13 @@
-Briefing: use cpp.tu, cpp.include, cpp.func, cpp.print, cpp.returni, cpp.dump to build hello world.
+Briefing: Generate /cpp/tests/ai-hello.cpp via the C++ AST helpers only.
+- Always target the translation unit /astcpp/bridge/hello.
+- Call cpp.include with the TU path first, the header name second, and 1 for angled includes.
+- After cpp.func, the function body lives at /astcpp/bridge/hello/main/body - use that path for cpp.print and cpp.returni.
+- Sequence: cpp.tu -> cpp.include -> cpp.func -> cpp.print -> cpp.returni -> cpp.dump -> cat.
+  * Example commands (arguments in order):
+    (cmd "cpp.tu" "/astcpp/bridge/hello")
+    (cmd "cpp.include" "/astcpp/bridge/hello" "iostream" 1)
+    (cmd "cpp.func" "/astcpp/bridge/hello" "main" "int")
+    (cmd "cpp.print" "/astcpp/bridge/hello/main/body" "hello from the ai bridge")
+    (cmd "cpp.returni" "/astcpp/bridge/hello/main/body" 0)
+    (cmd "cpp.dump" "/astcpp/bridge/hello" "/cpp/tests/ai-hello.cpp")
+    (cmd "cat" "/cpp/tests/ai-hello.cpp")
