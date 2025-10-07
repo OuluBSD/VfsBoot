@@ -903,10 +903,11 @@ std::string json_escape(const std::string& s){
 }
 std::string build_responses_payload(const std::string& model, const std::string& user_prompt){
     std::string sys = system_prompt_text();
+    const char* content_type = "input_text";
     std::string js = std::string("{")+
         "\"model\":\""+json_escape(model)+"\","+
-        "\"input\":[{\"role\":\"system\",\"content\":[{\"type\":\"text\",\"text\":\""+json_escape(sys)+"\"}]},"+
-        "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\""+json_escape(user_prompt)+"\"}]}]}";
+        "\"input\":[{\"role\":\"system\",\"content\":[{\"type\":\""+content_type+"\",\"text\":\""+json_escape(sys)+"\"}]},"+
+        "{\"role\":\"user\",\"content\":[{\"type\":\""+content_type+"\",\"text\":\""+json_escape(user_prompt)+"\"}]}]}";
     return js;
 }
 static std::string build_chat_payload(const std::string& model, const std::string& system_prompt, const std::string& user_prompt){
