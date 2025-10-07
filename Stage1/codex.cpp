@@ -1031,6 +1031,7 @@ R"(Commands:
   cpp.dump <tu-path> <vfs-file-path>
 Notes:
   - ./codex <skripti> suorittaa komennot tiedostosta ilman REPL-kehotetta.
+  - ./codex <skripti> - suorittaa skriptin ja palaa interaktiiviseen tilaan.
   - OPENAI_API_KEY pakollinen 'ai' komentoon OpenAI-tilassa. OPENAI_MODEL (oletus gpt-4o-mini), OPENAI_BASE_URL (oletus https://api.openai.com/v1).
   - Llama-palvelin: LLAMA_BASE_URL / LLAMA_SERVER (oletus http://192.168.1.169:8080), LLAMA_MODEL (oletus coder), CODEX_AI_PROVIDER=llama pakottaa käyttöön.
 )"<<std::endl;
@@ -1041,15 +1042,31 @@ int main(int argc, char** argv){
     using std::string; using std::shared_ptr;
     std::ios::sync_with_stdio(false); std::cin.tie(nullptr);
 
-    if(argc > 2){
-        std::cerr << "usage: " << argv[0] << " [script-file]\n";
+    auto usage = [&](const std::string& msg){
+        std::cerr << msg << "\n";
         return 1;
+    };
+
+    const string usage_text = string("usage: ") + argv[0] + " [script-file [-]]";
+
+    if(argc > 3){
+        return usage(usage_text);
     }
 
     bool interactive = true;
+    bool script_active = false;
+    bool fallback_after_script = false;
     std::unique_ptr<std::ifstream> scriptStream;
     std::istream* input = &std::cin;
-    if(argc == 2){
+
+    if(argc >= 2){
+        if(argc == 3){
+            if(string(argv[2]) != "-"){
+                return usage(usage_text);
+            }
+            fallback_after_script = true;
+        }
+
         scriptStream = std::make_unique<std::ifstream>(argv[1]);
         if(!*scriptStream){
             std::cerr << "failed to open script '" << argv[1] << "'\n";
@@ -1057,6 +1074,7 @@ int main(int argc, char** argv){
         }
         input = scriptStream.get();
         interactive = false;
+        script_active = true;
     }
 
     Vfs vfs; auto env = std::make_shared<Env>(); install_builtins(env);
@@ -1071,7 +1089,18 @@ int main(int argc, char** argv){
         if(interactive){
             std::cout << "> " << std::flush;
         }
-        if(!std::getline(*input, line)) break;
+        if(!std::getline(*input, line)){
+            if(script_active && fallback_after_script){
+                script_active = false;
+                fallback_after_script = false;
+                scriptStream.reset();
+                input = &std::cin;
+                interactive = true;
+                if(!std::cin.good()) std::cin.clear();
+                continue;
+            }
+            break;
+        }
         if(line.empty()) continue;
         std::stringstream ss(line);
         string cmd; ss >> cmd;
