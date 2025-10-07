@@ -23,7 +23,7 @@ make sample
 
 `make sample` pipes scripted commands into `codex`, generating a hello-world translation unit through the C++ AST commands. The target exports the generated code to `build/demo.cpp`, compiles it with the active `CXXFLAGS`, executes the binary, and asserts that the expected greeting appears.
 
-## Stage1 Test Harness
+## VfsShell Test Harness
 
 `tools/test_harness.py` automates the S-expression workflows defined under `tests/`. The harness loads each test-case, sends the prompt to the configured LLM targets, checks the response against the expected substrings, executes the produced command stream inside `codex`, and validates the post-conditions via `cat` assertions.
 
@@ -39,8 +39,8 @@ Environment variables:
 
 - `OPENAI_API_KEY` (required for OpenAI mode) plus optional `OPENAI_MODEL` and `OPENAI_BASE_URL` feed the Responses API client used by `codex` and the test harness.
 - `LLAMA_BASE_URL` / `LLAMA_SERVER` point to a llama.cpp HTTP server (defaults to `http://192.168.1.169:8080` if unset). `LLAMA_MODEL` picks the hosted model name (defaults to `coder`, matching `qwen2.5-coder-7b-instruct-q4_k_m.gguf`).
-- `CODEX_AI_PROVIDER` force-selects `openai` or `llama` for the Stage1 `ai` command; omit to auto-detect based on available credentials.
-- The harness assumes the Stage1 binary lives at `./codex`; override with `--binary` if needed.
+- `CODEX_AI_PROVIDER` force-selects `openai` or `llama` for the VfsShell `ai` command; omit to auto-detect based on available credentials.
+- The harness assumes the VfsShell binary lives at `./codex`; override with `--binary` if needed.
 
 ## Overlays
 
@@ -54,7 +54,7 @@ Environment variables:
 
 ## Extended C++ Builder Surface
 
-The Stage1 shell now supports richer translation-unit scripting. Beyond `cpp.tu`, `cpp.include`, `cpp.func`, and `cpp.param`, you can build statements structurally:
+The VfsShell shell now supports richer translation-unit scripting. Beyond `cpp.tu`, `cpp.include`, `cpp.func`, and `cpp.param`, you can build statements structurally:
 
 - `cpp.vardecl <scope> <type> <name> [init]` — emit a variable declaration with optional initializer (braced, parenthesised, or `=` forms).
 - `cpp.expr <scope> <expr>` — append an expression statement; `\n` sequences are unescaped before dumping.

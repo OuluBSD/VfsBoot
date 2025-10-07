@@ -1,5 +1,5 @@
-#ifndef _Stage1_codex_h_
-#define _Stage1_codex_h_
+#ifndef _VfsShell_codex_h_
+#define _VfsShell_codex_h_
 
 #include <algorithm>
 #include <array>

@@ -3,7 +3,6 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 
 ## Upcoming: important (in order)
-- rename Stage1 to VfsShell. update all related files
 - don't write all code in same h and cpp file. split code cleanly to multiple files. write AGENTS.md in VfsShell directory to explain files. Link that to root AGENTS.md
 - add examples of how to run all files in script dir. Add those to HOWTO_SCRIPTS.md file. Explain sexp files in script files and make cx scripts if you can't open them with single sh command
 - when I run "python tools/test_harness.py --target llama -v" I see some fails even though they shouldn't. I think you should add c++ compiler and to compile and to run given programs to make them pass. We can't really pass or fail these responses based on AST. We can only pass them if they echo some expected message. So you need to change all tests made by test_harness to compare echoed text to expected
@@ -76,15 +75,16 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 ## 
 
 ## Completed
+- Renamed Stage1 to VfsShell and updated all references (Makefile, header guards, documentation, test harness)
 - test_harness.py now uses AI response caching compatible with C++ cache format (cache/ai/{provider}/{hash}-in.txt and {hash}-out.txt)
 - add shell commands ctrl+u and ctrl+k for clearing text
 - AI bridge prompt & tests: added scripts/examples/ai-hello-world.sexp and tests/011-ai-bridge-hello.sexp to exercise cpp.* helpers via the ai command.
-- `AGENTS.md` drafted from discussion notes to document Stage1 agent scope.
+- `AGENTS.md` drafted from discussion notes to document VfsShell agent scope.
 - Build tooling pipeline now operational:
-  - Root `Makefile` builds the Stage1 binary and exposes debug/release toggles.
+  - Root `Makefile` builds the VfsShell binary and exposes debug/release toggles.
   - OpenAI integration loads the API key from the home directory fallback (`~/openai-key.txt`).
   - `make sample` exercises the C++ AST builder, exports generated code, compiles it, and checks the runtime output.
-- Stage1 harness (`tools/test_harness.py`) runs `.sexp` specs end-to-end against configured LLM targets and validates results inside codex-mini.
+- VfsShell harness (`tools/test_harness.py`) runs `.sexp` specs end-to-end against configured LLM targets and validates results inside codex-mini.
 - C++ AST shell surface now includes statements (`cpp.vardecl`, `cpp.expr`, `cpp.stmt`, `cpp.return`, `cpp.rangefor`) for structural codegen beyond canned print/return helpers.
 - overlays: multiple persistent VFS overlays can now coexist without mixing nodes; the CLI exposes `overlay.*` commands and aggregate listings.
 

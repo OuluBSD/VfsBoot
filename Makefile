@@ -2,19 +2,19 @@ CXX ?= c++
 CXXFLAGS ?= -std=gnu++17 -O2 -Wall -Wextra -pedantic
 LDFLAGS ?=
 
-STAGE1_SRC := Stage1/codex.cpp Stage1/snippet_catalog.cpp
-STAGE1_HDR := Stage1/codex.h Stage1/snippet_catalog.h
-STAGE1_BIN := codex
+VFSSHELL_SRC := VfsShell/codex.cpp VfsShell/snippet_catalog.cpp
+VFSSHELL_HDR := VfsShell/codex.h VfsShell/snippet_catalog.h
+VFSSHELL_BIN := codex
 
 .PHONY: all clean debug release sample
 
-all: $(STAGE1_BIN)
+all: $(VFSSHELL_BIN)
 
-$(STAGE1_BIN): $(STAGE1_SRC) $(STAGE1_HDR)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(STAGE1_SRC) -o $@
+$(VFSSHELL_BIN): $(VFSSHELL_SRC) $(VFSSHELL_HDR)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(VFSSHELL_SRC) -o $@
 
 clean:
-	rm -f $(STAGE1_BIN)
+	rm -f $(VFSSHELL_BIN)
 	rm -rf build
 
 BUILD_DIR := build
@@ -22,7 +22,7 @@ SAMPLE_CPP := $(BUILD_DIR)/demo.cpp
 SAMPLE_BIN := $(BUILD_DIR)/demo
 SAMPLE_OUT := $(BUILD_DIR)/demo.out
 
-sample: $(STAGE1_BIN)
+sample: $(VFSSHELL_BIN)
 	mkdir -p $(BUILD_DIR)
 	printf '%s\n' \
 		"cpp.tu /astcpp/demo" \
@@ -33,7 +33,7 @@ sample: $(STAGE1_BIN)
 		"cpp.dump /astcpp/demo /cpp/demo.cpp" \
 		"export /cpp/demo.cpp $(SAMPLE_CPP)" \
 		"exit" \
-	| ./$(STAGE1_BIN)
+	| ./$(VFSSHELL_BIN)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(SAMPLE_CPP) -o $(SAMPLE_BIN)
 	./$(SAMPLE_BIN) > $(SAMPLE_OUT)
 	@grep -q "Hello from codex-mini sample!" $(SAMPLE_OUT)

@@ -6,7 +6,7 @@
 
 ## Key Documentation
 
-- **[AGENTS.md](AGENTS.md)** – Detailed technical documentation for Stage1 architecture, implementation notes, and agent specifications. **Read this first for technical details.**
+- **[AGENTS.md](AGENTS.md)** – Detailed technical documentation for VfsShell architecture, implementation notes, and agent specifications. **Read this first for technical details.**
 - **[README.md](README.md)** – Build instructions, test harness usage, overlay system, solutions, and C++ builder surface
 - **[TASKS.md](TASKS.md)** – Live task tracker with prioritized features and completed work
 - **[DISCUSSION.md](DISCUSSION.md)** – Design discussions and architectural decisions
@@ -76,7 +76,7 @@ All nodes (directories, files, AST nodes) inherit from `VfsNode` base class.
 - Update TASKS.md when completing work or discovering new requirements
 
 ### File Organization
-- Source lives in `Stage1/codex.cpp` and `Stage1/codex.h`
+- Source lives in `VfsShell/codex.cpp` and `VfsShell/codex.h`
 - Scripts organized under `scripts/` in: `examples/`, `reference/`, `unittst/`, `tutorial/`
 - Tests in `tests/` directory (numbered `.sexp` files)
 - Build artifacts in `build/`
@@ -116,7 +116,7 @@ Tracing macros: `TRACE_FN`, `TRACE_LOOP`, `TRACE_MSG`
 
 ## Current Focus Areas (from TASKS.md)
 
-- Rename Stage1 to VfsShell
+- Rename VfsShell completed
 - Split monolithic code into multiple clean files
 - Add examples for script directory usage (HOWTO_SCRIPTS.md)
 - Fix test_harness.py to use compiled output verification instead of AST comparison

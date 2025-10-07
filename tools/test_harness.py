@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage1 codex-mini integration harness."""
+"""VfsShell codex-mini integration harness."""
 
 from __future__ import annotations
 
@@ -267,7 +267,7 @@ def _discover_snippet_dir() -> Optional[Path]:
     if env:
         candidates.append(Path(env))
     candidates.append(Path('snippets'))
-    candidates.append(Path('Stage1') / 'snippets')
+    candidates.append(Path('VfsShell') / 'snippets')
 
     for cand in candidates:
         if cand.is_dir():
@@ -283,7 +283,7 @@ def _load_snippet(key: str) -> str:
     directory = _discover_snippet_dir()
     if directory is None:
         raise FileNotFoundError(
-            "snippet directory not found; set CODEX_SNIPPET_DIR or create Stage1/snippets"
+            "snippet directory not found; set CODEX_SNIPPET_DIR or create VfsShell/snippets"
         )
     path = directory / f'{key}.txt'
     if not path.is_file():
@@ -843,7 +843,7 @@ def discover_tests(paths: Sequence[str]) -> List[str]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description='Run codex-mini Stage1 harness tests')
+    parser = argparse.ArgumentParser(description='Run codex-mini VfsShell harness tests')
     parser.add_argument('paths', nargs='*', default=['tests'], help='Test files or directories to run')
     parser.add_argument('--binary', default='./codex', help='Path to codex binary')
     parser.add_argument('--target', action='append', help='Restrict to specific LLM target kinds (openai, llama)')

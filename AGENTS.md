@@ -1,6 +1,6 @@
 # Agent Stack
 
-## Stage1 – codex-mini bootstrapper
+## VfsShell – codex-mini bootstrapper
 
 **Mission.** Spin up a single-binary, meta-compiler-flavoured Codex assistant written in modern C++. The binary hosts an in-memory virtual file system (VFS) whose AST nodes inherit directly from VFS nodes. A tiny shell command set provides just enough power to be Turing complete (λ-calculus core + basic arithmetic and branching), matching the intent from the discussion.
 
@@ -12,7 +12,7 @@
 - AI bridge: `ai <prompt>` posts to OpenAI Responses API using environment variables (`OPENAI_API_KEY`, optional `OPENAI_MODEL`, `OPENAI_BASE_URL`). `tools` echoes the active command surface for the assistant.
 
 **Implementation notes.**
-- Source lives in `Stage1/codex.cpp` and `Stage1/codex.h`; build with `c++ -std=gnu++17 -O2 Stage1/codex.cpp -o codex`.
+- Source lives in `VfsShell/codex.cpp` and `VfsShell/codex.h`; build with `c++ -std=gnu++17 -O2 VfsShell/codex.cpp -o codex`.
 - `VfsNode` is the base class; `DirNode`, `FileNode`, and every AST node derive from it. `AstHolder` lets parsed expressions sit inside the VFS tree.
 - Parser accepts atoms (ints, bools, strings, symbols) and list forms; current `lambda` path handles a single parameter, matching the initial scope.
 - Builtins extend to list/string helpers (`list`, `cons`, `head`, `tail`, `null?`, `str.cat`, `str.sub`, `str.find`) so the evaluation core can express non-trivial programs.
@@ -28,7 +28,7 @@
 **Next moves.** (See `TASKS.md` for live tracking and to kick off work with `continue`.)
 1. Harden the C++ AST string escaping and scan dumps for malformed literals.
 2. Broaden the λ-syntax (multi-arg lambdas, let-binding sugar) to reduce ceremony in larger programs.
-3. Design Stage2 agent goals (e.g. richer codegen, persistence, higher-level scripting) on top of the Stage1 substrate.
+3. Design Stage2 agent goals (e.g. richer codegen, persistence, higher-level scripting) on top of the VfsShell substrate.
 
 OpenAI API Key is in ~/openai-key.txt
 
@@ -36,6 +36,9 @@ OpenAI API Key is in ~/openai-key.txt
 - Build with `-DCODEX_TRACE` to enable scoped logging into `codex_trace.log`. Tracing primitives are `TRACE_FN` for function entry/exit, `TRACE_LOOP` for hot loop beacons, and `TRACE_MSG` for ad-hoc notes; they auto-flush into the logfile.
 - When tracing, run scripted interaction via stdin (`printf 'ls /\nls /cpp\nexit\n' | ./codex`) so the CLI prompt is satisfied without extra tooling. The macro guards ensure no overhead in normal builds.
 - Inspect `codex_trace.log` for call ordering; use standard tooling (`sort | uniq -c`) if a suspect path emits repeated lines.
+
+### Implementation details
+- See **[VfsShell/AGENTS.md](VfsShell/AGENTS.md)** for detailed implementation architecture, file structure, code organization, and extension points.
 
 ### Process rule
 - After every successful code modification session, commit the changes to git.
