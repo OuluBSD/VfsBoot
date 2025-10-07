@@ -198,6 +198,7 @@ struct Vfs {
     size_t overlayCount() const;
     const std::string& overlayName(size_t id) const;
     std::optional<size_t> findOverlayByName(const std::string& name) const;
+    std::shared_ptr<DirNode> overlayRoot(size_t id) const;
     size_t registerOverlay(std::string name, std::shared_ptr<DirNode> overlayRoot);
     void unregisterOverlay(size_t overlayId);
 

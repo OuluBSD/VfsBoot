@@ -322,6 +322,54 @@ static size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const s
     return vfs.registerOverlay(name, root);
 }
 
+static void save_overlay_to_file(const Vfs& vfs, size_t overlayId, const std::string& hostPath){
+    TRACE_FN("overlayId=", overlayId, ", file=", hostPath);
+    auto root = vfs.overlayRoot(overlayId);
+    if(!root) throw std::runtime_error("overlay.save: overlay missing root");
+
+    std::filesystem::path outPath(hostPath);
+    if(auto parent = outPath.parent_path(); !parent.empty()){
+        std::error_code ec;
+        std::filesystem::create_directories(parent, ec);
+        if(ec){
+            throw std::runtime_error(std::string("overlay.save: failed to create directories: ") + ec.message());
+        }
+    }
+
+    std::ofstream out(hostPath, std::ios::binary | std::ios::trunc);
+    if(!out) throw std::runtime_error("overlay.save: cannot open file for writing");
+
+    out << "# codex-vfs-overlay 1\n";
+
+    std::function<void(const std::shared_ptr<VfsNode>&, const std::string&)> dump;
+    dump = [&](const std::shared_ptr<VfsNode>& node, const std::string& path){
+        if(!node) return;
+        if(node->kind == VfsNode::Kind::Dir){
+            if(path != "/"){
+                out << "D " << path << "\n";
+            }
+            auto dir = std::static_pointer_cast<DirNode>(node);
+            for(const auto& [name, child] : dir->children()){
+                std::string childPath = join_path(path, name);
+                dump(child, childPath);
+            }
+            return;
+        }
+        if(node->kind == VfsNode::Kind::File){
+            auto data = node->read();
+            out << "F " << path << " " << data.size() << "\n";
+            if(!data.empty()){
+                out.write(data.data(), static_cast<std::streamsize>(data.size()));
+            }
+            out << "\n";
+            return;
+        }
+        throw std::runtime_error("overlay.save: unsupported node type at " + path);
+    };
+
+    dump(root, "/");
+}
+
 static size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const std::string& hostPath);
 static std::string unescape_meta(const std::string& s){
     std::string out; out.reserve(s.size());
@@ -1093,6 +1141,11 @@ size_t Vfs::overlayCount() const {
 const std::string& Vfs::overlayName(size_t id) const {
     if(id >= overlay_stack.size()) throw std::out_of_range("overlay id");
     return overlay_stack[id].name;
+}
+
+std::shared_ptr<DirNode> Vfs::overlayRoot(size_t id) const {
+    if(id >= overlay_stack.size()) throw std::out_of_range("overlay id");
+    return overlay_stack[id].root;
 }
 
 std::optional<size_t> Vfs::findOverlayByName(const std::string& name) const {
@@ -2313,6 +2366,7 @@ R"(Commands:
   tools
   overlay.list
   overlay.mount <name> <file>
+  overlay.save <name> <file>
   overlay.unmount <name>
   overlay.policy [manual|oldest|newest]
   overlay.use <name>
@@ -2859,6 +2913,13 @@ int main(int argc, char** argv){
             size_t id = mount_overlay_from_file(vfs, inv.args[0], inv.args[1]);
             maybe_extend_context(vfs, cwd);
             std::cout << "mounted overlay " << inv.args[0] << " (#" << id << ")\n";
+
+        } else if(cmd == "overlay.save"){
+            if(inv.args.size() < 2) throw std::runtime_error("overlay.save <name> <file>");
+            auto idOpt = vfs.findOverlayByName(inv.args[0]);
+            if(!idOpt) throw std::runtime_error("overlay: unknown overlay");
+            save_overlay_to_file(vfs, *idOpt, inv.args[1]);
+            std::cout << "overlay " << inv.args[0] << " (#" << *idOpt << ") -> " << inv.args[1] << "\n";
 
         } else if(cmd == "overlay.unmount"){
             if(inv.args.empty()) throw std::runtime_error("overlay.unmount <name>");
