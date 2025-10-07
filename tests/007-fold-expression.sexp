@@ -31,6 +31,9 @@
     (contains "/cpp/tests/fold_expression.cpp" "std::cout << \"sum\"")
     (contains "/cpp/tests/fold_expression.cpp" "return 0;")
     (not-contains "/cpp/tests/fold_expression.cpp" "TODO"))
+  (expected-runtime-output
+    (contains "sum")
+    (contains "6"))
   (llm-targets
     (openai default)
     (llama "http://192.168.1.169:8080/")))

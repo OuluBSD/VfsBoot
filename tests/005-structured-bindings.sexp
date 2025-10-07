@@ -30,6 +30,9 @@
     (contains "/cpp/tests/structured_bindings.cpp" "std::cout << key")
     (contains "/cpp/tests/structured_bindings.cpp" "return 0;")
     (not-contains "/cpp/tests/structured_bindings.cpp" "TODO"))
+  (expected-runtime-output
+    (contains "key")
+    (contains "value"))
   (llm-targets
     (openai default)
     (llama "http://192.168.1.169:8080/")))

@@ -31,6 +31,9 @@
     (contains "/cpp/tests/auto.cpp" "std::cout << \"total\"")
     (contains "/cpp/tests/auto.cpp" "return 0;")
     (not-contains "/cpp/tests/auto.cpp" "TODO"))
+  (expected-runtime-output
+    (contains "total")
+    (contains "15"))
   (llm-targets
     (openai default)
     (llama "http://192.168.1.169:8080/")))

@@ -32,6 +32,8 @@
     (contains "/cpp/tests/lambda_capture.cpp" "std::cout << \"transformed\"")
     (contains "/cpp/tests/lambda_capture.cpp" "return 0;")
     (not-contains "/cpp/tests/lambda_capture.cpp" "TODO"))
+  (expected-runtime-output
+    (contains "transformed"))
   (llm-targets
     (openai default)
     (llama "http://192.168.1.169:8080/")))

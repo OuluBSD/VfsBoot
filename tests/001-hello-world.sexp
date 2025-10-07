@@ -53,6 +53,8 @@
     (contains "/cpp/tests/hello.cpp" "Hello from tests!")
     (contains "/cpp/tests/hello.cpp" "return 0;")
     (not-contains "/cpp/tests/hello.cpp" "TODO"))
+  (expected-runtime-output
+    (contains "Hello from tests!"))
   (llm-targets
     (openai default)
     (llama "http://192.168.1.169:8080/")))

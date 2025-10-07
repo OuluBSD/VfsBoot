@@ -36,6 +36,8 @@
     (contains "/cpp/tests/ai-hello.cpp" "hello from the ai bridge")
     (contains "/cpp/tests/ai-hello.cpp" "return 0;")
     (not-contains "/cpp/tests/ai-hello.cpp" "TODO"))
+  (expected-runtime-output
+    (contains "hello from the ai bridge"))
   (llm-targets
     (openai default)
     (llama "http://192.168.1.169:8080/")))

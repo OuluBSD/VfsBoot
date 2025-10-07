@@ -30,6 +30,9 @@
     (contains "/cpp/tests/string_view.cpp" "std::cout << phrase")
     (contains "/cpp/tests/string_view.cpp" "return 0;")
     (not-contains "/cpp/tests/string_view.cpp" "TODO"))
+  (expected-runtime-output
+    (contains "phrase")
+    (contains ":"))
   (llm-targets
     (openai default)
     (llama "http://192.168.1.169:8080/")))

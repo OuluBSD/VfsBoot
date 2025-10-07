@@ -32,6 +32,8 @@
     (contains "/cpp/tests/if_constexpr.cpp" "std::cout << \"integral\"")
     (contains "/cpp/tests/if_constexpr.cpp" "return 0;")
     (not-contains "/cpp/tests/if_constexpr.cpp" "TODO"))
+  (expected-runtime-output
+    (contains "integral"))
   (llm-targets
     (openai default)
     (llama "http://192.168.1.169:8080/")))

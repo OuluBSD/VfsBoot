@@ -32,6 +32,8 @@
     (contains "/cpp/tests/variant.cpp" "std::cout << \"int\"")
     (contains "/cpp/tests/variant.cpp" "return 0;")
     (not-contains "/cpp/tests/variant.cpp" "TODO"))
+  (expected-runtime-output
+    (contains "int"))
   (llm-targets
     (openai default)
     (llama "http://192.168.1.169:8080/")))

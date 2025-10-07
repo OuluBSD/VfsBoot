@@ -32,6 +32,8 @@
     (contains "/cpp/tests/filesystem.cpp" "std::cout << entry.path()")
     (contains "/cpp/tests/filesystem.cpp" "return 0;")
     (not-contains "/cpp/tests/filesystem.cpp" "TODO"))
+  (expected-runtime-output
+    (contains "temp"))
   (llm-targets
     (openai default)
     (llama "http://192.168.1.169:8080/")))

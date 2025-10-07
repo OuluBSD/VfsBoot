@@ -8,9 +8,11 @@ import dataclasses
 import hashlib
 import json
 import os
+import platform
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -151,6 +153,13 @@ class Assertion:
 
 
 @dataclasses.dataclass
+class RuntimeExpectation:
+    """Expected output from compiled program execution."""
+    kind: str
+    values: Tuple[str, ...]
+
+
+@dataclasses.dataclass
 class LlmTarget:
     kind: str
     identifier: str
@@ -186,6 +195,8 @@ class TestCase:
     expected: List[Expectation]
     assertions: List[Assertion]
     targets: List[LlmTarget]
+    runtime_expected: List[RuntimeExpectation]
+    compile_and_run: bool
 
 
 _SNIPPET_CACHE: Dict[str, str] = {}
@@ -326,6 +337,14 @@ def _expand_assertions(items: List[Assertion]) -> List[Assertion]:
     return expanded
 
 
+def _expand_runtime_expectations(items: List[Expectation]) -> List[RuntimeExpectation]:
+    expanded: List[RuntimeExpectation] = []
+    for item in items:
+        values = tuple(_expand_snippet_placeholders(value) for value in item.values)
+        expanded.append(RuntimeExpectation(kind=item.kind, values=values))
+    return expanded
+
+
 def load_test_case(path: str) -> TestCase:
     text = open(path, encoding='utf-8').read()
     parsed = SExprParser(text).parse()
@@ -371,6 +390,17 @@ def load_test_case(path: str) -> TestCase:
     target_entries = expect_list(Symbol('llm-targets'))
     targets = [_parse_target(path, item) for item in target_entries]
 
+    # Optional: runtime expectations
+    runtime_expected: List[RuntimeExpectation] = []
+    compile_and_run = False
+    if Symbol('expected-runtime-output') in fields:
+        runtime_entries = fields[Symbol('expected-runtime-output')]
+        runtime_expected = _expand_runtime_expectations([_parse_expectation(path, item) for item in runtime_entries])
+        compile_and_run = True
+    if Symbol('compile-and-run') in fields:
+        compile_flag = fields[Symbol('compile-and-run')][0]
+        compile_and_run = compile_flag in ('#t', '#true', True)
+
     return TestCase(
         id=str(id_value),
         title=str(title_value),
@@ -381,6 +411,8 @@ def load_test_case(path: str) -> TestCase:
         expected=expected,
         assertions=assertions,
         targets=targets,
+        runtime_expected=runtime_expected,
+        compile_and_run=compile_and_run,
     )
 
 
@@ -496,6 +528,98 @@ class CodexSession:
         except subprocess.TimeoutExpired:
             self.proc.kill()
         return remaining_out, remaining_err
+
+
+def _is_linux() -> bool:
+    """Check if running on Linux."""
+    return platform.system() == 'Linux'
+
+
+def _compile_cpp_file(source_path: Path, output_path: Path, timeout: int = 30) -> Tuple[bool, str, str]:
+    """
+    Compile a C++ source file.
+    Returns (success, stdout, stderr).
+    """
+    compiler = os.environ.get('CXX', 'g++')
+    cmd = [compiler, '-std=c++17', '-O2', '-o', str(output_path), str(source_path)]
+    try:
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=timeout
+        )
+        success = result.returncode == 0
+        return success, result.stdout, result.stderr
+    except subprocess.TimeoutExpired:
+        return False, '', f'Compilation timed out after {timeout}s'
+    except Exception as e:
+        return False, '', f'Compilation error: {e}'
+
+
+def _run_sandboxed(executable_path: Path, timeout: int = 10) -> Tuple[bool, str, str, int]:
+    """
+    Run executable in a sandbox (Gentoo-style on Linux, basic on Windows).
+    Returns (success, stdout, stderr, returncode).
+    """
+    if _is_linux():
+        # Try Linux sandbox with unshare for namespace isolation
+        cmd = [
+            'timeout', str(timeout),
+            'unshare', '--net', '--pid', '--fork',
+            str(executable_path)
+        ]
+        fallback_cmd = ['timeout', str(timeout), str(executable_path)]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=timeout + 5  # Extra buffer for cleanup
+            )
+            # If unshare failed (permission denied), fall back
+            if result.returncode != 0 and ('unshare' in result.stderr or 'Toiminto ei ole sallittu' in result.stderr):
+                result = subprocess.run(
+                    fallback_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=timeout
+                )
+            return result.returncode == 0, result.stdout, result.stderr, result.returncode
+        except FileNotFoundError:
+            # unshare or timeout not available, use fallback
+            result = subprocess.run(
+                fallback_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=timeout
+            )
+            return result.returncode == 0, result.stdout, result.stderr, result.returncode
+        except subprocess.TimeoutExpired:
+            return False, '', f'Execution timed out after {timeout}s', -1
+        except Exception as e:
+            return False, '', f'Execution error: {e}', -1
+    else:
+        # Windows: just run directly with timeout
+        cmd = [str(executable_path)]
+        try:
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=timeout
+            )
+            return result.returncode == 0, result.stdout, result.stderr, result.returncode
+        except subprocess.TimeoutExpired:
+            return False, '', f'Execution timed out after {timeout}s', -1
+        except Exception as e:
+            return False, '', f'Execution error: {e}', -1
 
 
 def build_prompt_text(test: TestCase) -> str:
@@ -741,6 +865,28 @@ def evaluate_assertions(assertions: Sequence[Assertion], cat_outputs: Dict[str, 
     return failures
 
 
+def validate_runtime_output(output: str, expected: Sequence[RuntimeExpectation]) -> List[str]:
+    """Validate runtime output from compiled executable."""
+    failures: List[str] = []
+    for exp in expected:
+        if exp.kind == 'contains':
+            for value in exp.values:
+                if value not in output:
+                    failures.append(f"runtime output missing expected snippet: {value!r}")
+        elif exp.kind == 'not-contains':
+            for value in exp.values:
+                if value in output:
+                    failures.append(f"runtime output unexpectedly contains: {value!r}")
+        elif exp.kind == 'equals':
+            if exp.values:
+                expected_text = exp.values[0]
+                if output.strip() != expected_text.strip():
+                    failures.append(f"runtime output mismatch:\nExpected: {expected_text!r}\nGot: {output!r}")
+        else:
+            failures.append(f"unsupported runtime expectation kind: {exp.kind}")
+    return failures
+
+
 def run_test_on_target(test: TestCase, target: LlmTarget, binary_path: str, *, verbose: bool = False) -> Tuple[bool, Dict[str, Any]]:
     system_prompt = (
         "Respond with exactly one S-expression matching this template.\n"
@@ -817,13 +963,75 @@ def run_test_on_target(test: TestCase, target: LlmTarget, binary_path: str, *, v
             cat_results[path] = out
     finally:
         session.close()
+
     assertion_failures = evaluate_assertions(test.assertions, cat_results)
     errors.extend(assertion_failures)
+
+    # Compile and run if requested
+    runtime_output = ''
+    compile_stdout = ''
+    compile_stderr = ''
+    run_stdout = ''
+    run_stderr = ''
+    if test.compile_and_run and not errors:
+        # Find C++ files in /cpp directory from cat_results
+        cpp_files: List[Tuple[str, str]] = []
+        for path, content in cat_results.items():
+            if path.startswith('/cpp/') and path.endswith('.cpp'):
+                cpp_files.append((path, content))
+
+        if cpp_files and not errors:
+            # For now, compile the first .cpp file found
+            vfs_path, source_content = cpp_files[0]
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmpdir_path = Path(tmpdir)
+                source_file = tmpdir_path / 'program.cpp'
+                executable = tmpdir_path / 'program'
+
+                # Write source to temp file
+                source_file.write_text(source_content, encoding='utf-8')
+
+                # Compile
+                compile_success, compile_stdout, compile_stderr = _compile_cpp_file(source_file, executable)
+
+                if verbose:
+                    print(f"--- Compiling {vfs_path} ---")
+                    if compile_stdout:
+                        print("stdout:", compile_stdout)
+                    if compile_stderr:
+                        print("stderr:", compile_stderr)
+
+                if not compile_success:
+                    errors.append(f"Compilation failed for {vfs_path}")
+                    if compile_stderr:
+                        errors.append(f"Compiler errors: {compile_stderr}")
+                else:
+                    # Run the executable
+                    run_success, run_stdout, run_stderr, returncode = _run_sandboxed(executable)
+                    runtime_output = run_stdout
+
+                    if verbose:
+                        print(f"--- Running {vfs_path} ---")
+                        print("stdout:", run_stdout)
+                        if run_stderr:
+                            print("stderr:", run_stderr)
+                        print(f"return code: {returncode}")
+
+                    # Validate runtime output
+                    if test.runtime_expected:
+                        runtime_failures = validate_runtime_output(runtime_output, test.runtime_expected)
+                        errors.extend(runtime_failures)
+
     success = not errors
     details = {
         'response': response,
         'commands': command_outputs,
         'cat_results': cat_results,
+        'compile_stdout': compile_stdout,
+        'compile_stderr': compile_stderr,
+        'runtime_stdout': run_stdout,
+        'runtime_stderr': run_stderr,
         'errors': errors,
     }
     return success, details

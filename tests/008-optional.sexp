@@ -32,6 +32,8 @@
     (contains "/cpp/tests/optional.cpp" "std::cout << \"parsed\"")
     (contains "/cpp/tests/optional.cpp" "return 0;")
     (not-contains "/cpp/tests/optional.cpp" "TODO"))
+  (expected-runtime-output
+    (contains "parsed"))
   (llm-targets
     (openai default)
     (llama "http://192.168.1.169:8080/")))
