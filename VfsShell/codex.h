@@ -176,6 +176,8 @@ struct Vfs {
     struct Overlay {
         std::string name;
         std::shared_ptr<DirNode> root;
+        std::string source_file;  // path to original source file (e.g., "foo.cpp")
+        std::string source_hash;  // BLAKE3 hash of source file
     };
     struct OverlayHit {
         size_t overlay_id;
@@ -370,6 +372,12 @@ std::shared_ptr<CppFunction>        expect_fn(std::shared_ptr<VfsNode> n);
 std::shared_ptr<CppCompound>        expect_block(std::shared_ptr<VfsNode> n);
 void vfs_add(Vfs& vfs, const std::string& path, std::shared_ptr<VfsNode> node, size_t overlayId = 0);
 void cpp_dump_to_vfs(Vfs& vfs, size_t overlayId, const std::string& tuPath, const std::string& filePath);
+
+//
+// Hash utilities (BLAKE3)
+//
+std::string compute_file_hash(const std::string& filepath);
+std::string compute_string_hash(const std::string& data);
 
 //
 // AI helpers (OpenAI + llama.cpp bridge)

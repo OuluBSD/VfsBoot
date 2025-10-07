@@ -1,6 +1,6 @@
 CXX ?= c++
 CXXFLAGS ?= -std=gnu++17 -O2 -Wall -Wextra -pedantic
-LDFLAGS ?=
+LDFLAGS ?= -lblake3
 
 VFSSHELL_SRC := VfsShell/codex.cpp VfsShell/snippet_catalog.cpp
 VFSSHELL_HDR := VfsShell/codex.h VfsShell/snippet_catalog.h
@@ -11,7 +11,7 @@ VFSSHELL_BIN := codex
 all: $(VFSSHELL_BIN)
 
 $(VFSSHELL_BIN): $(VFSSHELL_SRC) $(VFSSHELL_HDR)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(VFSSHELL_SRC) -o $@
+	$(CXX) $(CXXFLAGS) $(VFSSHELL_SRC) -o $@ $(LDFLAGS)
 
 clean:
 	rm -f $(VFSSHELL_BIN)

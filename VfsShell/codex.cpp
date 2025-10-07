@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <termios.h>
 #include <unistd.h>
+#include <blake3.h>
 
 #ifdef CODEX_TRACE
 #include <fstream>
@@ -103,6 +104,48 @@ static std::string path_basename(const std::string& path){
     return path.substr(pos+1);
 }
 
+//
+// BLAKE3 hash functions
+//
+std::string compute_string_hash(const std::string& data){
+    blake3_hasher hasher;
+    blake3_hasher_init(&hasher);
+    blake3_hasher_update(&hasher, data.data(), data.size());
+    uint8_t output[BLAKE3_OUT_LEN];
+    blake3_hasher_finalize(&hasher, output, BLAKE3_OUT_LEN);
+
+    std::ostringstream oss;
+    oss << std::hex << std::setfill('0');
+    for(size_t i = 0; i < BLAKE3_OUT_LEN; ++i){
+        oss << std::setw(2) << static_cast<unsigned>(output[i]);
+    }
+    return oss.str();
+}
+
+std::string compute_file_hash(const std::string& filepath){
+    std::ifstream file(filepath, std::ios::binary);
+    if(!file) throw std::runtime_error("cannot open file for hashing: " + filepath);
+
+    blake3_hasher hasher;
+    blake3_hasher_init(&hasher);
+
+    constexpr size_t BUFFER_SIZE = 65536;
+    std::vector<char> buffer(BUFFER_SIZE);
+    while(file.read(buffer.data(), BUFFER_SIZE) || file.gcount() > 0){
+        blake3_hasher_update(&hasher, buffer.data(), static_cast<size_t>(file.gcount()));
+    }
+
+    uint8_t output[BLAKE3_OUT_LEN];
+    blake3_hasher_finalize(&hasher, output, BLAKE3_OUT_LEN);
+
+    std::ostringstream oss;
+    oss << std::hex << std::setfill('0');
+    for(size_t i = 0; i < BLAKE3_OUT_LEN; ++i){
+        oss << std::setw(2) << static_cast<unsigned>(output[i]);
+    }
+    return oss.str();
+}
+
 static std::pair<std::string, std::string> serialize_ast_node(const std::shared_ptr<AstNode>& node);
 static std::shared_ptr<AstNode> deserialize_ast_node(const std::string& type,
                                                      const std::string& payload,
@@ -124,6 +167,17 @@ struct SolutionContext {
     size_t overlay_id = 0;
     std::string title;
     std::string file_path;
+};
+
+struct AutosaveContext {
+    bool enabled = true;
+    int delay_seconds = 10;
+    int crash_recovery_interval_seconds = 180;  // 3 minutes
+    std::atomic<bool> should_stop{false};
+    std::mutex mtx;
+    std::chrono::steady_clock::time_point last_modification;
+    std::chrono::steady_clock::time_point last_crash_recovery;
+    std::vector<size_t> solution_overlay_ids;  // Only .cxpkg/.cxasm and their chained .vfs files
 };
 
 static std::function<void()> g_on_save_shortcut;
@@ -256,7 +310,29 @@ static size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const s
     int version = 0;
     if(trimmed == "# codex-vfs-overlay 1") version = 1;
     if(trimmed == "# codex-vfs-overlay 2") version = 2;
+    if(trimmed == "# codex-vfs-overlay 3") version = 3;
     if(version == 0) throw std::runtime_error("overlay: invalid header");
+
+    std::string source_file;
+    std::string source_hash;
+
+    // Version 3 adds source file hash tracking
+    if(version >= 3){
+        std::string hash_line;
+        if(std::getline(in, hash_line)){
+            auto hash_trimmed = trim_copy(hash_line);
+            if(!hash_trimmed.empty() && hash_trimmed[0] == 'H'){
+                std::istringstream iss(hash_trimmed);
+                char tag;
+                if(iss >> tag >> source_file >> source_hash){
+                    // Successfully parsed hash line
+                } else {
+                    // Not a valid hash line, rewind if possible (though we can't easily)
+                    // For now, just proceed without hash
+                }
+            }
+        }
+    }
 
     auto root = std::make_shared<DirNode>("/");
     root->name = "/";
@@ -399,7 +475,186 @@ static size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const s
 
     auto id = vfs.registerOverlay(name, root);
     vfs.setOverlaySource(id, hostPath);
+
+    // Set source file and hash for version 3
+    if(version >= 3 && !source_file.empty()){
+        vfs.overlay_stack[id].source_file = source_file;
+        vfs.overlay_stack[id].source_hash = source_hash;
+
+        // Verify hash if source file exists
+        if(!source_hash.empty()){
+            try{
+                std::filesystem::path src_path = source_file;
+                if(src_path.is_relative()){
+                    // Try to resolve relative to the .vfs file location
+                    std::filesystem::path vfs_dir = std::filesystem::path(hostPath).parent_path();
+                    if(!vfs_dir.empty()){
+                        src_path = vfs_dir / src_path;
+                    }
+                }
+
+                if(std::filesystem::exists(src_path)){
+                    std::string current_hash = compute_file_hash(src_path.string());
+                    if(current_hash != source_hash){
+                        std::cout << "warning: source file hash mismatch for " << source_file << "\n";
+                        std::cout << "  expected: " << source_hash << "\n";
+                        std::cout << "  current:  " << current_hash << "\n";
+                        std::cout << "  VFS may be out of sync with source. Consider re-parsing.\n";
+                    }
+                }
+            } catch(const std::exception& e){
+                std::cout << "note: could not verify source hash: " << e.what() << "\n";
+            }
+        }
+    }
+
     return id;
+}
+
+// Forward declaration
+static void save_overlay_to_file(Vfs& vfs, size_t overlayId, const std::string& hostPath);
+
+static std::string get_timestamp_string(){
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm_buf;
+    localtime_r(&time_t, &tm_buf);
+    std::ostringstream oss;
+    oss << std::put_time(&tm_buf, "%Y-%m-%d-%H%M%S");
+    return oss.str();
+}
+
+static void create_timestamped_backup(const std::string& filepath){
+    std::filesystem::path src(filepath);
+    if(!std::filesystem::exists(src)) return;
+
+    auto parent = src.parent_path();
+    if(parent.empty()) parent = ".";
+    std::filesystem::path backup_dir = parent / ".vfsh";
+
+    std::error_code ec;
+    std::filesystem::create_directories(backup_dir, ec);
+    if(ec) throw std::runtime_error("failed to create .vfsh directory: " + ec.message());
+
+    std::string timestamp = get_timestamp_string();
+    std::string backup_name = src.filename().string() + "." + timestamp + ".bak";
+    std::filesystem::path backup_path = backup_dir / backup_name;
+
+    std::filesystem::copy_file(src, backup_path, std::filesystem::copy_options::overwrite_existing, ec);
+    if(ec) throw std::runtime_error("failed to create backup: " + ec.message());
+}
+
+static void save_crash_recovery(Vfs& vfs, const AutosaveContext& autosave_ctx){
+    try{
+        namespace fs = std::filesystem;
+        fs::path cwd = fs::current_path();
+        fs::path recovery_dir = cwd / ".vfsh";
+        fs::create_directories(recovery_dir);
+
+        fs::path recovery_path = recovery_dir / "recovery.vfs";
+
+        // Save all VFS overlays that are tracked for autosave
+        std::ofstream out(recovery_path, std::ios::binary | std::ios::trunc);
+        if(!out) return;
+
+        out << "# codex-vfs-overlay 3\n";
+        out << "# crash recovery snapshot\n";
+
+        // For now, just save the base overlay as crash recovery
+        // TODO: extend to save multiple overlays if needed
+        if(vfs.overlayCount() > 0){
+            auto root = vfs.overlayRoot(0);
+            if(root){
+                std::function<void(const std::shared_ptr<VfsNode>&, const std::string&)> dump;
+                dump = [&](const std::shared_ptr<VfsNode>& node, const std::string& path){
+                    if(!node) return;
+                    bool traverse = node->isDir();
+                    if(node->kind == VfsNode::Kind::Dir){
+                        if(path != "/"){
+                            out << "D " << path << "\n";
+                        }
+                    } else if(node->kind == VfsNode::Kind::File){
+                        auto data = node->read();
+                        out << "F " << path << " " << data.size() << "\n";
+                        if(!data.empty()){
+                            out.write(data.data(), static_cast<std::streamsize>(data.size()));
+                        }
+                        out << "\n";
+                        return;
+                    }
+
+                    if(traverse){
+                        const auto& children = node->children();
+                        for(const auto& [name, child] : children){
+                            std::string childPath = join_path(path, name);
+                            dump(child, childPath);
+                        }
+                    }
+                };
+                dump(root, "/");
+            }
+        }
+    } catch(const std::exception&){
+        // Silently fail - don't disrupt normal operation
+    }
+}
+
+static void autosave_thread_func(Vfs* vfs_ptr, AutosaveContext* autosave_ctx){
+    while(!autosave_ctx->should_stop.load()){
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+
+        if(!autosave_ctx->enabled) continue;
+
+        auto now = std::chrono::steady_clock::now();
+
+        // Check for autosave of solution files (.cxpkg/.cxasm and their chained .vfs)
+        {
+            std::lock_guard<std::mutex> lock(autosave_ctx->mtx);
+            auto since_modification = std::chrono::duration_cast<std::chrono::seconds>(
+                now - autosave_ctx->last_modification).count();
+
+            if(since_modification >= autosave_ctx->delay_seconds){
+                // Check if any tracked overlays are dirty
+                bool any_dirty = false;
+                for(size_t id : autosave_ctx->solution_overlay_ids){
+                    if(id < vfs_ptr->overlayCount() && vfs_ptr->overlayDirty(id)){
+                        any_dirty = true;
+                        break;
+                    }
+                }
+
+                if(any_dirty){
+                    // Save each dirty overlay
+                    for(size_t id : autosave_ctx->solution_overlay_ids){
+                        if(id < vfs_ptr->overlayCount() && vfs_ptr->overlayDirty(id)){
+                            const auto& source = vfs_ptr->overlaySource(id);
+                            if(!source.empty()){
+                                try{
+                                    save_overlay_to_file(*vfs_ptr, id, source);
+                                } catch(const std::exception&){
+                                    // Silently continue
+                                }
+                            }
+                        }
+                    }
+                    // Reset modification time
+                    autosave_ctx->last_modification = now;
+                }
+            }
+        }
+
+        // Check for crash recovery snapshot
+        {
+            std::lock_guard<std::mutex> lock(autosave_ctx->mtx);
+            auto since_recovery = std::chrono::duration_cast<std::chrono::seconds>(
+                now - autosave_ctx->last_crash_recovery).count();
+
+            if(since_recovery >= autosave_ctx->crash_recovery_interval_seconds){
+                save_crash_recovery(*vfs_ptr, *autosave_ctx);
+                autosave_ctx->last_crash_recovery = now;
+            }
+        }
+    }
 }
 
 static void save_overlay_to_file(Vfs& vfs, size_t overlayId, const std::string& hostPath){
@@ -416,10 +671,26 @@ static void save_overlay_to_file(Vfs& vfs, size_t overlayId, const std::string& 
         }
     }
 
+    // Create timestamped backup before overwriting
+    try{
+        create_timestamped_backup(hostPath);
+    } catch(const std::exception& e){
+        std::cout << "note: backup creation failed: " << e.what() << "\n";
+    }
+
     std::ofstream out(hostPath, std::ios::binary | std::ios::trunc);
     if(!out) throw std::runtime_error("overlay.save: cannot open file for writing");
 
-    out << "# codex-vfs-overlay 2\n";
+    // Write version 3 header with optional hash
+    out << "# codex-vfs-overlay 3\n";
+
+    // Write source file hash if available
+    if(overlayId < vfs.overlay_stack.size()){
+        const auto& overlay = vfs.overlay_stack[overlayId];
+        if(!overlay.source_file.empty() && !overlay.source_hash.empty()){
+            out << "H " << overlay.source_file << " " << overlay.source_hash << "\n";
+        }
+    }
 
     std::function<void(const std::shared_ptr<VfsNode>&, const std::string&)> dump;
     dump = [&](const std::shared_ptr<VfsNode>& node, const std::string& path){
@@ -469,6 +740,22 @@ static bool is_solution_file(const std::filesystem::path& p){
     std::string lowered = ext;
     std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
     return lowered == kPackageExtension || lowered == kAssemblyExtension;
+}
+
+static std::optional<std::filesystem::path> auto_detect_vfs_path(){
+    namespace fs = std::filesystem;
+    fs::path cwd;
+    try{
+        cwd = fs::current_path();
+    } catch(const std::exception&){
+        return std::nullopt;
+    }
+    if(cwd.empty()) return std::nullopt;
+    auto title = cwd.filename().string();
+    if(title.empty()) return std::nullopt;
+    fs::path vfs_file = cwd / (title + ".vfs");
+    if(fs::exists(vfs_file) && fs::is_regular_file(vfs_file)) return vfs_file;
+    return std::nullopt;
 }
 
 static std::optional<std::filesystem::path> auto_detect_solution_path(){
@@ -1952,7 +2239,7 @@ char type_char(const std::shared_ptr<VfsNode>& node){
 
 Vfs::Vfs(){
     TRACE_FN();
-    overlay_stack.push_back(Overlay{ "base", root });
+    overlay_stack.push_back(Overlay{ "base", root, "", "" });
     overlay_dirty.push_back(false);
     overlay_source.emplace_back();
     G_VFS = this;
@@ -2019,7 +2306,7 @@ size_t Vfs::registerOverlay(std::string name, std::shared_ptr<DirNode> overlayRo
     if(!overlayRoot) overlayRoot = std::make_shared<DirNode>("/");
     overlayRoot->name = "/";
     overlayRoot->parent.reset();
-    overlay_stack.push_back(Overlay{std::move(name), overlayRoot});
+    overlay_stack.push_back(Overlay{std::move(name), overlayRoot, "", ""});
     overlay_dirty.push_back(false);
     overlay_source.emplace_back();
     return overlay_stack.size() - 1;
@@ -3335,6 +3622,21 @@ int main(int argc, char** argv){
     vfs.mkdir("/src"); vfs.mkdir("/ast"); vfs.mkdir("/env"); vfs.mkdir("/astcpp"); vfs.mkdir("/cpp");
     WorkingDirectory cwd;
     update_directory_context(vfs, cwd, cwd.path);
+
+    // Auto-load .vfs file if present
+    try{
+        if(auto vfs_path = auto_detect_vfs_path()){
+            auto abs_vfs_path = std::filesystem::absolute(*vfs_path);
+            auto title = abs_vfs_path.parent_path().filename().string();
+            if(title.empty()) title = "autoload";
+            auto overlay_name = make_unique_overlay_name(vfs, title);
+            mount_overlay_from_file(vfs, overlay_name, abs_vfs_path.string());
+            std::cout << "auto-loaded " << abs_vfs_path.filename().string() << " as overlay '" << overlay_name << "'\n";
+            maybe_extend_context(vfs, cwd);
+        }
+    } catch(const std::exception& e){
+        std::cout << "note: auto-load .vfs failed: " << e.what() << "\n";
+    }
 
     SolutionContext solution;
     std::optional<std::filesystem::path> solution_path_fs;
