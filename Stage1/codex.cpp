@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <atomic>
+#include <cstdint>
 #include <chrono>
 #include <filesystem>
 #include <iomanip>
@@ -1196,6 +1197,81 @@ static std::string build_chat_payload(const std::string& model, const std::strin
         "\"temperature\":0.0" +
     "}";
 }
+static int hex_value(char c){
+    if(c>='0' && c<='9') return c - '0';
+    if(c>='a' && c<='f') return 10 + (c - 'a');
+    if(c>='A' && c<='F') return 10 + (c - 'A');
+    return -1;
+}
+static void append_utf8(std::string& out, uint32_t codepoint){
+    auto append_replacement = [&](){ out.append("\xEF\xBF\xBD"); };
+    if(codepoint <= 0x7F){
+        out.push_back(static_cast<char>(codepoint));
+        return;
+    }
+    if(codepoint <= 0x7FF){
+        out.push_back(static_cast<char>(0xC0 | ((codepoint >> 6) & 0x1F)));
+        out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+        return;
+    }
+    if(codepoint <= 0xFFFF){
+        if(codepoint >= 0xD800 && codepoint <= 0xDFFF){
+            append_replacement();
+            return;
+        }
+        out.push_back(static_cast<char>(0xE0 | ((codepoint >> 12) & 0x0F)));
+        out.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+        return;
+    }
+    if(codepoint <= 0x10FFFF){
+        out.push_back(static_cast<char>(0xF0 | ((codepoint >> 18) & 0x07)));
+        out.push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+        return;
+    }
+    append_replacement();
+}
+static bool decode_unicode_escape_sequence(const std::string& raw, size_t u_pos, size_t& consumed, uint32_t& codepoint){
+    if(u_pos >= raw.size()) return false;
+    if(u_pos + 4 >= raw.size()) return false;
+    uint32_t code = 0;
+    for(int k = 0; k < 4; ++k){
+        int v = hex_value(raw[u_pos + 1 + k]);
+        if(v < 0) return false;
+        code = (code << 4) | static_cast<uint32_t>(v);
+    }
+
+    size_t total_consumed = 5; // 'u' + 4 hex digits
+    size_t last_digit_pos = u_pos + 4;
+
+    if(code >= 0xD800 && code <= 0xDBFF){
+        size_t next_slash = last_digit_pos + 1;
+        if(next_slash + 5 < raw.size() && raw[next_slash] == '\\' && raw[next_slash + 1] == 'u'){
+            uint32_t low = 0;
+            for(int k = 0; k < 4; ++k){
+                int v = hex_value(raw[next_slash + 2 + k]);
+                if(v < 0) return false;
+                low = (low << 4) | static_cast<uint32_t>(v);
+            }
+            if(low >= 0xDC00 && low <= 0xDFFF){
+                code = 0x10000u + ((code - 0xD800u) << 10) + (low - 0xDC00u);
+                total_consumed += 6; // '\' 'u' + 4 hex digits
+            } else {
+                code = 0xFFFD;
+            }
+        } else {
+            code = 0xFFFD;
+        }
+    } else if(code >= 0xDC00 && code <= 0xDFFF){
+        code = 0xFFFD;
+    }
+
+    consumed = total_consumed;
+    codepoint = code;
+    return true;
+}
 static std::optional<std::string> decode_json_string(const std::string& raw, size_t quote_pos){
     if(quote_pos>=raw.size() || raw[quote_pos] != '"') return std::nullopt;
     std::string out;
@@ -1213,10 +1289,18 @@ static std::optional<std::string> decode_json_string(const std::string& raw, siz
                 case 'a': out.push_back('\a'); break;
                 case '\\': out.push_back('\\'); break;
                 case '"': out.push_back('"'); break;
-                case 'u':
-                    out.push_back('\\');
-                    out.push_back('u');
+                case 'u':{
+                    size_t consumed = 0;
+                    uint32_t codepoint = 0;
+                    if(decode_unicode_escape_sequence(raw, i, consumed, codepoint)){
+                        append_utf8(out, codepoint);
+                        if(consumed > 0) i += consumed - 1;
+                    } else {
+                        out.push_back('\\');
+                        out.push_back('u');
+                    }
                     break;
+                }
                 default:
                     out.push_back(c);
                     break;
