@@ -8,6 +8,51 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#ifdef CODEX_TRACE
+#include <fstream>
+
+namespace codex_trace {
+    namespace {
+        std::mutex& trace_mutex(){ static std::mutex m; return m; }
+        std::ofstream& trace_stream(){
+            static std::ofstream s("codex_trace.log", std::ios::app);
+            return s;
+        }
+        void write_line(const std::string& line){
+            auto& os = trace_stream();
+            os << line << '\n';
+            os.flush();
+        }
+    }
+
+    void log_line(const std::string& line){
+        std::lock_guard<std::mutex> lock(trace_mutex());
+        write_line(line);
+    }
+
+    Scope::Scope(const char* fn, const std::string& details) : name(fn ? fn : "?"){
+        if(!name.empty()){
+            std::string msg = std::string("enter ") + name;
+            if(!details.empty()) msg += " | " + details;
+            log_line(msg);
+        }
+    }
+
+    Scope::~Scope(){
+        if(!name.empty()){
+            log_line(std::string("exit ") + name);
+        }
+    }
+
+    void log_loop(const char* tag, const std::string& details){
+        std::lock_guard<std::mutex> lock(trace_mutex());
+        std::string msg = std::string("loop ") + (tag ? tag : "?");
+        if(!details.empty()) msg += " | " + details;
+        write_line(msg);
+    }
+}
+#endif
+
 static std::string trim_copy(const std::string& s){
     size_t a = 0, b = s.size();
     while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
@@ -116,12 +161,14 @@ Vfs* G_VFS = nullptr;
 Vfs::Vfs(){ G_VFS = this; }
 
 std::vector<std::string> Vfs::splitPath(const std::string& p){
+    TRACE_FN("p=", p);
     std::vector<std::string> parts; std::string cur;
     for(char c: p){ if(c=='/'){ if(!cur.empty()){ parts.push_back(cur); cur.clear(); } } else cur.push_back(c); }
     if(!cur.empty()) parts.push_back(cur);
     return parts;
 }
 std::shared_ptr<VfsNode> Vfs::resolve(const std::string& path){
+    TRACE_FN("path=", path);
     if(path.empty()||path[0]!='/') throw std::runtime_error("abs path required");
     auto parts = splitPath(path);
     std::shared_ptr<VfsNode> cur = root;
@@ -135,6 +182,7 @@ std::shared_ptr<VfsNode> Vfs::resolve(const std::string& path){
     return cur;
 }
 std::shared_ptr<DirNode> Vfs::ensureDir(const std::string& path){
+    TRACE_FN("path=", path);
     if (path=="/") return root;
     auto parts = splitPath(path);
     std::shared_ptr<VfsNode> cur = root;
@@ -152,8 +200,12 @@ std::shared_ptr<DirNode> Vfs::ensureDir(const std::string& path){
     if (!cur->isDir()) throw std::runtime_error("exists but not dir");
     return std::static_pointer_cast<DirNode>(cur);
 }
-void Vfs::mkdir(const std::string& path){ ensureDir(path); }
+void Vfs::mkdir(const std::string& path){
+    TRACE_FN("path=", path);
+    ensureDir(path);
+}
 void Vfs::touch(const std::string& path){
+    TRACE_FN("path=", path);
     auto parts = splitPath(path);
     if (parts.empty()) throw std::runtime_error("bad path");
     std::string fname = parts.back(); parts.pop_back();
@@ -167,6 +219,7 @@ void Vfs::touch(const std::string& path){
     }
 }
 void Vfs::write(const std::string& path, const std::string& data){
+    TRACE_FN("path=", path, ", size=", data.size());
     // create file if needed
     auto parts = splitPath(path);
     if (parts.empty()) throw std::runtime_error("bad path");
@@ -183,13 +236,18 @@ void Vfs::write(const std::string& path, const std::string& data){
     if (n->kind!=VfsNode::Kind::File) throw std::runtime_error("write non-file");
     n->write(data);
 }
-std::string Vfs::read(const std::string& path){ return resolve(path)->read(); }
+std::string Vfs::read(const std::string& path){
+    TRACE_FN("path=", path);
+    return resolve(path)->read();
+}
 void Vfs::addNode(const std::string& dirpath, std::shared_ptr<VfsNode> n){
+    TRACE_FN("dirpath=", dirpath, ", node=", n ? n->name : std::string("<null>"));
     auto d = ensureDir(dirpath);
     n->parent=d;
     d->children()[n->name]=n;
 }
 void Vfs::rm(const std::string& path){
+    TRACE_FN("path=", path);
     if (path=="/") throw std::runtime_error("rm / not allowed");
     auto parts = splitPath(path);
     std::string name=parts.back(); parts.pop_back();
@@ -200,6 +258,7 @@ void Vfs::rm(const std::string& path){
     d->children().erase(name);
 }
 void Vfs::mv(const std::string& src, const std::string& dst){
+    TRACE_FN("src=", src, ", dst=", dst);
     auto s = resolve(src);
     auto parts = splitPath(dst);
     std::string name=parts.back(); parts.pop_back();
@@ -214,6 +273,7 @@ void Vfs::mv(const std::string& src, const std::string& dst){
     d->children()[name]=s;
 }
 void Vfs::link(const std::string& src, const std::string& dst){
+    TRACE_FN("src=", src, ", dst=", dst);
     auto s = resolve(src);
     auto parts = splitPath(dst);
     std::string name=parts.back(); parts.pop_back();
@@ -223,6 +283,7 @@ void Vfs::link(const std::string& src, const std::string& dst){
     d->children()[name]=s; // alias
 }
 void Vfs::ls(const std::string& p){
+    TRACE_FN("p=", p);
     auto n = resolve(p);
     if (!n->isDir()){
         std::cout << p << "\n";
@@ -235,6 +296,7 @@ void Vfs::ls(const std::string& p){
     }
 }
 void Vfs::tree(std::shared_ptr<VfsNode> n, std::string pref){
+    TRACE_FN("node=", n ? n->name : std::string("<root>"), ", pref=", pref);
     if (!n) n=root;
     char t = n->kind==VfsNode::Kind::Dir? 'd' : (n->kind==VfsNode::Kind::File? 'f' : 'a');
     std::cout << pref << t << " " << n->name << "\n";
@@ -474,6 +536,7 @@ void install_builtins(std::shared_ptr<Env> g){
 
 // ====== Exec utils ======
 std::string exec_capture(const std::string& cmd, const std::string& desc){
+    TRACE_FN("cmd=", cmd, ", desc=", desc);
     std::array<char, 4096> buf{};
     std::string out;
     FILE* pipe = popen(cmd.c_str(), "r");
@@ -509,6 +572,7 @@ std::string exec_capture(const std::string& cmd, const std::string& desc){
 
     while(true){
         size_t n = fread(buf.data(), 1, buf.size(), pipe);
+        TRACE_LOOP("exec_capture.read", std::string("bytes=") + std::to_string(n));
         if(n>0) out.append(buf.data(), n);
         if(n<buf.size()) break;
     }
@@ -934,6 +998,7 @@ std::string call_ai(const std::string& prompt){
 
 // ====== REPL ======
 static void help(){
+    TRACE_FN();
     std::cout <<
 R"(Commands:
   ls <path>
@@ -971,6 +1036,7 @@ Notes:
 }
 
 int main(){
+    TRACE_FN();
     using std::string; using std::shared_ptr;
     std::ios::sync_with_stdio(false); std::cin.tie(nullptr);
 
@@ -979,7 +1045,10 @@ int main(){
 
     std::cout << "codex-mini 🌲 VFS+AST+AI — 'help' kertoo karun totuuden.\n";
     string line;
+    size_t repl_iter = 0;
     while(true){
+        TRACE_LOOP("repl.iter", std::string("iter=") + std::to_string(repl_iter));
+        ++repl_iter;
         std::cout << "> " << std::flush;
         if(!std::getline(std::cin, line)) break;
         if(line.empty()) continue;

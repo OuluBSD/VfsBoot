@@ -3,4 +3,4 @@
 codex
 build/
 tools/__pycache__/**
-
+codex_trace.log

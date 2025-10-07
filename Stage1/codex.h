@@ -19,6 +19,43 @@
 #include <variant>
 #include <vector>
 
+#ifdef CODEX_TRACE
+#include <mutex>
+#include <sstream>
+
+namespace codex_trace {
+    void log_line(const std::string& line);
+
+    inline std::string concat(){ return {}; }
+
+    template<typename... Args>
+    std::string concat(Args&&... args){
+        std::ostringstream oss;
+        (oss << ... << std::forward<Args>(args));
+        return oss.str();
+    }
+
+    struct Scope {
+        std::string name;
+        Scope(const char* fn, const std::string& details);
+        ~Scope();
+    };
+
+    void log_loop(const char* tag, const std::string& details);
+}
+
+#define CODEX_TRACE_CAT(a,b) CODEX_TRACE_CAT_1(a,b)
+#define CODEX_TRACE_CAT_1(a,b) a##b
+
+#define TRACE_FN(...) auto CODEX_TRACE_CAT(_codex_trace_scope_, __LINE__) = ::codex_trace::Scope(__func__, ::codex_trace::concat(__VA_ARGS__))
+#define TRACE_MSG(...) ::codex_trace::log_line(::codex_trace::concat(__VA_ARGS__))
+#define TRACE_LOOP(tag, ...) ::codex_trace::log_loop(tag, ::codex_trace::concat(__VA_ARGS__))
+#else
+#define TRACE_FN(...) (void)0
+#define TRACE_MSG(...) (void)0
+#define TRACE_LOOP(...) (void)0
+#endif
+
 //
 // VFS perus
 //

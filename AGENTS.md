@@ -30,3 +30,11 @@
 3. Design Stage2 agent goals (e.g. richer codegen, persistence, higher-level scripting) on top of the Stage1 substrate.
 
 OpenAI API Key is in ~/openai-key.txt
+
+### Tracing playbook
+- Build with `-DCODEX_TRACE` to enable scoped logging into `codex_trace.log`. Tracing primitives are `TRACE_FN` for function entry/exit, `TRACE_LOOP` for hot loop beacons, and `TRACE_MSG` for ad-hoc notes; they auto-flush into the logfile.
+- When tracing, run scripted interaction via stdin (`printf 'ls /\nls /cpp\nexit\n' | ./codex`) so the CLI prompt is satisfied without extra tooling. The macro guards ensure no overhead in normal builds.
+- Inspect `codex_trace.log` for call ordering; use standard tooling (`sort | uniq -c`) if a suspect path emits repeated lines.
+
+### Process rule
+- After every successful code modification session, commit the changes to git.
