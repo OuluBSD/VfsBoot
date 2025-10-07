@@ -3,15 +3,33 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 
 ## Upcoming: important
-- rename Stage1 to something else (remember to keep the U++ project file in .upp same)
-- don't write all code in same h and cpp file. split code cleanly to multiple files
+- overlays. support multiple persistent vfs files simultaneously in same vfs, without mixing files. when multiple overlays matches a path where you "cd", you virtually are in all of them.
+	- conflicting overlays and files needs advanced policy handling; basically it shouldn't happen too often if we work via this program and don't copy-paste directories and files
 - vfs as persistent file. have single and/or multiple files, which encodes the content of the data in a way, that git commits work well (diffs or binary diffs?), and is size efficient too
 	- autoload, if the app is ran in a directory with a default name file. (default name is yet to be decided; maybe like title of the directory + ".cx" ext)
 	- autosave, backup save, restore from crash,
-- overlays. support multiple persistent vfs files simultaneously in same vfs, without mixing files. when multiple overlays matches a path where you "cd", you virtually are in all of them.
-	- conflicting overlays and files needs advanced policy handling; basically it shouldn't happen too often if we work via this program and don't copy-paste directories and files
 - mount actual filesystems to directories (always as overlays though); enables actual file system reading/writing/browsing better; supports remote filesystems over network (see netcat later)
 	- mount .dll or .so files to vfs' "/dev/" sub-directies: e.g. you have graphics windows, which can be written with raw data functions
+- planner core engine for breakdown/context (action/state model, A* search, cost heuristics)
+- scope store with binary diffs + feature masks, plus deterministic context builder
+- scenario harness binaries (`planner_demo`, `planner_train`) and scripted breakdown loop for validation
+- feedback pipeline for planner rule evolution (metrics capture, rule patch staging, optional AI assistance)
+- integrate planner/context system into CLI once core pieces are stable
+- add in-binary sample runner command `sample.run`
+	- register `sample.run` in the shell command dispatcher so demos/tests can call it directly
+	- reset `/astcpp/demo`, `/cpp/demo.cpp`, and `/logs/sample.*` before each run for deterministic state
+	- construct the demo translation unit via C++ AST helpers and mirror the existing "Hello" program steps internally
+	- dump the generated source back into `/cpp/demo.cpp` to keep user export workflows intact
+	- locate the host compiler (from `/env/compiler`, env var, or default `c++`) and compile to a temporary executable
+	- capture compiler stdout/stderr into VFS logs (`/logs/sample.compile.out`, `/logs/sample.compile.err`)
+	- execute the compiled binary, recording output into `/logs/sample.run.out`, `/logs/sample.run.err`
+	- write a status node (e.g. `/env/sample.status`) summarizing success/failure, exit codes, and timings
+	- propagate failure by returning non-zero exit codes when compilation or execution fails
+	- accept optional flags such as `--keep` or `--trace` for temp retention and verbose diagnostics
+	- update documentation and scripts to reference `sample.run`, replacing the Makefile's external pipeline
+	- extend automated tests to invoke `sample.run` and validate status/output log contents
+- rename Stage1 to something else (remember to keep the U++ project file in .upp same)
+- don't write all code in same h and cpp file. split code cleanly to multiple files
 - parse (libclang):
 - make
 
