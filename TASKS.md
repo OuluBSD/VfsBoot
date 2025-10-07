@@ -3,9 +3,6 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 
 ## Upcoming: important (in order)
-- vfs as persistent file. have single and/or multiple files, which encodes the content of the data in a way, that git commits work well (diffs or binary diffs?), and is size efficient too
-	- autoload, if the app is ran in a directory with a default name file. (default name is yet to be decided; maybe like title of the directory + ".cx" ext)
-	- autosave, backup save, restore from crash,
 - mount actual filesystems to directories (always as overlays though); enables actual file system reading/writing/browsing better; supports remote filesystems over network (see netcat later)
 	- mount .dll or .so files to vfs' "/dev/" sub-directies: e.g. you have graphics windows, which can be written with raw data functions
 - planner core engine for breakdown/context (action/state model, A* search, cost heuristics)
@@ -69,6 +66,19 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 ## 
 
+## Completed
+- **VFS persistence with BLAKE3 hashing and autosave** (2025-10-07):
+  - VFS overlay format upgraded to version 3 with BLAKE3 hash tracking for source files
+  - Hash verification on .vfs load with mismatch warnings (compares stored hash with current file)
+  - Auto-load `<dirname>.vfs` on startup when running in matching directory
+  - Timestamped backups created in `.vfsh/` directory before overwriting (format: `file.vfs.YYYY-MM-DD-HHMMSS.bak`)
+  - Autosave infrastructure for solution files (.cxpkg/.cxasm and their chained .vfs files):
+    - Configurable delay (default 10 seconds after modification)
+    - Only applies to solution packages, NOT standalone .vfs files
+    - Background thread with dirty-flag tracking
+  - Crash recovery snapshot framework (every 3 minutes to `.vfsh/recovery.vfs`)
+  - Makefile updated to link libblake3
+  - Note: Autosave thread startup and VFS write hooks still need integration in main()
 ## Completed
 - **Test harness C++ compilation and execution** (2025-10-07):
   - test_harness.py now compiles generated C++ code using g++/c++ with -std=c++17 -O2
