@@ -565,6 +565,31 @@ static bool read_line_with_history(const std::string& prompt, std::string& out, 
             continue;
         }
 
+        if(ch == 21){ // Ctrl-U
+            if(cursor > 0){
+                buffer.erase(0, cursor);
+                cursor = 0;
+                redraw_prompt_line(prompt, buffer, cursor);
+                if(history_pos != history.size()){
+                    history_pos = history.size();
+                    saved_valid = false;
+                }
+            }
+            continue;
+        }
+
+        if(ch == 11){ // Ctrl-K
+            if(cursor < buffer.size()){
+                buffer.erase(cursor);
+                redraw_prompt_line(prompt, buffer, cursor);
+                if(history_pos != history.size()){
+                    history_pos = history.size();
+                    saved_valid = false;
+                }
+            }
+            continue;
+        }
+
         if(ch == 27){ // escape sequences
             unsigned char seq1 = 0;
             if(::read(STDIN_FILENO, &seq1, 1) <= 0) continue;
