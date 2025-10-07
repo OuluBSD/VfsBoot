@@ -3,7 +3,10 @@
 #include <sstream>
 #include <atomic>
 #include <chrono>
+#include <filesystem>
+#include <iomanip>
 #include <mutex>
+#include <system_error>
 #include <thread>
 #include <sys/types.h>
 #include <unistd.h>
@@ -88,6 +91,73 @@ static std::string unescape_meta(const std::string& s){
         }
     }
     return out;
+}
+
+static std::string sanitize_component(const std::string& s){
+    std::string out;
+    out.reserve(s.size());
+    for(char c : s){
+        unsigned char uc = static_cast<unsigned char>(c);
+        if(std::isalnum(uc) || c=='-' || c=='_'){
+            out.push_back(static_cast<char>(c));
+        } else {
+            out.push_back('_');
+        }
+    }
+    if(out.empty()) out.push_back('_');
+    return out;
+}
+
+static uint64_t fnv1a64(const std::string& data){
+    const uint64_t offset = 1469598103934665603ull;
+    const uint64_t prime  = 1099511628211ull;
+    uint64_t h = offset;
+    for(unsigned char c : data){
+        h ^= c;
+        h *= prime;
+    }
+    return h;
+}
+
+static std::string hash_hex(uint64_t value){
+    std::ostringstream oss;
+    oss << std::hex << std::setw(16) << std::setfill('0') << value;
+    return oss.str();
+}
+
+static std::filesystem::path ai_cache_root(){
+    if(const char* env = std::getenv("CODEX_AI_CACHE_DIR"); env && *env){
+        return std::filesystem::path(env);
+    }
+    return std::filesystem::path("cache") / "ai";
+}
+
+static std::filesystem::path ai_cache_file_path(const std::string& providerLabel, const std::string& key_material){
+    std::filesystem::path dir = ai_cache_root() / sanitize_component(providerLabel);
+    std::string hash = hash_hex(fnv1a64(key_material));
+    return dir / (hash + ".txt");
+}
+
+static std::string make_cache_key_material(const std::string& providerSignature, const std::string& prompt){
+    return providerSignature + '\x1f' + prompt;
+}
+
+static std::optional<std::string> ai_cache_read(const std::string& providerLabel, const std::string& key_material){
+    auto path = ai_cache_file_path(providerLabel, key_material);
+    std::ifstream in(path, std::ios::binary);
+    if(!in) return std::nullopt;
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    return buffer.str();
+}
+
+static void ai_cache_write(const std::string& providerLabel, const std::string& key_material, const std::string& payload){
+    auto path = ai_cache_file_path(providerLabel, key_material);
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    std::ofstream out(path, std::ios::binary);
+    if(!out) return;
+    out.write(payload.data(), static_cast<std::streamsize>(payload.size()));
 }
 
 // ====== Value::show ======
@@ -1036,23 +1106,68 @@ static bool env_truthy(const char* name){
     return false;
 }
 
+static std::string env_string(const char* name){
+    if(const char* val = std::getenv(name); val && *val) return std::string(val);
+    return {};
+}
+
+static std::string openai_cache_signature(){
+    std::string base = env_string("OPENAI_BASE_URL");
+    if(base.empty()) base = "https://api.openai.com/v1";
+    if(!base.empty() && base.back()=='/') base.pop_back();
+    std::string model = env_string("OPENAI_MODEL");
+    if(model.empty()) model = "gpt-4o-mini";
+    return std::string("openai|") + model + '|' + base;
+}
+
+static std::string llama_cache_signature(){
+    std::string base = env_string("LLAMA_BASE_URL");
+    if(base.empty()) base = env_string("LLAMA_SERVER");
+    if(base.empty()) base = env_string("LLAMA_URL");
+    if(base.empty()) base = "http://192.168.1.169:8080";
+    if(!base.empty() && base.back()=='/') base.pop_back();
+    std::string model = env_string("LLAMA_MODEL");
+    if(model.empty()) model = "coder";
+    return std::string("llama|") + model + '|' + base;
+}
+
 std::string call_ai(const std::string& prompt){
+    auto dispatch_with_cache = [&](const std::string& providerLabel, const std::string& signature, auto&& fn) -> std::string {
+        std::string key_material = make_cache_key_material(signature, prompt);
+        if(auto cached = ai_cache_read(providerLabel, key_material)){
+            return *cached;
+        }
+        std::string response = fn();
+        ai_cache_write(providerLabel, key_material, response);
+        return response;
+    };
+
+    auto use_llama = [&]() -> std::string {
+        const std::string signature = llama_cache_signature();
+        return dispatch_with_cache("llama", signature, [&](){ return call_llama(prompt); });
+    };
+
+    auto use_openai = [&]() -> std::string {
+        const std::string signature = openai_cache_signature();
+        return dispatch_with_cache("openai", signature, [&](){ return call_openai(prompt); });
+    };
+
     std::string provider;
     if(const char* p = std::getenv("CODEX_AI_PROVIDER")) provider = p;
     std::transform(provider.begin(), provider.end(), provider.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
 
-    if(provider == "llama") return call_llama(prompt);
-    if(provider == "openai") return call_openai(prompt);
+    if(provider == "llama") return use_llama();
+    if(provider == "openai") return use_openai();
 
     bool llama_hint = env_truthy("LLAMA_BASE_URL") || env_truthy("LLAMA_SERVER") || env_truthy("LLAMA_URL");
     auto keyOpt = load_openai_key();
 
     if(!keyOpt){
-        return call_llama(prompt);
+        return use_llama();
     }
 
-    if(llama_hint) return call_llama(prompt);
-    return call_openai(prompt);
+    if(llama_hint) return use_llama();
+    return use_openai();
 }
 
 // ====== REPL ======
