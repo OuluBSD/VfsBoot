@@ -1,0 +1,4 @@
+echo /foo test
+exit
+pwd
+exit
