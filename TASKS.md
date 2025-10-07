@@ -3,6 +3,8 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 
 ## Upcoming: important (in order)
+- rename Stage1 to VfsShell. update all related files
+- don't write all code in same h and cpp file. split code cleanly to multiple files. write AGENTS.md in VfsShell directory to explain files. Link that to root AGENTS.md
 - add examples of how to run all files in script dir. Add those to HOWTO_SCRIPTS.md file. Explain sexp files in script files and make cx scripts if you can't open them with single sh command
 - when I run "python tools/test_harness.py --target llama -v" I see some fails even though they shouldn't. I think you should add c++ compiler and to compile and to run given programs to make them pass. We can't really pass or fail these responses based on AST. We can only pass them if they echo some expected message. So you need to change all tests made by test_harness to compare echoed text to expected
 	- safe sandbox for running these executables
@@ -15,6 +17,8 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 - planner core engine for breakdown/context (action/state model, A* search, cost heuristics)
 	- we need a very hierarchical repository-wide plan with many vertical steps and details, to work even with low quality AI. we need multiple types of AI (generic, pair programming). let's discuss how we create a system to use low quality AI agents
 		- we should take hints from Gentoo's emerge: USE flags and a list of "packages" to emerge. We should estimate the whole program starting from the most coarsest node and then add details
+			- keep track if USE flag is written by user or is it agent's estimate
+		- let's ask yes/no or explain questions from human expert about details of where to put code and features
 	- vfs must have tags (and types etc) for basic filtering (and combining tags hierarchically). sections hidden in plain c++ should have tags (like #include section, sub-statement-list section). We should be able to create code comments (//) from tags. We could even use action planner to make comments using context (and tags)
 - action planner test suite: what to add to context list. tag based filtering, "if vfs node contains x" based filtering, etc (huge list, figure it out). this is the AI context offloader. This is used also to figure out the list of statements to be removed before adding new code (==replacing). it must be last resort to dump actual c++ statements in c++ code as text for ai to figure it out. we must have a working "action planner hypothesis" from ai, or multiples (tree-like hypothesis), which we can test before calling AI again. the most difficult tests are "templates for modifying or replacing code" or "commenting code based on tags and context". We can use those comment generators to verify, that action planner works: ask action planner if this comment or attribute-list is valid.
 - scope store with binary diffs + feature masks, plus deterministic context builder
@@ -34,13 +38,13 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 	- accept optional flags such as `--keep` or `--trace` for temp retention and verbose diagnostics
 	- update documentation and scripts to reference `sample.run`, replacing the Makefile's external pipeline
 	- extend automated tests to invoke `sample.run` and validate status/output log contents
-- rename Stage1 to VfsShell. update all related files
-- don't write all code in same h and cpp file. split code cleanly to multiple files
 - make
 - parse (libclang): import clang test suite files to vfs
+	- also collect what preprocessor sees
 - gui app, which shows graph-based images of what AI does (static image slideshow), and other info too. it is also used for image related ai work
 
 ## Upcoming: less important
+- commandline arguments: --llama, --openai, --version/-v, --help/-h, etc.
 - explain different causes of sexp, cx, cxpkg files. discuss with me of them if you're unsure. write to README.md and AGENTS.md
 	- make a solution with multiple cxasm & cxpkg packages, which all have multiple cpp and h files. compile and run it succesfully
 - CLI home + end button usage while editing prompt
@@ -72,6 +76,7 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 ## 
 
 ## Completed
+- test_harness.py now uses AI response caching compatible with C++ cache format (cache/ai/{provider}/{hash}-in.txt and {hash}-out.txt)
 - add shell commands ctrl+u and ctrl+k for clearing text
 - AI bridge prompt & tests: added scripts/examples/ai-hello-world.sexp and tests/011-ai-bridge-hello.sexp to exercise cpp.* helpers via the ai command.
 - `AGENTS.md` drafted from discussion notes to document Stage1 agent scope.

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import hashlib
 import json
 import os
 import re
@@ -191,6 +192,68 @@ _SNIPPET_CACHE: Dict[str, str] = {}
 _SNIPPET_DIR: Optional[Path] = None
 _SNIPPET_DIR_LOOKED_UP = False
 _SNIPPET_PATTERN = re.compile(r"\{\{snippet:([A-Za-z0-9_.-]+)\}\}")
+
+
+def _fnv1a64(data: bytes) -> int:
+    """FNV-1a 64-bit hash matching C++ implementation."""
+    hash_val = 0xcbf29ce484222325
+    for byte in data:
+        hash_val ^= byte
+        hash_val = (hash_val * 0x100000001b3) & 0xffffffffffffffff
+    return hash_val
+
+
+def _hash_hex(val: int) -> str:
+    """Convert 64-bit integer to hex string."""
+    return f"{val:016x}"
+
+
+def _sanitize_component(s: str) -> str:
+    """Sanitize string for use as directory/file name."""
+    return re.sub(r'[^A-Za-z0-9._-]', '_', s)
+
+
+def _ai_cache_root() -> Path:
+    """Get the AI cache root directory."""
+    env = os.environ.get('CODEX_AI_CACHE_DIR')
+    if env:
+        return Path(env)
+    return Path('cache') / 'ai'
+
+
+def _make_cache_key_material(provider_signature: str, prompt: str) -> str:
+    """Create cache key material from provider signature and prompt."""
+    return provider_signature + '\x1f' + prompt
+
+
+def _ai_cache_paths(provider_label: str, key_material: str) -> Tuple[Path, Path]:
+    """Get input and output cache file paths."""
+    cache_dir = _ai_cache_root() / _sanitize_component(provider_label)
+    hash_str = _hash_hex(_fnv1a64(key_material.encode('utf-8')))
+    base = cache_dir / hash_str
+    return base.with_suffix('.txt').with_name(f"{hash_str}-in.txt"), base.with_suffix('.txt').with_name(f"{hash_str}-out.txt")
+
+
+def _ai_cache_read(provider_label: str, key_material: str) -> Optional[str]:
+    """Read cached AI response if it exists."""
+    in_path, out_path = _ai_cache_paths(provider_label, key_material)
+    if out_path.exists():
+        return out_path.read_text(encoding='utf-8')
+    # Try legacy format
+    cache_dir = _ai_cache_root() / _sanitize_component(provider_label)
+    hash_str = _hash_hex(_fnv1a64(key_material.encode('utf-8')))
+    legacy_path = cache_dir / f"{hash_str}.txt"
+    if legacy_path.exists():
+        return legacy_path.read_text(encoding='utf-8')
+    return None
+
+
+def _ai_cache_write(provider_label: str, key_material: str, prompt: str, response: str) -> None:
+    """Write AI response to cache."""
+    in_path, out_path = _ai_cache_paths(provider_label, key_material)
+    in_path.parent.mkdir(parents=True, exist_ok=True)
+    in_path.write_text(prompt, encoding='utf-8')
+    out_path.write_text(response, encoding='utf-8')
 
 
 def _discover_snippet_dir() -> Optional[Path]:
@@ -450,7 +513,31 @@ def build_prompt_text(test: TestCase) -> str:
     return '\n\n'.join(parts)
 
 
+def _openai_cache_signature(model: Optional[str] = None, base_url: Optional[str] = None) -> str:
+    """Build OpenAI cache signature matching C++ implementation."""
+    base = base_url or os.environ.get('OPENAI_BASE_URL', 'https://api.openai.com/v1')
+    base = base.rstrip('/')
+    mdl = model or os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
+    return f"openai|{mdl}|{base}"
+
+
+def _llama_cache_signature(base_url: str, model: str) -> str:
+    """Build Llama cache signature matching C++ implementation."""
+    base = base_url.rstrip('/')
+    return f"llama|{model}|{base}"
+
+
 def call_openai(prompt: str, system_prompt: str, model: Optional[str] = None, base_url: Optional[str] = None) -> str:
+    # Build cache signature and check cache
+    signature = _openai_cache_signature(model, base_url)
+    full_prompt = f"{system_prompt}\n\n{prompt}"
+    key_material = _make_cache_key_material(signature, full_prompt)
+
+    cached = _ai_cache_read('openai', key_material)
+    if cached is not None:
+        return cached
+
+    # Cache miss - make actual API call
     api_key = os.environ.get('OPENAI_API_KEY')
     if not api_key:
         raise RuntimeError('OPENAI_API_KEY not set')
@@ -492,7 +579,11 @@ def call_openai(prompt: str, system_prompt: str, model: Optional[str] = None, ba
                     segments.append(content.get('text', ''))
     if not segments:
         raise RuntimeError('OpenAI response missing text content')
-    return '\n'.join(segments)
+    response = '\n'.join(segments)
+
+    # Write to cache
+    _ai_cache_write('openai', key_material, full_prompt, response)
+    return response
 
 
 def call_openai_chat(prompt: str, system_prompt: str, base_url: str, model: str) -> str:
@@ -521,8 +612,18 @@ def call_openai_chat(prompt: str, system_prompt: str, base_url: str, model: str)
 
 
 def call_llama(prompt: str, system_prompt: str, base_url: str, model: str) -> str:
+    # Build cache signature and check cache
+    signature = _llama_cache_signature(base_url, model)
+    full_prompt = f"{system_prompt}\n\n{prompt}"
+    key_material = _make_cache_key_material(signature, full_prompt)
+
+    cached = _ai_cache_read('llama', key_material)
+    if cached is not None:
+        return cached
+
+    # Cache miss - make actual API call
     try:
-        return call_openai_chat(prompt, system_prompt, base_url, model)
+        response = call_openai_chat(prompt, system_prompt, base_url, model)
     except Exception:
         url = base_url.rstrip('/') + '/completion'
         payload = {
@@ -536,10 +637,15 @@ def call_llama(prompt: str, system_prompt: str, base_url: str, model: str) -> st
             body = resp.read().decode('utf-8')
         obj = json.loads(body)
         if 'completion' in obj:
-            return obj['completion']
-        if 'choices' in obj and obj['choices'] and 'text' in obj['choices'][0]:
-            return obj['choices'][0]['text']
-        raise RuntimeError(f'Unexpected llama completion format: {body}')
+            response = obj['completion']
+        elif 'choices' in obj and obj['choices'] and 'text' in obj['choices'][0]:
+            response = obj['choices'][0]['text']
+        else:
+            raise RuntimeError(f'Unexpected llama completion format: {body}')
+
+    # Write to cache
+    _ai_cache_write('llama', key_material, full_prompt, response)
+    return response
 
 
 def ensure_begin_commands(expr: Any) -> List[List[Any]]:
