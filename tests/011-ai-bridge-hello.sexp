@@ -1,0 +1,40 @@
+(test-case
+  (id "011-ai-bridge-hello")
+  (title "Prime Stage1 ai and build hello world via cpp AST")
+  (difficulty medium)
+  (tags (ai-bridge cpp-ast s-expression workflow))
+  (instructions
+    (format "Return a single (begin ... ) S-expression. Narrate with (comment ...) and invoke actions with (cmd \"<tool>\" ...). Start with (cmd \"tools\") to inspect capabilities. Include exactly one (cmd \"ai\" ...) call that briefs the builtin assistant before you run the cpp.* helpers yourself.")
+    (tools
+      (item "Core commands: tools, ls, mkdir, cat, ai, cpp.tu, cpp.include, cpp.func, cpp.print, cpp.returni, cpp.dump")
+      (item "All paths are absolute inside the VFS; create /astcpp/bridge and /cpp/tests as needed")
+      (item "Use cpp.print to emit std::cout << ... << std::endl;")
+      (item "Use cpp.returni to finish main with a literal return"))
+    (workflow
+      (step "Call (cmd \"tools\") then (cmd \"ls\" \"/\") to orient")
+      (step "Send the fixed briefing (cmd \"ai\" \"Briefing: use cpp.tu, cpp.include, cpp.func, cpp.print, cpp.returni, cpp.dump to build hello world.\")")
+      (step "Construct /astcpp/bridge/hello using the cpp.* helpers")
+      (step "Dump to /cpp/tests/ai-hello.cpp and verify with (cmd \"cat\" ...)")
+      (step "Close the S-expression without trailing prose")))
+  (prompt "Produce /cpp/tests/ai-hello.cpp that includes <iostream>, defines int main(), streams 'hello from the ai bridge' with std::cout, and returns 0. The source must come from the C++ AST helpers rather than manual file writes. Be explicit about the cpp.* commands in the ai briefing so downstream agents learn the interface.")
+  (expected-output
+    (contains "(begin")
+    (contains "(cmd \"tools\")")
+    (contains "(cmd \"ai\" \"Briefing: use cpp.tu, cpp.include, cpp.func, cpp.print, cpp.returni, cpp.dump to build hello world.\")")
+    (contains "(cmd \"cpp.tu\"")
+    (contains "(cmd \"cpp.include\"")
+    (contains "(cmd \"cpp.func\"")
+    (contains "(cmd \"cpp.print\"")
+    (contains "(cmd \"cpp.returni\"")
+    (contains "(cmd \"cpp.dump\"")
+    (contains "/cpp/tests/ai-hello.cpp")
+    (contains ")"))
+  (assertions
+    (contains "/cpp/tests/ai-hello.cpp" "#include <iostream>")
+    (contains "/cpp/tests/ai-hello.cpp" "int main()")
+    (contains "/cpp/tests/ai-hello.cpp" "hello from the ai bridge")
+    (contains "/cpp/tests/ai-hello.cpp" "return 0;")
+    (not-contains "/cpp/tests/ai-hello.cpp" "TODO"))
+  (llm-targets
+    (openai default)
+    (llama "http://192.168.1.169:8080/")))

@@ -5,7 +5,6 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 ## Upcoming: important
 - rename Stage1 to something else (remember to keep the U++ project file in .upp same)
 - don't write all code in same h and cpp file. split code cleanly to multiple files
-- add c++ ast functions to sexp (ai script) and ask AI to use them to create hello world
 - vfs as persistent file. have single and/or multiple files, which encodes the content of the data in a way, that git commits work well (diffs or binary diffs?), and is size efficient too
 	- autoload, if the app is ran in a directory with a default name file. (default name is yet to be decided; maybe like title of the directory + ".cx" ext)
 	- autosave, backup save, restore from crash,
@@ -43,6 +42,7 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 ## 
 
 ## Completed
+- AI bridge prompt & tests: added scripts/examples/ai-hello-world.sexp and tests/011-ai-bridge-hello.sexp to exercise cpp.* helpers via the ai command.
 - `AGENTS.md` drafted from discussion notes to document Stage1 agent scope.
 - Build tooling pipeline now operational:
   - Root `Makefile` builds the Stage1 binary and exposes debug/release toggles.
