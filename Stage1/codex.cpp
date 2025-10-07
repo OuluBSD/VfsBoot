@@ -165,6 +165,45 @@ static std::string join_args(const std::vector<std::string>& args, size_t start 
     return out;
 }
 
+static std::optional<std::filesystem::path> history_file_path(){
+    if(const char* env = std::getenv("CODEX_HISTORY_FILE"); env && *env){
+        return std::filesystem::path(env);
+    }
+    if(const char* home = std::getenv("HOME"); home && *home){
+        return std::filesystem::path(home) / ".codex_history";
+    }
+    return std::nullopt;
+}
+
+static void load_history(std::vector<std::string>& history){
+    auto path_opt = history_file_path();
+    if(!path_opt) return;
+    std::ifstream in(*path_opt);
+    if(!in) return;
+    std::string line;
+    while(std::getline(in, line)){
+        if(trim_copy(line).empty()) continue;
+        history.push_back(line);
+    }
+}
+
+static void save_history(const std::vector<std::string>& history){
+    auto path_opt = history_file_path();
+    if(!path_opt) return;
+    const auto& path = *path_opt;
+    std::error_code ec;
+    auto parent = path.parent_path();
+    if(!parent.empty()) std::filesystem::create_directories(parent, ec);
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if(!out){
+        TRACE_MSG("history write failed: ", path.string());
+        return;
+    }
+    for(const auto& entry : history){
+        out << entry << '\n';
+    }
+}
+
 static bool terminal_available(){
     return ::isatty(STDIN_FILENO) == 1 && ::isatty(STDOUT_FILENO) == 1;
 }
@@ -1910,7 +1949,9 @@ int main(int argc, char** argv){
     size_t repl_iter = 0;
     std::string cwd = "/";
     std::vector<std::string> history;
-    history.reserve(256);
+    load_history(history);
+    history.reserve(history.size() + 256);
+    bool history_dirty = false;
 
     auto execute_single = [&](const CommandInvocation& inv, const std::string& stdin_data) -> CommandResult {
         ScopedCoutCapture capture;
@@ -2403,7 +2444,10 @@ int main(int argc, char** argv){
                 }
             }
             bool record_line = !simple_history;
-            if(record_line) history.push_back(line);
+            if(record_line){
+                history.push_back(line);
+                history_dirty = true;
+            }
             auto chain = parse_command_chain(tokens);
             bool exit_requested = false;
             bool last_success = true;
@@ -2426,5 +2470,6 @@ int main(int argc, char** argv){
             std::cout << "error: " << e.what() << "\n";
         }
     }
+    if(history_dirty) save_history(history);
     return 0;
 }
