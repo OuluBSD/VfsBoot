@@ -46,6 +46,12 @@ Environment variables:
 
 `codex` can load multiple persistent overlays simultaneously. Use `overlay.mount <name> <file>` to register a VFS snapshot (text format headed by `# codex-vfs-overlay 1`). The shell shows aggregated directory listings across matching overlays, `overlay.list` prints the active stack (`*` = primary write target, `+` = visible at the current path), and `overlay.unmount <name>` detaches an overlay (base overlay `0` is permanent). The active read/write policy can be tuned via `overlay.policy manual|oldest|newest`; under `manual` (default) ambiguous paths require `overlay.use <name>` to pick the write target, while `oldest`/`newest` resolve ties automatically. Persist a snapshot back to disk with `overlay.save <name> <file>` (directories are emitted before file payloads; non-file nodes are rejected for now so you can see the limitation immediately).
 
+## Solutions
+
+- Solution packages are overlay files with the `.cxpkg` extension (assemblies may use `.cxasm`). Launching `codex` inside `project/` auto-loads `project.cxpkg` if it exists, or pass `--solution path/to/pkg.cxpkg` explicitly.
+- Interactive sessions bind F3 (and the `solution.save [path]` command) to persist the active solution using the in-memory overlay dumper.
+- On exit, codex prompts to save dirty solutions; `solution.save` updates the tracked path (handy when saving a copy).
+
 ## Extended C++ Builder Surface
 
 The Stage1 shell now supports richer translation-unit scripting. Beyond `cpp.tu`, `cpp.include`, `cpp.func`, and `cpp.param`, you can build statements structurally:

@@ -109,6 +109,18 @@ struct WorkingDirectory {
     ConflictPolicy conflict_policy = ConflictPolicy::Manual;
 };
 
+struct SolutionContext {
+    bool active = false;
+    bool auto_detected = false;
+    size_t overlay_id = 0;
+    std::string title;
+    std::string file_path;
+};
+
+static std::function<void()> g_on_save_shortcut;
+static constexpr const char* kPackageExtension = ".cxpkg";
+static constexpr const char* kAssemblyExtension = ".cxasm";
+
 static void sort_unique(std::vector<size_t>& ids){
     std::sort(ids.begin(), ids.end());
     ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
@@ -319,10 +331,12 @@ static size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const s
         throw std::runtime_error("overlay: unknown entry near byte " + std::to_string(static_cast<long long>(entry_pos)));
     }
 
-    return vfs.registerOverlay(name, root);
+    auto id = vfs.registerOverlay(name, root);
+    vfs.setOverlaySource(id, hostPath);
+    return id;
 }
 
-static void save_overlay_to_file(const Vfs& vfs, size_t overlayId, const std::string& hostPath){
+static void save_overlay_to_file(Vfs& vfs, size_t overlayId, const std::string& hostPath){
     TRACE_FN("overlayId=", overlayId, ", file=", hostPath);
     auto root = vfs.overlayRoot(overlayId);
     if(!root) throw std::runtime_error("overlay.save: overlay missing root");
@@ -368,6 +382,98 @@ static void save_overlay_to_file(const Vfs& vfs, size_t overlayId, const std::st
     };
 
     dump(root, "/");
+    vfs.setOverlaySource(overlayId, hostPath);
+    vfs.clearOverlayDirty(overlayId);
+}
+
+static bool is_solution_file(const std::filesystem::path& p){
+    auto ext = p.extension().string();
+    std::string lowered = ext;
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+    return lowered == kPackageExtension || lowered == kAssemblyExtension;
+}
+
+static std::optional<std::filesystem::path> auto_detect_solution_path(){
+    namespace fs = std::filesystem;
+    fs::path cwd;
+    try{
+        cwd = fs::current_path();
+    } catch(const std::exception&){
+        return std::nullopt;
+    }
+    if(cwd.empty()) return std::nullopt;
+    auto title = cwd.filename().string();
+    if(title.empty()) return std::nullopt;
+    fs::path pkg = cwd / (title + kPackageExtension);
+    if(fs::exists(pkg) && fs::is_regular_file(pkg)) return pkg;
+    fs::path asm_path = cwd / (title + kAssemblyExtension);
+    if(fs::exists(asm_path) && fs::is_regular_file(asm_path)) return asm_path;
+    return std::nullopt;
+}
+
+static std::string make_unique_overlay_name(Vfs& vfs, std::string base){
+    if(base.empty()) base = "solution";
+    std::string candidate = base;
+    int counter = 2;
+    while(vfs.findOverlayByName(candidate)){
+        candidate = base + "_" + std::to_string(counter++);
+    }
+    return candidate;
+}
+
+static bool solution_save(Vfs& vfs, SolutionContext& sol, bool quiet){
+    if(!sol.active){
+        if(!quiet) std::cout << "(no solution loaded)\n";
+        return false;
+    }
+    if(sol.file_path.empty()){
+        if(!quiet) std::cout << "solution '" << sol.title << "' has no destination file\n";
+        return false;
+    }
+    try{
+        save_overlay_to_file(vfs, sol.overlay_id, sol.file_path);
+        if(!quiet){
+            std::cout << "saved solution '" << sol.title << "' -> " << sol.file_path << "\n";
+        }
+        return true;
+    } catch(const std::exception& e){
+        if(!quiet) std::cout << "error: solution save failed: " << e.what() << "\n";
+        return false;
+    }
+}
+
+static void attach_solution_shortcut(Vfs& vfs, SolutionContext& sol){
+    g_on_save_shortcut = [&vfs, &sol](){
+        solution_save(vfs, sol, false);
+    };
+}
+
+static bool load_solution_from_file(Vfs& vfs, WorkingDirectory& cwd, SolutionContext& sol, const std::filesystem::path& file, bool auto_detected){
+    if(file.empty()) return false;
+    if(!std::filesystem::exists(file)){
+        std::cout << "note: solution file '" << file.string() << "' not found\n";
+        return false;
+    }
+    if(!std::filesystem::is_regular_file(file)){
+        std::cout << "note: solution path '" << file.string() << "' is not a regular file\n";
+        return false;
+    }
+    std::string overlayName = make_unique_overlay_name(vfs, file.stem().string());
+    size_t id = mount_overlay_from_file(vfs, overlayName, file.string());
+    maybe_extend_context(vfs, cwd);
+    if(std::find(cwd.overlays.begin(), cwd.overlays.end(), id) == cwd.overlays.end()){
+        cwd.overlays.push_back(id);
+        sort_unique(cwd.overlays);
+    }
+    cwd.primary_overlay = id;
+    sol.active = true;
+    sol.auto_detected = auto_detected;
+    sol.overlay_id = id;
+    sol.title = file.stem().string();
+    sol.file_path = file.string();
+    attach_solution_shortcut(vfs, sol);
+    std::cout << "loaded solution '" << sol.title << "' (#" << id << ") from " << sol.file_path << "\n";
+    return true;
 }
 
 static size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const std::string& hostPath);
@@ -541,6 +647,19 @@ static bool read_line_with_history(const std::string& prompt, std::string& out, 
     std::string saved_new_entry;
     bool saved_valid = false;
 
+    auto redraw_current = [&](){
+        redraw_prompt_line(prompt, buffer, cursor);
+    };
+
+    auto trigger_save_shortcut = [&](){
+        if(!g_on_save_shortcut) return;
+        std::cout << '\r';
+        std::cout.flush();
+        std::cout << '\n';
+        g_on_save_shortcut();
+        redraw_current();
+    };
+
     while(true){
         unsigned char ch = 0;
         ssize_t n = ::read(STDIN_FILENO, &ch, 1);
@@ -574,7 +693,7 @@ static bool read_line_with_history(const std::string& prompt, std::string& out, 
             if(cursor < buffer.size()){
                 auto pos = buffer.begin() + static_cast<std::string::difference_type>(cursor);
                 buffer.erase(pos);
-                redraw_prompt_line(prompt, buffer, cursor);
+                redraw_current();
                 if(history_pos != history.size()){
                     history_pos = history.size();
                     saved_valid = false;
@@ -588,7 +707,7 @@ static bool read_line_with_history(const std::string& prompt, std::string& out, 
                 auto pos = buffer.begin() + static_cast<std::string::difference_type>(cursor) - 1;
                 buffer.erase(pos);
                 --cursor;
-                redraw_prompt_line(prompt, buffer, cursor);
+                redraw_current();
                 if(history_pos != history.size()){
                     history_pos = history.size();
                     saved_valid = false;
@@ -600,7 +719,7 @@ static bool read_line_with_history(const std::string& prompt, std::string& out, 
         if(ch == 1){ // Ctrl-A
             if(cursor != 0){
                 cursor = 0;
-                redraw_prompt_line(prompt, buffer, cursor);
+                redraw_current();
             }
             continue;
         }
@@ -608,7 +727,7 @@ static bool read_line_with_history(const std::string& prompt, std::string& out, 
         if(ch == 5){ // Ctrl-E
             if(cursor != buffer.size()){
                 cursor = buffer.size();
-                redraw_prompt_line(prompt, buffer, cursor);
+                redraw_current();
             }
             continue;
         }
@@ -617,7 +736,7 @@ static bool read_line_with_history(const std::string& prompt, std::string& out, 
             if(cursor > 0){
                 buffer.erase(0, cursor);
                 cursor = 0;
-                redraw_prompt_line(prompt, buffer, cursor);
+                redraw_current();
                 if(history_pos != history.size()){
                     history_pos = history.size();
                     saved_valid = false;
@@ -629,7 +748,7 @@ static bool read_line_with_history(const std::string& prompt, std::string& out, 
         if(ch == 11){ // Ctrl-K
             if(cursor < buffer.size()){
                 buffer.erase(cursor);
-                redraw_prompt_line(prompt, buffer, cursor);
+                redraw_current();
                 if(history_pos != history.size()){
                     history_pos = history.size();
                     saved_valid = false;
@@ -641,6 +760,14 @@ static bool read_line_with_history(const std::string& prompt, std::string& out, 
         if(ch == 27){ // escape sequences
             unsigned char seq1 = 0;
             if(::read(STDIN_FILENO, &seq1, 1) <= 0) continue;
+            if(seq1 == 'O'){
+                unsigned char seq2 = 0;
+                if(::read(STDIN_FILENO, &seq2, 1) <= 0) continue;
+                if(seq2 == 'R'){ // F3 shortcut
+                    trigger_save_shortcut();
+                }
+                continue;
+            }
             if(seq1 != '['){
                 continue;
             }
@@ -650,11 +777,19 @@ static bool read_line_with_history(const std::string& prompt, std::string& out, 
             if(seq2 >= '0' && seq2 <= '9'){
                 unsigned char seq3 = 0;
                 if(::read(STDIN_FILENO, &seq3, 1) <= 0) continue;
+                if(seq2 == '1' && seq3 == '3'){ // expect ~ for F3
+                    unsigned char seq4 = 0;
+                    if(::read(STDIN_FILENO, &seq4, 1) <= 0) continue;
+                    if(seq4 == '~'){
+                        trigger_save_shortcut();
+                    }
+                    continue;
+                }
                 if(seq2 == '3' && seq3 == '~'){ // delete key
                     if(cursor < buffer.size()){
                         auto pos = buffer.begin() + static_cast<std::string::difference_type>(cursor);
                         buffer.erase(pos);
-                        redraw_prompt_line(prompt, buffer, cursor);
+                        redraw_current();
                         if(history_pos != history.size()){
                             history_pos = history.size();
                             saved_valid = false;
@@ -683,7 +818,7 @@ static bool read_line_with_history(const std::string& prompt, std::string& out, 
                 }
                 buffer = history[history_pos];
                 cursor = buffer.size();
-                redraw_prompt_line(prompt, buffer, cursor);
+                redraw_current();
                 continue;
             }
 
@@ -692,7 +827,7 @@ static bool read_line_with_history(const std::string& prompt, std::string& out, 
                     if(saved_valid){
                         buffer = saved_new_entry;
                         cursor = buffer.size();
-                        redraw_prompt_line(prompt, buffer, cursor);
+                        redraw_current();
                         saved_valid = false;
                     } else {
                         std::cout << '\a' << std::flush;
@@ -703,12 +838,12 @@ static bool read_line_with_history(const std::string& prompt, std::string& out, 
                 if(history_pos == history.size()){
                     buffer = saved_valid ? saved_new_entry : std::string{};
                     cursor = buffer.size();
-                    redraw_prompt_line(prompt, buffer, cursor);
-                    saved_valid = false;
+                    redraw_current();
+                saved_valid = false;
                 } else {
                     buffer = history[history_pos];
                     cursor = buffer.size();
-                    redraw_prompt_line(prompt, buffer, cursor);
+                    redraw_current();
                 }
                 continue;
             }
@@ -716,7 +851,7 @@ static bool read_line_with_history(const std::string& prompt, std::string& out, 
             if(seq2 == 'C'){ // right
                 if(cursor < buffer.size()){
                     ++cursor;
-                    redraw_prompt_line(prompt, buffer, cursor);
+                    redraw_current();
                 }
                 continue;
             }
@@ -724,7 +859,7 @@ static bool read_line_with_history(const std::string& prompt, std::string& out, 
             if(seq2 == 'D'){ // left
                 if(cursor > 0){
                     --cursor;
-                    redraw_prompt_line(prompt, buffer, cursor);
+                    redraw_current();
                 }
                 continue;
             }
@@ -736,7 +871,7 @@ static bool read_line_with_history(const std::string& prompt, std::string& out, 
             auto pos = buffer.begin() + static_cast<std::string::difference_type>(cursor);
             buffer.insert(pos, static_cast<char>(ch));
             ++cursor;
-            redraw_prompt_line(prompt, buffer, cursor);
+            redraw_current();
             if(history_pos != history.size()){
                 history_pos = history.size();
                 saved_valid = false;
@@ -1124,6 +1259,8 @@ char type_char(const std::shared_ptr<VfsNode>& node){
 Vfs::Vfs(){
     TRACE_FN();
     overlay_stack.push_back(Overlay{ "base", root });
+    overlay_dirty.push_back(false);
+    overlay_source.emplace_back();
     G_VFS = this;
 }
 
@@ -1148,6 +1285,32 @@ std::shared_ptr<DirNode> Vfs::overlayRoot(size_t id) const {
     return overlay_stack[id].root;
 }
 
+bool Vfs::overlayDirty(size_t id) const {
+    if(id >= overlay_dirty.size()) throw std::out_of_range("overlay id");
+    return overlay_dirty[id];
+}
+
+const std::string& Vfs::overlaySource(size_t id) const {
+    if(id >= overlay_source.size()) throw std::out_of_range("overlay id");
+    return overlay_source[id];
+}
+
+void Vfs::clearOverlayDirty(size_t id){
+    if(id >= overlay_dirty.size()) throw std::out_of_range("overlay id");
+    overlay_dirty[id] = false;
+}
+
+void Vfs::setOverlaySource(size_t id, std::string path){
+    if(id >= overlay_source.size()) throw std::out_of_range("overlay id");
+    overlay_source[id] = std::move(path);
+}
+
+void Vfs::markOverlayDirty(size_t id){
+    if(id >= overlay_dirty.size()) throw std::out_of_range("overlay id");
+    if(id == 0) return; // base overlay does not participate in auto-saving
+    overlay_dirty[id] = true;
+}
+
 std::optional<size_t> Vfs::findOverlayByName(const std::string& name) const {
     for(size_t i = 0; i < overlay_stack.size(); ++i){
         if(overlay_stack[i].name == name) return i;
@@ -1163,6 +1326,8 @@ size_t Vfs::registerOverlay(std::string name, std::shared_ptr<DirNode> overlayRo
     overlayRoot->name = "/";
     overlayRoot->parent.reset();
     overlay_stack.push_back(Overlay{std::move(name), overlayRoot});
+    overlay_dirty.push_back(false);
+    overlay_source.emplace_back();
     return overlay_stack.size() - 1;
 }
 
@@ -1171,6 +1336,8 @@ void Vfs::unregisterOverlay(size_t overlayId){
     if(overlayId == 0) throw std::runtime_error("cannot remove base overlay");
     if(overlayId >= overlay_stack.size()) throw std::out_of_range("overlay id");
     overlay_stack.erase(overlay_stack.begin() + static_cast<std::ptrdiff_t>(overlayId));
+    overlay_dirty.erase(overlay_dirty.begin() + static_cast<std::ptrdiff_t>(overlayId));
+    overlay_source.erase(overlay_source.begin() + static_cast<std::ptrdiff_t>(overlayId));
 }
 
 std::vector<size_t> Vfs::overlaysForPath(const std::string& path) const {
@@ -1261,6 +1428,7 @@ std::shared_ptr<DirNode> Vfs::ensureDirForOverlay(const std::string& path, size_
             auto dir = std::make_shared<DirNode>(part);
             dir->parent = cur;
             ch[part] = dir;
+            markOverlayDirty(overlayId);
             cur = dir;
         } else {
             cur = it->second;
@@ -1290,6 +1458,7 @@ void Vfs::touch(const std::string& path, size_t overlayId){
         auto file = std::make_shared<FileNode>(fname, "");
         file->parent = dirNode;
         ch[fname] = file;
+        markOverlayDirty(overlayId);
     } else if(it->second->kind != VfsNode::Kind::File){
         throw std::runtime_error("touch non-file");
     }
@@ -1312,11 +1481,13 @@ void Vfs::write(const std::string& path, const std::string& data, size_t overlay
         file->parent = dirNode;
         ch[fname] = file;
         node = file;
+        markOverlayDirty(overlayId);
     } else {
         node = it->second;
     }
     if(node->kind != VfsNode::Kind::File) throw std::runtime_error("write non-file");
     node->write(data);
+    markOverlayDirty(overlayId);
 }
 
 std::string Vfs::read(const std::string& path, std::optional<size_t> overlayId) const {
@@ -1349,6 +1520,7 @@ void Vfs::addNode(const std::string& dirpath, std::shared_ptr<VfsNode> n, size_t
     auto dirNode = ensureDirForOverlay(dirpath.empty() ? std::string("/") : dirpath, overlayId);
     n->parent = dirNode;
     dirNode->children()[n->name] = n;
+    markOverlayDirty(overlayId);
 }
 
 void Vfs::rm(const std::string& path, size_t overlayId){
@@ -1358,6 +1530,7 @@ void Vfs::rm(const std::string& path, size_t overlayId){
     auto parent = node->parent.lock();
     if(!parent) throw std::runtime_error("parent missing");
     parent->children().erase(node->name);
+    markOverlayDirty(overlayId);
 }
 
 void Vfs::mv(const std::string& src, const std::string& dst, size_t overlayId){
@@ -1377,6 +1550,7 @@ void Vfs::mv(const std::string& src, const std::string& dst, size_t overlayId){
     node->name = name;
     node->parent = dirNode;
     dirNode->children()[name] = node;
+    markOverlayDirty(overlayId);
 }
 
 void Vfs::link(const std::string& src, const std::string& dst, size_t overlayId){
@@ -1390,6 +1564,7 @@ void Vfs::link(const std::string& src, const std::string& dst, size_t overlayId)
     for(const auto& part : parts) dir = join_path(dir, part);
     auto dirNode = ensureDirForOverlay(dir, overlayId);
     dirNode->children()[name] = node;
+    markOverlayDirty(overlayId);
 }
 
 Vfs::DirListing Vfs::listDir(const std::string& p, const std::vector<size_t>& overlays) const {
@@ -2370,6 +2545,7 @@ R"(Commands:
   overlay.unmount <name>
   overlay.policy [manual|oldest|newest]
   overlay.use <name>
+  solution.save [file]
   # C++ builder
   cpp.tu <ast-path>
   cpp.include <tu-path> <header> [angled0/1]
@@ -2387,6 +2563,7 @@ Notes:
   - Polut voivat olla suhteellisia nykyiseen VFS-hakemistoon (cd).
   - ./codex <skripti> suorittaa komennot tiedostosta ilman REPL-kehotetta.
   - ./codex <skripti> - suorittaa skriptin ja palaa interaktiiviseen tilaan.
+  - F3 tallentaa aktiivisen solutionin (sama kuin solution.save).
   - ai.brief lukee promptit snippets/-hakemistosta (CODEX_SNIPPET_DIR ylikirjoittaa polun).
   - OPENAI_API_KEY pakollinen 'ai' komentoon OpenAI-tilassa. OPENAI_MODEL (oletus gpt-4o-mini), OPENAI_BASE_URL (oletus https://api.openai.com/v1).
   - Llama-palvelin: LLAMA_BASE_URL / LLAMA_SERVER (oletus http://192.168.1.169:8080), LLAMA_MODEL (oletus coder), CODEX_AI_PROVIDER=llama pakottaa käyttöön.
@@ -2404,40 +2581,91 @@ int main(int argc, char** argv){
         return 1;
     };
 
-    const string usage_text = string("usage: ") + argv[0] + " [script-file [-]]";
+    const string usage_text = string("usage: ") + argv[0] + " [--solution <pkg|asm>] [script [-]]";
 
-    if(argc > 3){
+    std::string script_path;
+    std::string solution_arg;
+    bool fallback_after_script = false;
+
+    auto looks_like_solution_hint = [](const std::string& arg){
+        return is_solution_file(std::filesystem::path(arg));
+    };
+
+    for(int i = 1; i < argc; ++i){
+        std::string arg = argv[i];
+        if(arg == "--solution" || arg == "-S"){
+            if(i + 1 >= argc) return usage("--solution requires a file path");
+            solution_arg = argv[++i];
+            continue;
+        }
+        if(arg == "--script"){
+            if(i + 1 >= argc) return usage("--script requires a file path");
+            script_path = argv[++i];
+            if(i + 1 < argc && std::string(argv[i + 1]) == "-"){
+                fallback_after_script = true;
+                ++i;
+            }
+            continue;
+        }
+        if(arg == "-"){
+            if(script_path.empty()) return usage("'-' requires a preceding script path");
+            fallback_after_script = true;
+            continue;
+        }
+        if(solution_arg.empty() && looks_like_solution_hint(arg)){
+            solution_arg = arg;
+            continue;
+        }
+        if(script_path.empty()){
+            script_path = arg;
+            continue;
+        }
         return usage(usage_text);
     }
 
-    bool interactive = true;
-    bool script_active = false;
-    bool fallback_after_script = false;
+    bool interactive = script_path.empty();
+    bool script_active = !interactive;
     std::unique_ptr<std::ifstream> scriptStream;
     std::istream* input = &std::cin;
 
-    if(argc >= 2){
-        if(argc == 3){
-            if(string(argv[2]) != "-"){
-                return usage(usage_text);
-            }
-            fallback_after_script = true;
-        }
-
-        scriptStream = std::make_unique<std::ifstream>(argv[1]);
+    if(!script_path.empty()){
+        scriptStream = std::make_unique<std::ifstream>(script_path);
         if(!*scriptStream){
-            std::cerr << "failed to open script '" << argv[1] << "'\n";
+            std::cerr << "failed to open script '" << script_path << "'\n";
             return 1;
         }
         input = scriptStream.get();
-        interactive = false;
-        script_active = true;
     }
 
     Vfs vfs; auto env = std::make_shared<Env>(); install_builtins(env);
     vfs.mkdir("/src"); vfs.mkdir("/ast"); vfs.mkdir("/env"); vfs.mkdir("/astcpp"); vfs.mkdir("/cpp");
     WorkingDirectory cwd;
     update_directory_context(vfs, cwd, cwd.path);
+
+    SolutionContext solution;
+    std::optional<std::filesystem::path> solution_path_fs;
+    try{
+        if(!solution_arg.empty()){
+            std::filesystem::path p = solution_arg;
+            if(p.is_relative()) p = std::filesystem::absolute(p);
+            solution_path_fs = p;
+        } else if(auto auto_path = auto_detect_solution_path()){
+            solution_path_fs = std::filesystem::absolute(*auto_path);
+        }
+    } catch(const std::exception& e){
+        std::cout << "note: unable to resolve solution path: " << e.what() << "\n";
+    }
+    bool solution_loaded = false;
+    if(solution_path_fs){
+        if(!is_solution_file(*solution_path_fs)){
+            std::cout << "note: '" << solution_path_fs->string() << "' does not use expected "
+                      << kPackageExtension << " or " << kAssemblyExtension << " extension\n";
+        }
+        solution_loaded = load_solution_from_file(vfs, cwd, solution, *solution_path_fs, solution_arg.empty());
+    }
+    if(!solution_loaded){
+        g_on_save_shortcut = nullptr;
+    }
 
     std::cout << "codex-mini 🌲 VFS+AST+AI — 'help' kertoo karun totuuden.\n";
     string line;
@@ -2919,6 +3147,13 @@ int main(int argc, char** argv){
             auto idOpt = vfs.findOverlayByName(inv.args[0]);
             if(!idOpt) throw std::runtime_error("overlay: unknown overlay");
             save_overlay_to_file(vfs, *idOpt, inv.args[1]);
+            if(solution.active && *idOpt == solution.overlay_id){
+                std::filesystem::path p = inv.args[1];
+                try{
+                    if(p.is_relative()) p = std::filesystem::absolute(p);
+                } catch(const std::exception&){ }
+                solution.file_path = p.string();
+            }
             std::cout << "overlay " << inv.args[0] << " (#" << *idOpt << ") -> " << inv.args[1] << "\n";
 
         } else if(cmd == "overlay.unmount"){
@@ -2928,6 +3163,33 @@ int main(int argc, char** argv){
             if(*idOpt == 0) throw std::runtime_error("cannot unmount base overlay");
             vfs.unregisterOverlay(*idOpt);
             adjust_context_after_unmount(vfs, cwd, *idOpt);
+
+        } else if(cmd == "solution.save"){
+            std::filesystem::path target = solution.file_path;
+            if(!inv.args.empty()) target = inv.args[0];
+            if(!solution.active){
+                std::cout << "no solution loaded\n";
+                result.success = false;
+            } else {
+                if(target.empty()){
+                    std::cout << "solution.save requires a file path\n";
+                    result.success = false;
+                } else {
+                    try{
+                        if(target.is_relative()) target = std::filesystem::absolute(target);
+                    } catch(const std::exception& e){
+                        std::cout << "error: solution.save: " << e.what() << "\n";
+                        result.success = false;
+                        target.clear();
+                    }
+                    if(!target.empty()){
+                        solution.file_path = target.string();
+                        if(!solution_save(vfs, solution, false)){
+                            result.success = false;
+                        }
+                    }
+                }
+            }
 
         } else if(cmd == "cpp.tu"){
             if(inv.args.empty()) throw std::runtime_error("cpp.tu <path>");
@@ -3132,6 +3394,29 @@ int main(int argc, char** argv){
             if(exit_requested) break;
         } catch(const std::exception& e){
             std::cout << "error: " << e.what() << "\n";
+        }
+    }
+    if(solution.active && vfs.overlayDirty(solution.overlay_id)){
+        while(true){
+            std::cout << "Solution '" << solution.title << "' modified. Save changes? [y/N] ";
+            std::string answer;
+            if(!std::getline(std::cin, answer)){
+                std::cout << '\n';
+                break;
+            }
+            std::string trimmed = trim_copy(answer);
+            if(trimmed.empty()){
+                break;
+            }
+            char c = static_cast<char>(std::tolower(static_cast<unsigned char>(trimmed[0])));
+            if(c == 'y'){
+                solution_save(vfs, solution, false);
+                break;
+            }
+            if(c == 'n'){
+                break;
+            }
+            std::cout << "Please answer y or n.\n";
         }
     }
     if(history_dirty) save_history(history);

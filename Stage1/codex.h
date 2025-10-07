@@ -190,6 +190,8 @@ struct Vfs {
 
     std::shared_ptr<DirNode> root = std::make_shared<DirNode>("/");
     std::vector<Overlay> overlay_stack;
+    std::vector<bool> overlay_dirty;
+    std::vector<std::string> overlay_source;
 
     Vfs();
 
@@ -199,6 +201,11 @@ struct Vfs {
     const std::string& overlayName(size_t id) const;
     std::optional<size_t> findOverlayByName(const std::string& name) const;
     std::shared_ptr<DirNode> overlayRoot(size_t id) const;
+    bool overlayDirty(size_t id) const;
+    const std::string& overlaySource(size_t id) const;
+    void clearOverlayDirty(size_t id);
+    void setOverlaySource(size_t id, std::string path);
+    void markOverlayDirty(size_t id);
     size_t registerOverlay(std::string name, std::shared_ptr<DirNode> overlayRoot);
     void unregisterOverlay(size_t overlayId);
 
