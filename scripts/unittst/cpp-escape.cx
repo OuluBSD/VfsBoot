@@ -1,0 +1,8 @@
+tools
+cpp.tu /astcpp/escape
+cpp.include /astcpp/escape iostream 1
+cpp.func /astcpp/escape main int
+cpp.print /astcpp/escape/main line-1\nline-2 \t\"quote\" backslash \\ question??/ done
+cpp.returni /astcpp/escape/main 0
+cpp.dump /astcpp/escape /cpp/escape.cpp
+cat /cpp/escape.cpp

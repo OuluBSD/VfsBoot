@@ -595,36 +595,95 @@ std::string CppInclude::dump(int) const {
 }
 CppId::CppId(std::string n, std::string i) : CppExpr(std::move(n)), id(std::move(i)) { kind=Kind::Ast; }
 std::string CppId::dump(int) const { return id; }
+namespace {
+bool is_octal_digit(char c){ return c>='0' && c<='7'; }
+bool is_hex_digit(char c){ return std::isxdigit(static_cast<unsigned char>(c)) != 0; }
+
+void verify_cpp_string_literal(const std::string& lit){
+    for(size_t i=0;i<lit.size();++i){
+        unsigned char uc = static_cast<unsigned char>(lit[i]);
+        if(uc=='\n' || uc=='\r') throw std::runtime_error("cpp string literal contains raw newline");
+        if(uc=='\\'){
+            if(++i>=lit.size()) throw std::runtime_error("unterminated escape in cpp string literal");
+            unsigned char esc = static_cast<unsigned char>(lit[i]);
+            switch(esc){
+                case '"': case '\\': case 'n': case 'r': case 't':
+                case 'b': case 'f': case 'v': case 'a': case '?':
+                    break;
+                case 'x': {
+                    size_t digits=0;
+                    while(i+1<lit.size() && is_hex_digit(lit[i+1]) && digits<2){ ++i; ++digits; }
+                    if(digits==0) throw std::runtime_error("\\x escape missing hex digits");
+                    break;
+                }
+                case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': {
+                    size_t digits=0;
+                    while(i+1<lit.size() && is_octal_digit(lit[i+1]) && digits<2){ ++i; ++digits; }
+                    break;
+                }
+                default:
+                    throw std::runtime_error("unsupported escape sequence in cpp string literal");
+            }
+        } else if(uc < 0x20 || uc == 0x7f){
+            throw std::runtime_error("cpp string literal contains unescaped control byte");
+        }
+    }
+}
+}
+
 CppString::CppString(std::string n, std::string v) : CppExpr(std::move(n)), s(std::move(v)) { kind=Kind::Ast; }
 std::string CppString::esc(const std::string& x){
-    std::string o;
-    o.reserve(x.size()+8);
-    for(unsigned char uc : x){
+    std::string out;
+    out.reserve(x.size()+8);
+    auto append_octal = [&out](unsigned char uc){
+        out.push_back('\\');
+        out.push_back(static_cast<char>('0' + ((uc >> 6) & 0x7)));
+        out.push_back(static_cast<char>('0' + ((uc >> 3) & 0x7)));
+        out.push_back(static_cast<char>('0' + (uc & 0x7)));
+    };
+
+    bool escape_next_question = false;
+    for(size_t i=0;i<x.size();++i){
+        unsigned char uc = static_cast<unsigned char>(x[i]);
+        if(uc=='?'){
+            if(escape_next_question || (i+1<x.size() && x[i+1]=='?')){
+                out += "\\?";
+                escape_next_question = (i+1<x.size() && x[i+1]=='?');
+            } else {
+                out.push_back('?');
+                escape_next_question = false;
+            }
+            continue;
+        }
+
+        escape_next_question = false;
         switch(uc){
-            case '"': o += "\\\""; break;
-            case '\\': o += "\\\\"; break;
-            case '\n': o += "\\n"; break;
-            case '\r': o += "\\r"; break;
-            case '\t': o += "\\t"; break;
-            case '\b': o += "\\b"; break;
-            case '\f': o += "\\f"; break;
-            case '\v': o += "\\v"; break;
-            case '\a': o += "\\a"; break;
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\v': out += "\\v"; break;
+            case '\a': out += "\\a"; break;
             default:
-                if(uc < 0x20 || uc >= 0x7f){
-                    // Emit octal escape so adjacent hex digits cannot bleed into the literal.
-                    o.push_back('\\');
-                    o.push_back(static_cast<char>('0' + ((uc >> 6) & 0x7)));
-                    o.push_back(static_cast<char>('0' + ((uc >> 3) & 0x7)));
-                    o.push_back(static_cast<char>('0' + (uc & 0x7)));
+                if(uc < 0x20 || uc == 0x7f){
+                    append_octal(uc);
+                } else if(uc >= 0x80){
+                    append_octal(uc);
                 } else {
-                    o.push_back(static_cast<char>(uc));
+                    out.push_back(static_cast<char>(uc));
                 }
         }
     }
-    return o;
+    return out;
 }
-std::string CppString::dump(int) const { return std::string("\"")+esc(s)+"\""; }
+std::string CppString::dump(int) const {
+    std::string escaped = esc(s);
+    verify_cpp_string_literal(escaped);
+    return std::string("\"") + escaped + "\"";
+}
 CppInt::CppInt(std::string n, long long x): CppExpr(std::move(n)), v(x) { kind=Kind::Ast; }
 std::string CppInt::dump(int) const { return std::to_string(v); }
 CppCall::CppCall(std::string n, std::shared_ptr<CppExpr> f, std::vector<std::shared_ptr<CppExpr>> a)
