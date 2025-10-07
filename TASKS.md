@@ -3,8 +3,6 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 
 ## Upcoming: important (in order)
-- don't write all code in same h and cpp file. split code cleanly to multiple files. write AGENTS.md in VfsShell directory to explain files. Link that to root AGENTS.md
-- add examples of how to run all files in script dir. Add those to HOWTO_SCRIPTS.md file. Explain sexp files in script files and make cx scripts if you can't open them with single sh command
 - when I run "python tools/test_harness.py --target llama -v" I see some fails even though they shouldn't. I think you should add c++ compiler and to compile and to run given programs to make them pass. We can't really pass or fail these responses based on AST. We can only pass them if they echo some expected message. So you need to change all tests made by test_harness to compare echoed text to expected
 	- safe sandbox for running these executables
 	- tests/003-string-view.sexp seems to hang for me and do something incorrect: it just prints tools
@@ -76,6 +74,9 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 ## Completed
 - Renamed Stage1 to VfsShell and updated all references (Makefile, header guards, documentation, test harness)
+- Created VfsShell/AGENTS.md documenting implementation architecture (VFS design, S-expression language, C++ AST builder, AI bridge, code organization with line numbers, extension points)
+- Linked VfsShell/AGENTS.md from root AGENTS.md under "Implementation details" section
+- Created HOWTO_SCRIPTS.md with comprehensive examples for running all script files (.cx vs .sexp, running all scripts, creating custom scripts, common patterns, debugging)
 - test_harness.py now uses AI response caching compatible with C++ cache format (cache/ai/{provider}/{hash}-in.txt and {hash}-out.txt)
 - add shell commands ctrl+u and ctrl+k for clearing text
 - AI bridge prompt & tests: added scripts/examples/ai-hello-world.sexp and tests/011-ai-bridge-hello.sexp to exercise cpp.* helpers via the ai command.
