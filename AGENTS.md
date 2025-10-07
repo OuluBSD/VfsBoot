@@ -17,6 +17,7 @@
 - Parser accepts atoms (ints, bools, strings, symbols) and list forms; current `lambda` path handles a single parameter, matching the initial scope.
 - Builtins extend to list/string helpers (`list`, `cons`, `head`, `tail`, `null?`, `str.cat`, `str.sub`, `str.find`) so the evaluation core can express non-trivial programs.
 - C++ AST layer models translation units, includes, functions, params, statements, and handles stream output/return generation before dumping into `/cpp`.
+- Companion `.cx` scripts live under `scripts/`, split into `examples/`, `reference/`, `unittst/`, and `tutorial/`. Keep these directories populated with illustrative flows as features evolve, and refresh the relevant scripts whenever we touch matching functionality.
 
 **Open edges & cautions.**
 - String escaping in the C++ AST dumper requires a sanity check (discussion noted escape regressions in `CppString::esc` and related dumping helpers).

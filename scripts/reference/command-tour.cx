@@ -1,0 +1,14 @@
+tools
+ls /
+tree
+mkdir /src/reference
+echo /src/reference/msg.cx (print "Reference pipeline active")
+parse /src/reference/msg.cx /ast/reference-msg
+eval /ast/reference-msg
+cpp.tu /astcpp/reference
+cpp.include /astcpp/reference iostream 1
+cpp.func /astcpp/reference main int
+cpp.print /astcpp/reference/main/body Reference pipeline active
+cpp.returni /astcpp/reference/main/body 0
+cpp.dump /astcpp/reference /cpp/reference.cpp
+cat /cpp/reference.cpp
