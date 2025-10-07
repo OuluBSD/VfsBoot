@@ -1,0 +1,10 @@
+Tools:
+- cd <dir>, pwd, ls [path], tree [path], mkdir <path>, touch <path>, rm <path>, mv <src> <dst>, link <src> <dst>, export <vfs> <host>
+- Files & text: cat [paths...] | stdin, grep/rg [-i] <pattern> [path], head|tail [-n N] [path], uniq [path], count [path], random [min [max]], true, false
+- Manage source: echo <path> <data>, parse /src/file.sexp /ast/name, eval /ast/name
+- AI bridge: ai <prompt...>, ai.brief <key> [extra...]
+- Builtins: + - * = < print, if, lambda(1), strings, bool #t/#f
+- Lists: list cons head tail null? ; Strings: str.cat str.sub str.find
+- Pipelines & chaining: command | command, command && command, command || command
+- VFS ops: vfs-write vfs-read vfs-ls
+- C++ AST ops via shell: cpp.tu /astcpp/X ; cpp.include TU header [0/1] ; cpp.func TU name rettype ; cpp.param FN type name ; cpp.print FN text ; cpp.vardecl scope type name [init] ; cpp.expr scope expr ; cpp.stmt scope raw ; cpp.return scope [expr] ; cpp.returni scope int ; cpp.rangefor scope name decl | range ; cpp.dump TU /cpp/file.cpp

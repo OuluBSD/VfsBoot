@@ -15,6 +15,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import defaultdict
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
@@ -172,6 +173,82 @@ class TestCase:
     targets: List[LlmTarget]
 
 
+_SNIPPET_CACHE: Dict[str, str] = {}
+_SNIPPET_DIR: Optional[Path] = None
+_SNIPPET_DIR_LOOKED_UP = False
+_SNIPPET_PATTERN = re.compile(r"\{\{snippet:([A-Za-z0-9_.-]+)\}\}")
+
+
+def _discover_snippet_dir() -> Optional[Path]:
+    global _SNIPPET_DIR_LOOKED_UP, _SNIPPET_DIR
+    if _SNIPPET_DIR_LOOKED_UP:
+        return _SNIPPET_DIR
+    _SNIPPET_DIR_LOOKED_UP = True
+
+    candidates: List[Path] = []
+    env = os.environ.get('CODEX_SNIPPET_DIR')
+    if env:
+        candidates.append(Path(env))
+    candidates.append(Path('snippets'))
+    candidates.append(Path('Stage1') / 'snippets')
+
+    for cand in candidates:
+        if cand.is_dir():
+            _SNIPPET_DIR = cand.resolve()
+            return _SNIPPET_DIR
+    _SNIPPET_DIR = None
+    return None
+
+
+def _load_snippet(key: str) -> str:
+    if key in _SNIPPET_CACHE:
+        return _SNIPPET_CACHE[key]
+    directory = _discover_snippet_dir()
+    if directory is None:
+        raise FileNotFoundError(
+            "snippet directory not found; set CODEX_SNIPPET_DIR or create Stage1/snippets"
+        )
+    path = directory / f'{key}.txt'
+    if not path.is_file():
+        raise FileNotFoundError(f"snippet '{key}' not found in {directory}")
+    text = path.read_text(encoding='utf-8')
+    _SNIPPET_CACHE[key] = text
+    return text
+
+
+def _expand_snippet_placeholders(text: str) -> str:
+    if not isinstance(text, str) or '{{snippet:' not in text:
+        return text
+
+    def repl(match: re.Match) -> str:
+        key = match.group(1)
+        return _load_snippet(key)
+
+    return _SNIPPET_PATTERN.sub(repl, text)
+
+
+def _expand_instructions(instr: Instructions) -> Instructions:
+    instr.format_text = _expand_snippet_placeholders(instr.format_text)
+    instr.tools = [_expand_snippet_placeholders(item) for item in instr.tools]
+    instr.workflow = [_expand_snippet_placeholders(step) for step in instr.workflow]
+    return instr
+
+
+def _expand_expectations(items: List[Expectation]) -> List[Expectation]:
+    expanded: List[Expectation] = []
+    for item in items:
+        values = tuple(_expand_snippet_placeholders(value) for value in item.values)
+        expanded.append(Expectation(kind=item.kind, values=values))
+    return expanded
+
+
+def _expand_assertions(items: List[Assertion]) -> List[Assertion]:
+    expanded: List[Assertion] = []
+    for item in items:
+        expanded.append(Assertion(kind=item.kind, path=item.path, value=_expand_snippet_placeholders(item.value)))
+    return expanded
+
+
 def load_test_case(path: str) -> TestCase:
     text = open(path, encoding='utf-8').read()
     parsed = SExprParser(text).parse()
@@ -205,14 +282,14 @@ def load_test_case(path: str) -> TestCase:
     tags = [str(x) for x in tags_expr]
 
     instr_entries = expect_list(Symbol('instructions'))
-    instructions = _parse_instructions(path, instr_entries)
+    instructions = _expand_instructions(_parse_instructions(path, instr_entries))
 
     prompt_value = expect_single(Symbol('prompt'))
     expected_entries = expect_list(Symbol('expected-output'))
-    expected = [_parse_expectation(path, item) for item in expected_entries]
+    expected = _expand_expectations([_parse_expectation(path, item) for item in expected_entries])
 
     assertion_entries = expect_list(Symbol('assertions'))
-    assertions = [_parse_assertion(path, item) for item in assertion_entries]
+    assertions = _expand_assertions([_parse_assertion(path, item) for item in assertion_entries])
 
     target_entries = expect_list(Symbol('llm-targets'))
     targets = [_parse_target(path, item) for item in target_entries]
@@ -223,7 +300,7 @@ def load_test_case(path: str) -> TestCase:
         difficulty=str(difficulty_value),
         tags=tags,
         instructions=instructions,
-        prompt=str(prompt_value),
+        prompt=_expand_snippet_placeholders(str(prompt_value)),
         expected=expected,
         assertions=assertions,
         targets=targets,

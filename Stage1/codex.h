@@ -333,7 +333,6 @@ void cpp_dump_to_vfs(Vfs& vfs, const std::string& tuPath, const std::string& fil
 //
 // AI helpers (OpenAI + llama.cpp bridge)
 //
-std::string tool_list_text();
 std::string json_escape(const std::string& s);
 std::string build_responses_payload(const std::string& model, const std::string& user_prompt);
 std::string call_openai(const std::string& prompt);

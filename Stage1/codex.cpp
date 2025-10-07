@@ -1,4 +1,5 @@
 #include "codex.h"
+#include "snippet_catalog.h"
 #include <fstream>
 #include <sstream>
 #include <atomic>
@@ -6,6 +7,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <regex>
 #include <system_error>
@@ -1130,22 +1132,9 @@ void cpp_dump_to_vfs(Vfs& vfs, const std::string& tuPath, const std::string& fil
 }
 
 // ====== OpenAI helpers ======
-std::string tool_list_text(){
-    return
-R"(Tools:
-- cd <dir>, pwd, ls [path], tree [path], mkdir <path>, touch <path>, rm <path>, mv <src> <dst>, link <src> <dst>, export <vfs> <host>
-- Files & text: cat [paths...] | stdin, grep/rg [-i] <pattern> [path], head|tail [-n N] [path], uniq [path], count [path], random [min [max]], true, false
-- Manage source: echo <path> <data>, parse /src/file.sexp /ast/name, eval /ast/name
-- Builtins: + - * = < print, if, lambda(1), strings, bool #t/#f
-- Lists: list cons head tail null? ; Strings: str.cat str.sub str.find
-- Pipelines & chaining: command | command, command && command, command || command
-- VFS ops: vfs-write vfs-read vfs-ls
-- C++ AST ops via shell: cpp.tu /astcpp/X ; cpp.include TU header [0/1] ; cpp.func TU name rettype ; cpp.param FN type name ; cpp.print FN text ; cpp.vardecl scope type name [init] ; cpp.expr scope expr ; cpp.stmt scope raw ; cpp.return scope [expr] ; cpp.returni scope int ; cpp.rangefor scope name decl | range ; cpp.dump TU /cpp/file.cpp
-)";
-}
 static std::string system_prompt_text(){
     return std::string("You are a codex-like assistant embedded in a tiny single-binary IDE.\n") +
-           tool_list_text() + "\nRespond concisely in Finnish.";
+           snippets::tool_list() + "\nRespond concisely in Finnish.";
 }
 std::string json_escape(const std::string& s){
     std::string o; o.reserve(s.size()+8);
@@ -1461,6 +1450,7 @@ R"(Commands:
   putkita komentoja: a | b | c, a && b, a || b
   # AI
   ai <prompt...>
+  ai.brief <key> [extra...]
   tools
   # C++ builder
   cpp.tu <ast-path>
@@ -1479,6 +1469,7 @@ Notes:
   - Polut voivat olla suhteellisia nykyiseen VFS-hakemistoon (cd).
   - ./codex <skripti> suorittaa komennot tiedostosta ilman REPL-kehotetta.
   - ./codex <skripti> - suorittaa skriptin ja palaa interaktiiviseen tilaan.
+  - ai.brief lukee promptit snippets/-hakemistosta (CODEX_SNIPPET_DIR ylikirjoittaa polun).
   - OPENAI_API_KEY pakollinen 'ai' komentoon OpenAI-tilassa. OPENAI_MODEL (oletus gpt-4o-mini), OPENAI_BASE_URL (oletus https://api.openai.com/v1).
   - Llama-palvelin: LLAMA_BASE_URL / LLAMA_SERVER (oletus http://192.168.1.169:8080), LLAMA_MODEL (oletus coder), CODEX_AI_PROVIDER=llama pakottaa käyttöön.
 )"<<std::endl;
@@ -1488,6 +1479,7 @@ int main(int argc, char** argv){
     TRACE_FN();
     using std::string; using std::shared_ptr;
     std::ios::sync_with_stdio(false); std::cin.tie(nullptr);
+    snippets::initialize(argc > 0 ? argv[0] : nullptr);
 
     auto usage = [&](const std::string& msg){
         std::cerr << msg << "\n";
@@ -1788,8 +1780,32 @@ int main(int argc, char** argv){
                 result.output = call_ai(prompt);
             }
 
+        } else if(cmd == "ai.brief"){
+            if(inv.args.empty()) throw std::runtime_error("ai.brief <key> [extra...]");
+            auto key = inv.args[0];
+            std::optional<std::string> prompt;
+            if(key == "ai-bridge-hello" || key == "bridge.hello" || key == "bridge-hello"){
+                prompt = snippets::ai_bridge_hello_briefing();
+            }
+
+            if(!prompt || prompt->empty()){
+                std::cout << "unknown briefing key\n";
+                result.success = false;
+            } else {
+                if(inv.args.size() > 1){
+                    auto extra = join_args(inv.args, 1);
+                    if(!extra.empty()){
+                        if(!prompt->empty() && prompt->back() != '\n') prompt->push_back(' ');
+                        prompt->append(extra);
+                    }
+                }
+                result.output = call_ai(*prompt);
+            }
+
         } else if(cmd == "tools"){
-            std::cout << tool_list_text() << "\n";
+            auto tools = snippets::tool_list();
+            std::cout << tools;
+            if(tools.empty() || tools.back() != '\n') std::cout << '\n';
 
         } else if(cmd == "cpp.tu"){
             if(inv.args.empty()) throw std::runtime_error("cpp.tu <path>");

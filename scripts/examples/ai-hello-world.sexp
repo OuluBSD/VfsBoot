@@ -2,7 +2,7 @@
   (comment "AI-bridge demo: build hello world via cpp AST helpers")
   (cmd "tools")
   (cmd "ls" "/")
-  (cmd "ai" "Briefing: use cpp.tu, cpp.include, cpp.func, cpp.print, cpp.returni, cpp.dump to build hello world.")
+  (cmd "ai.brief" "ai-bridge-hello")
   (cmd "mkdir" "/astcpp/bridge")
   (cmd "mkdir" "/cpp/tests")
   (cmd "cpp.tu" "/astcpp/bridge/hello")
