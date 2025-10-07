@@ -1,6 +1,8 @@
 file
 	codex.h,
-	codex.cpp;
+	codex.cpp,
+	snippet_catalog.h,
+	snippet_catalog.cpp;
 
 mainconfig
 	"" = "";

@@ -3,6 +3,10 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 
 ## Upcoming: important
+- add examples of how to run all files in script dir. Add those to HOWTO_SCRIPTS.md file. Explain sexp files in script files and make cx scripts if you can't open them with single sh command
+- when I run "python tools/test_harness.py --target llama -v" I see some fails even though they shouldn't. I think you should add c++ compiler and to compile and to run given programs to make them pass. We can't really pass or fail these responses based on AST. We can only pass them if they echo some expected message. So you need to change all tests made by test_harness to compare echoed text to expected
+	- safe sandbox for running these executables
+	- tests/003-string-view.sexp seems to hang for me and do something incorrect: it just prints tools
 - vfs as persistent file. have single and/or multiple files, which encodes the content of the data in a way, that git commits work well (diffs or binary diffs?), and is size efficient too
 	- autoload, if the app is ran in a directory with a default name file. (default name is yet to be decided; maybe like title of the directory + ".cx" ext)
 	- autosave, backup save, restore from crash,
@@ -26,12 +30,17 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 	- accept optional flags such as `--keep` or `--trace` for temp retention and verbose diagnostics
 	- update documentation and scripts to reference `sample.run`, replacing the Makefile's external pipeline
 	- extend automated tests to invoke `sample.run` and validate status/output log contents
-- rename Stage1 to something else (remember to keep the U++ project file in .upp same)
+- rename Stage1 to Shell
 - don't write all code in same h and cpp file. split code cleanly to multiple files
-- parse (libclang):
 - make
+- parse (libclang): import clang test suite files to vfs
 
 ## Upcoming: less important
+- explain different causes of sexp, cx, cxpkg files. discuss with me of them if you're unsure. write to README.md and AGENTS.md
+	- make a solution with multiple cxasm & cxpkg packages, which all have multiple cpp and h files. compile and run it succesfully
+- CLI home + end button usage while editing prompt
+- when I press 'ä', it does nothing. fix it
+- when I type "ai some message", I need to push enter twice instead of once
 - sh compatibility, login shell (commandline -l), evaluate first if some additional flags are needed
 - turing complete script (like bash, csh). Let's talk about syntax and grammar before implementing. I do want to have intuitive scripting and more like tcsh
 - netcat -like client and server. Also like tty server for CLI. Have room for minimal SSH later
