@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <chrono>
 #include <filesystem>
@@ -99,6 +100,229 @@ static std::string path_basename(const std::string& path){
     if(pos==std::string::npos) return path;
     return path.substr(pos+1);
 }
+
+struct WorkingDirectory {
+    std::string path = "/";
+    std::vector<size_t> overlays{0};
+    size_t primary_overlay = 0;
+    enum class ConflictPolicy { Manual, Oldest, Newest };
+    ConflictPolicy conflict_policy = ConflictPolicy::Manual;
+};
+
+static void sort_unique(std::vector<size_t>& ids){
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+}
+
+static const char* policy_label(WorkingDirectory::ConflictPolicy policy){
+    switch(policy){
+        case WorkingDirectory::ConflictPolicy::Manual: return "manual";
+        case WorkingDirectory::ConflictPolicy::Oldest: return "oldest";
+        case WorkingDirectory::ConflictPolicy::Newest: return "newest";
+    }
+    return "?";
+}
+
+static std::optional<WorkingDirectory::ConflictPolicy> parse_policy(const std::string& name){
+    std::string lower = name;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+    if(lower == "manual" || lower == "default") return WorkingDirectory::ConflictPolicy::Manual;
+    if(lower == "oldest" || lower == "first") return WorkingDirectory::ConflictPolicy::Oldest;
+    if(lower == "newest" || lower == "last") return WorkingDirectory::ConflictPolicy::Newest;
+    return std::nullopt;
+}
+
+static size_t select_overlay(const Vfs& vfs, const WorkingDirectory& cwd, const std::vector<size_t>& overlays){
+    if(overlays.empty()) throw std::runtime_error("overlay selection: no candidates");
+    auto contains_primary = std::find(overlays.begin(), overlays.end(), cwd.primary_overlay) != overlays.end();
+    switch(cwd.conflict_policy){
+        case WorkingDirectory::ConflictPolicy::Manual:
+            if(contains_primary) return cwd.primary_overlay;
+            break;
+        case WorkingDirectory::ConflictPolicy::Newest:
+            return *std::max_element(overlays.begin(), overlays.end());
+        case WorkingDirectory::ConflictPolicy::Oldest:
+            return *std::min_element(overlays.begin(), overlays.end());
+    }
+    std::ostringstream oss;
+    oss << "ambiguous overlays: ";
+    for(size_t i = 0; i < overlays.size(); ++i){
+        if(i) oss << ", ";
+        oss << vfs.overlayName(overlays[i]);
+    }
+    oss << ". use overlay.use or overlay.policy";
+    throw std::runtime_error(oss.str());
+}
+
+static std::string overlay_suffix(const Vfs& vfs, const std::vector<size_t>& overlays, size_t primary){
+    if(overlays.empty()) return {};
+    std::ostringstream oss;
+    oss << " [";
+    for(size_t i = 0; i < overlays.size(); ++i){
+        if(i) oss << ", ";
+        size_t id = overlays[i];
+        oss << vfs.overlayName(id);
+        if(id == primary) oss << "*";
+    }
+    oss << "]";
+    return oss.str();
+}
+
+static void update_directory_context(Vfs& vfs, WorkingDirectory& cwd, const std::string& absPath){
+    auto candidates = vfs.overlaysForPath(absPath);
+    if(candidates.empty()) throw std::runtime_error("cd: not a directory");
+    sort_unique(candidates);
+    cwd.path = absPath;
+    cwd.overlays = candidates;
+    auto pick_primary = [&]() -> size_t {
+        switch(cwd.conflict_policy){
+            case WorkingDirectory::ConflictPolicy::Manual:
+                if(std::find(candidates.begin(), candidates.end(), cwd.primary_overlay) != candidates.end())
+                    return cwd.primary_overlay;
+                return candidates.front();
+            case WorkingDirectory::ConflictPolicy::Oldest:
+                return *std::min_element(candidates.begin(), candidates.end());
+            case WorkingDirectory::ConflictPolicy::Newest:
+                return *std::max_element(candidates.begin(), candidates.end());
+        }
+        return candidates.front();
+    };
+    cwd.primary_overlay = pick_primary();
+}
+
+static void adjust_context_after_unmount(Vfs& vfs, WorkingDirectory& cwd, size_t removedId){
+    auto adjust = [&](std::vector<size_t>& ids){
+        ids.erase(std::remove(ids.begin(), ids.end(), removedId), ids.end());
+        for(auto& id : ids){
+            if(id > removedId) --id;
+        }
+        if(ids.empty()) ids.push_back(0);
+        sort_unique(ids);
+    };
+
+    adjust(cwd.overlays);
+    if(cwd.primary_overlay == removedId){
+        cwd.primary_overlay = cwd.overlays.front();
+    } else if(cwd.primary_overlay > removedId){
+        --cwd.primary_overlay;
+    }
+
+    try{
+        update_directory_context(vfs, cwd, cwd.path);
+    } catch(const std::exception&){
+        cwd.path = "/";
+        update_directory_context(vfs, cwd, cwd.path);
+    }
+}
+
+static void maybe_extend_context(Vfs& vfs, WorkingDirectory& cwd){
+    try{
+        update_directory_context(vfs, cwd, cwd.path);
+    } catch(const std::exception&){
+        // keep existing overlays if path vanished; caller should handle
+    }
+}
+
+static size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const std::string& hostPath){
+    TRACE_FN("name=", name, ", file=", hostPath);
+    if(name.empty()) throw std::runtime_error("overlay: name required");
+    std::ifstream in(hostPath, std::ios::binary);
+    if(!in) throw std::runtime_error("overlay: cannot open file");
+
+    std::string header;
+    if(!std::getline(in, header)) throw std::runtime_error("overlay: empty file");
+    if(trim_copy(header) != "# codex-vfs-overlay 1")
+        throw std::runtime_error("overlay: invalid header");
+
+    auto root = std::make_shared<DirNode>("/");
+    root->name = "/";
+    root->parent.reset();
+
+    auto ensure_dir = [&](const std::string& path) -> std::shared_ptr<DirNode> {
+        if(path.empty() || path == "/") return root;
+        auto parts = Vfs::splitPath(path);
+        std::shared_ptr<VfsNode> cur = root;
+        for(const auto& part : parts){
+            if(!cur->isDir()) throw std::runtime_error("overlay: conflicting node at " + path);
+            auto& ch = cur->children();
+            auto it = ch.find(part);
+            if(it == ch.end()){
+                auto dir = std::make_shared<DirNode>(part);
+                dir->parent = cur;
+                ch[part] = dir;
+                cur = dir;
+            } else {
+                cur = it->second;
+            }
+        }
+        if(!cur->isDir()) throw std::runtime_error("overlay: conflicting node at " + path);
+        return std::static_pointer_cast<DirNode>(cur);
+    };
+
+    auto create_file = [&](const std::string& path, std::string content){
+        auto parts = Vfs::splitPath(path);
+        if(parts.empty()) throw std::runtime_error("overlay: invalid file path");
+        std::string namePart = parts.back();
+        parts.pop_back();
+        std::shared_ptr<DirNode> dir = root;
+        if(!parts.empty()){
+            std::string dirPath = "/";
+            for(const auto& part : parts) dirPath = join_path(dirPath, part);
+            dir = ensure_dir(dirPath);
+        }
+        auto& ch = dir->children();
+        auto file = std::make_shared<FileNode>(namePart, std::move(content));
+        file->parent = dir;
+        ch[namePart] = file;
+    };
+
+    while(true){
+        std::streampos entry_pos = in.tellg();
+        if(entry_pos == std::streampos(-1)) break;
+        int peeked = in.peek();
+        if(peeked == EOF) break;
+        std::string line;
+        if(!std::getline(in, line)) break;
+        if(line.empty()) continue;
+
+        if(line[0] == 'D' && line.size() > 1 && std::isspace(static_cast<unsigned char>(line[1]))){
+            std::string path = trim_copy(line.substr(2));
+            if(path.empty() || path[0] != '/') throw std::runtime_error("overlay: invalid dir path");
+            ensure_dir(path);
+            continue;
+        }
+
+        if(line[0] == 'F' && line.size() > 1 && std::isspace(static_cast<unsigned char>(line[1]))){
+            std::istringstream meta(line);
+            char tag;
+            std::string path;
+            size_t size = 0;
+            if(!(meta >> tag >> path >> size))
+                throw std::runtime_error("overlay: malformed file entry");
+            if(path.empty() || path[0] != '/')
+                throw std::runtime_error("overlay: invalid file path");
+            std::string content(size, '\0');
+            in.read(content.data(), static_cast<std::streamsize>(size));
+            if(static_cast<size_t>(in.gcount()) != size)
+                throw std::runtime_error("overlay: truncated file content");
+            int term = in.peek();
+            if(term == '\r'){
+                in.get();
+                if(in.peek() == '\n') in.get();
+            } else if(term == '\n'){
+                in.get();
+            }
+            create_file(path, std::move(content));
+            continue;
+        }
+
+        throw std::runtime_error("overlay: unknown entry near byte " + std::to_string(static_cast<long long>(entry_pos)));
+    }
+
+    return vfs.registerOverlay(name, root);
+}
+
+static size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const std::string& hostPath);
 static std::string unescape_meta(const std::string& s){
     std::string out; out.reserve(s.size());
     for(size_t i=0;i<s.size();++i){
@@ -802,7 +1026,33 @@ Value AstHolder::eval(std::shared_ptr<Env> e){ return inner->eval(e); }
 // ====== VFS ======
 Vfs* G_VFS = nullptr;
 
-Vfs::Vfs(){ G_VFS = this; }
+namespace {
+std::shared_ptr<VfsNode> traverse_optional(const Vfs::Overlay& overlay, const std::vector<std::string>& parts){
+    std::shared_ptr<VfsNode> cur = overlay.root;
+    if(parts.empty()) return cur;
+    for(const auto& part : parts){
+        if(!cur->isDir()) return nullptr;
+        auto& ch = cur->children();
+        auto it = ch.find(part);
+        if(it == ch.end()) return nullptr;
+        cur = it->second;
+    }
+    return cur;
+}
+
+char type_char(const std::shared_ptr<VfsNode>& node){
+    if(!node) return '?';
+    if(node->kind == VfsNode::Kind::Dir) return 'd';
+    if(node->kind == VfsNode::Kind::File) return 'f';
+    return 'a';
+}
+}
+
+Vfs::Vfs(){
+    TRACE_FN();
+    overlay_stack.push_back(Overlay{ "base", root });
+    G_VFS = this;
+}
 
 std::vector<std::string> Vfs::splitPath(const std::string& p){
     TRACE_FN("p=", p);
@@ -811,142 +1061,299 @@ std::vector<std::string> Vfs::splitPath(const std::string& p){
     if(!cur.empty()) parts.push_back(cur);
     return parts;
 }
+size_t Vfs::overlayCount() const {
+    return overlay_stack.size();
+}
+
+const std::string& Vfs::overlayName(size_t id) const {
+    if(id >= overlay_stack.size()) throw std::out_of_range("overlay id");
+    return overlay_stack[id].name;
+}
+
+std::optional<size_t> Vfs::findOverlayByName(const std::string& name) const {
+    for(size_t i = 0; i < overlay_stack.size(); ++i){
+        if(overlay_stack[i].name == name) return i;
+    }
+    return std::nullopt;
+}
+
+size_t Vfs::registerOverlay(std::string name, std::shared_ptr<DirNode> overlayRoot){
+    TRACE_FN("name=", name);
+    if(name.empty()) throw std::runtime_error("overlay name required");
+    if(findOverlayByName(name)) throw std::runtime_error("overlay name already in use");
+    if(!overlayRoot) overlayRoot = std::make_shared<DirNode>("/");
+    overlayRoot->name = "/";
+    overlayRoot->parent.reset();
+    overlay_stack.push_back(Overlay{std::move(name), overlayRoot});
+    return overlay_stack.size() - 1;
+}
+
+void Vfs::unregisterOverlay(size_t overlayId){
+    TRACE_FN("overlayId=", overlayId);
+    if(overlayId == 0) throw std::runtime_error("cannot remove base overlay");
+    if(overlayId >= overlay_stack.size()) throw std::out_of_range("overlay id");
+    overlay_stack.erase(overlay_stack.begin() + static_cast<std::ptrdiff_t>(overlayId));
+}
+
+std::vector<size_t> Vfs::overlaysForPath(const std::string& path) const {
+    TRACE_FN("path=", path);
+    auto hits = resolveMulti(path);
+    std::vector<size_t> ids;
+    ids.reserve(hits.size());
+    for(const auto& hit : hits){
+        if(hit.node && hit.node->isDir()) ids.push_back(hit.overlay_id);
+    }
+    return ids;
+}
+
+std::vector<Vfs::OverlayHit> Vfs::resolveMulti(const std::string& path) const {
+    std::vector<size_t> all;
+    all.reserve(overlay_stack.size());
+    for(size_t i = 0; i < overlay_stack.size(); ++i) all.push_back(i);
+    return resolveMulti(path, all);
+}
+
+std::vector<Vfs::OverlayHit> Vfs::resolveMulti(const std::string& path, const std::vector<size_t>& allowed) const {
+    TRACE_FN("path=", path);
+    if(path.empty() || path[0] != '/') throw std::runtime_error("abs path required");
+    auto parts = splitPath(path);
+    std::vector<OverlayHit> hits;
+    auto visit = [&](size_t idx){
+        if(idx >= overlay_stack.size()) return;
+        auto node = traverse_optional(overlay_stack[idx], parts);
+        if(node) hits.push_back(OverlayHit{idx, node});
+    };
+    if(allowed.empty()){
+        for(size_t i = 0; i < overlay_stack.size(); ++i) visit(i);
+    } else {
+        for(size_t idx : allowed) visit(idx);
+    }
+    return hits;
+}
+
 std::shared_ptr<VfsNode> Vfs::resolve(const std::string& path){
     TRACE_FN("path=", path);
-    if(path.empty()||path[0]!='/') throw std::runtime_error("abs path required");
-    auto parts = splitPath(path);
-    std::shared_ptr<VfsNode> cur = root;
-    for (auto& s: parts){
-        if (!cur->isDir()) throw std::runtime_error("not dir: "+s);
-        auto& ch = cur->children();
-        auto it = ch.find(s);
-        if (it==ch.end()) throw std::runtime_error("not found: "+s);
-        cur = it->second;
+    auto hits = resolveMulti(path);
+    if(hits.empty()) throw std::runtime_error("not found: " + path);
+    if(hits.size() > 1){
+        std::ostringstream oss;
+        oss << "path '" << path << "' present in overlays: ";
+        for(size_t i = 0; i < hits.size(); ++i){
+            if(i) oss << ", ";
+            oss << overlay_stack[hits[i].overlay_id].name;
+        }
+        throw std::runtime_error(oss.str());
     }
-    return cur;
+    return hits.front().node;
 }
-std::shared_ptr<DirNode> Vfs::ensureDir(const std::string& path){
-    TRACE_FN("path=", path);
-    if (path=="/") return root;
+
+std::shared_ptr<VfsNode> Vfs::resolveForOverlay(const std::string& path, size_t overlayId){
+    TRACE_FN("path=", path, ", overlay=", overlayId);
+    if(path.empty() || path[0] != '/') throw std::runtime_error("abs path required");
+    if(overlayId >= overlay_stack.size()) throw std::out_of_range("overlay id");
     auto parts = splitPath(path);
-    std::shared_ptr<VfsNode> cur = root;
-    for (auto& s: parts){
-        if (!cur->isDir()) throw std::runtime_error("not dir: "+s);
+    auto node = traverse_optional(overlay_stack[overlayId], parts);
+    if(!node) throw std::runtime_error("not found in overlay");
+    return node;
+}
+
+std::shared_ptr<VfsNode> Vfs::tryResolveForOverlay(const std::string& path, size_t overlayId) const {
+    if(path.empty() || path[0] != '/') return nullptr;
+    if(overlayId >= overlay_stack.size()) return nullptr;
+    auto parts = splitPath(path);
+    return traverse_optional(overlay_stack[overlayId], parts);
+}
+
+std::shared_ptr<DirNode> Vfs::ensureDir(const std::string& path, size_t overlayId){
+    return ensureDirForOverlay(path, overlayId);
+}
+
+std::shared_ptr<DirNode> Vfs::ensureDirForOverlay(const std::string& path, size_t overlayId){
+    TRACE_FN("path=", path, ", overlay=", overlayId);
+    if(overlayId >= overlay_stack.size()) throw std::out_of_range("overlay id");
+    if(path.empty() || path[0] != '/') throw std::runtime_error("abs path required");
+    if(path == "/") return overlay_stack[overlayId].root;
+    auto parts = splitPath(path);
+    std::shared_ptr<VfsNode> cur = overlay_stack[overlayId].root;
+    for(const auto& part : parts){
+        if(!cur->isDir()) throw std::runtime_error("not dir: " + part);
         auto& ch = cur->children();
-        auto it = ch.find(s);
-        if (it==ch.end()){
-            auto d = std::make_shared<DirNode>(s);
-            d->parent = cur;
-            ch[s]=d;
-            cur = d;
-        } else cur = it->second;
+        auto it = ch.find(part);
+        if(it == ch.end()){
+            auto dir = std::make_shared<DirNode>(part);
+            dir->parent = cur;
+            ch[part] = dir;
+            cur = dir;
+        } else {
+            cur = it->second;
+        }
     }
-    if (!cur->isDir()) throw std::runtime_error("exists but not dir");
+    if(!cur->isDir()) throw std::runtime_error("exists but not dir");
     return std::static_pointer_cast<DirNode>(cur);
 }
-void Vfs::mkdir(const std::string& path){
-    TRACE_FN("path=", path);
-    ensureDir(path);
+
+void Vfs::mkdir(const std::string& path, size_t overlayId){
+    TRACE_FN("path=", path, ", overlay=", overlayId);
+    ensureDirForOverlay(path, overlayId);
 }
-void Vfs::touch(const std::string& path){
-    TRACE_FN("path=", path);
+
+void Vfs::touch(const std::string& path, size_t overlayId){
+    TRACE_FN("path=", path, ", overlay=", overlayId);
     auto parts = splitPath(path);
-    if (parts.empty()) throw std::runtime_error("bad path");
-    std::string fname = parts.back(); parts.pop_back();
+    if(parts.empty()) throw std::runtime_error("bad path");
+    std::string fname = parts.back();
+    parts.pop_back();
     std::string dir = "/";
-    for (auto& s: parts) dir += (dir.size()>1?"/":"") + s;
-    auto d = ensureDir(dir);
-    if (d->children().count(fname)==0){
-        auto f = std::make_shared<FileNode>(fname,"");
-        f->parent=d;
-        d->children()[fname]=f;
+    for(const auto& part : parts) dir = join_path(dir, part);
+    auto dirNode = ensureDirForOverlay(dir, overlayId);
+    auto& ch = dirNode->children();
+    auto it = ch.find(fname);
+    if(it == ch.end()){
+        auto file = std::make_shared<FileNode>(fname, "");
+        file->parent = dirNode;
+        ch[fname] = file;
+    } else if(it->second->kind != VfsNode::Kind::File){
+        throw std::runtime_error("touch non-file");
     }
 }
-void Vfs::write(const std::string& path, const std::string& data){
-    TRACE_FN("path=", path, ", size=", data.size());
-    // create file if needed
+
+void Vfs::write(const std::string& path, const std::string& data, size_t overlayId){
+    TRACE_FN("path=", path, ", overlay=", overlayId, ", size=", data.size());
     auto parts = splitPath(path);
-    if (parts.empty()) throw std::runtime_error("bad path");
-    std::string fname = parts.back(); parts.pop_back();
+    if(parts.empty()) throw std::runtime_error("bad path");
+    std::string fname = parts.back();
+    parts.pop_back();
     std::string dir = "/";
-    for (auto& s: parts) dir += (dir.size()>1?"/":"") + s;
-    auto d = ensureDir(dir);
-    auto& ch = d->children();
-    std::shared_ptr<VfsNode> n;
-    if (ch.count(fname)==0){
-        auto f = std::make_shared<FileNode>(fname,"");
-        f->parent=d; ch[fname]=f; n=f;
-    } else n=ch[fname];
-    if (n->kind!=VfsNode::Kind::File) throw std::runtime_error("write non-file");
-    n->write(data);
-}
-std::string Vfs::read(const std::string& path){
-    TRACE_FN("path=", path);
-    return resolve(path)->read();
-}
-void Vfs::addNode(const std::string& dirpath, std::shared_ptr<VfsNode> n){
-    TRACE_FN("dirpath=", dirpath, ", node=", n ? n->name : std::string("<null>"));
-    auto d = ensureDir(dirpath);
-    n->parent=d;
-    d->children()[n->name]=n;
-}
-void Vfs::rm(const std::string& path){
-    TRACE_FN("path=", path);
-    if (path=="/") throw std::runtime_error("rm / not allowed");
-    auto parts = splitPath(path);
-    std::string name=parts.back(); parts.pop_back();
-    std::string dir="/";
-    for (auto& s: parts) dir += (dir.size()>1?"/":"") + s;
-    auto d = resolve(dir);
-    if (!d->isDir()) throw std::runtime_error("parent not dir");
-    d->children().erase(name);
-}
-void Vfs::mv(const std::string& src, const std::string& dst){
-    TRACE_FN("src=", src, ", dst=", dst);
-    auto s = resolve(src);
-    auto parts = splitPath(dst);
-    std::string name=parts.back(); parts.pop_back();
-    std::string dir="/";
-    for (auto& x: parts) dir += (dir.size()>1?"/":"") + x;
-    auto d = ensureDir(dir);
-    if (auto p = s->parent.lock()){
-        p->children().erase(s->name);
+    for(const auto& part : parts) dir = join_path(dir, part);
+    auto dirNode = ensureDirForOverlay(dir, overlayId);
+    auto& ch = dirNode->children();
+    std::shared_ptr<VfsNode> node;
+    auto it = ch.find(fname);
+    if(it == ch.end()){
+        auto file = std::make_shared<FileNode>(fname, "");
+        file->parent = dirNode;
+        ch[fname] = file;
+        node = file;
+    } else {
+        node = it->second;
     }
-    s->name=name;
-    s->parent=d;
-    d->children()[name]=s;
+    if(node->kind != VfsNode::Kind::File) throw std::runtime_error("write non-file");
+    node->write(data);
 }
-void Vfs::link(const std::string& src, const std::string& dst){
-    TRACE_FN("src=", src, ", dst=", dst);
-    auto s = resolve(src);
+
+std::string Vfs::read(const std::string& path, std::optional<size_t> overlayId) const {
+    TRACE_FN("path=", path);
+    if(overlayId){
+        auto node = tryResolveForOverlay(path, *overlayId);
+        if(!node) throw std::runtime_error("not found: " + path);
+        if(node->kind != VfsNode::Kind::File) throw std::runtime_error("read non-file");
+        return node->read();
+    }
+    auto hits = resolveMulti(path);
+    if(hits.empty()) throw std::runtime_error("not found: " + path);
+    std::shared_ptr<VfsNode> target;
+    for(const auto& hit : hits){
+        if(hit.node->kind == VfsNode::Kind::File){
+            if(target) throw std::runtime_error("multiple overlays contain file at " + path);
+            target = hit.node;
+        } else if(hit.node->kind == VfsNode::Kind::Ast){
+            if(target) throw std::runtime_error("multiple overlays contain node at " + path);
+            target = hit.node;
+        }
+    }
+    if(!target) throw std::runtime_error("read non-file");
+    return target->read();
+}
+
+void Vfs::addNode(const std::string& dirpath, std::shared_ptr<VfsNode> n, size_t overlayId){
+    TRACE_FN("dirpath=", dirpath, ", overlay=", overlayId);
+    if(!n) throw std::runtime_error("null node");
+    auto dirNode = ensureDirForOverlay(dirpath.empty() ? std::string("/") : dirpath, overlayId);
+    n->parent = dirNode;
+    dirNode->children()[n->name] = n;
+}
+
+void Vfs::rm(const std::string& path, size_t overlayId){
+    TRACE_FN("path=", path, ", overlay=", overlayId);
+    if(path == "/") throw std::runtime_error("rm / not allowed");
+    auto node = resolveForOverlay(path, overlayId);
+    auto parent = node->parent.lock();
+    if(!parent) throw std::runtime_error("parent missing");
+    parent->children().erase(node->name);
+}
+
+void Vfs::mv(const std::string& src, const std::string& dst, size_t overlayId){
+    TRACE_FN("src=", src, ", dst=", dst, ", overlay=", overlayId);
+    auto node = resolveForOverlay(src, overlayId);
+    auto parent = node->parent.lock();
+    if(!parent) throw std::runtime_error("parent missing");
+    parent->children().erase(node->name);
+
     auto parts = splitPath(dst);
-    std::string name=parts.back(); parts.pop_back();
-    std::string dir="/";
-    for (auto& x: parts) dir += (dir.size()>1?"/":"") + x;
-    auto d = ensureDir(dir);
-    d->children()[name]=s; // alias
+    if(parts.empty()) throw std::runtime_error("bad path");
+    std::string name = parts.back();
+    parts.pop_back();
+    std::string dir = "/";
+    for(const auto& part : parts) dir = join_path(dir, part);
+    auto dirNode = ensureDirForOverlay(dir, overlayId);
+    node->name = name;
+    node->parent = dirNode;
+    dirNode->children()[name] = node;
 }
+
+void Vfs::link(const std::string& src, const std::string& dst, size_t overlayId){
+    TRACE_FN("src=", src, ", dst=", dst, ", overlay=", overlayId);
+    auto node = resolveForOverlay(src, overlayId);
+    auto parts = splitPath(dst);
+    if(parts.empty()) throw std::runtime_error("bad path");
+    std::string name = parts.back();
+    parts.pop_back();
+    std::string dir = "/";
+    for(const auto& part : parts) dir = join_path(dir, part);
+    auto dirNode = ensureDirForOverlay(dir, overlayId);
+    dirNode->children()[name] = node;
+}
+
+Vfs::DirListing Vfs::listDir(const std::string& p, const std::vector<size_t>& overlays) const {
+    TRACE_FN("path=", p);
+    DirListing listing;
+    std::vector<size_t> allowed = overlays;
+    if(allowed.empty()) allowed.push_back(0);
+    for(size_t overlayId : allowed){
+        if(overlayId >= overlay_stack.size()) continue;
+        auto node = tryResolveForOverlay(p, overlayId);
+        if(!node || !node->isDir()) continue;
+        for(auto& kv : node->children()){
+            auto child = kv.second;
+            auto& entry = listing[kv.first];
+            entry.overlays.push_back(overlayId);
+            entry.nodes.push_back(child);
+            entry.types.insert(type_char(child));
+        }
+    }
+    return listing;
+}
+
 void Vfs::ls(const std::string& p){
     TRACE_FN("p=", p);
-    auto n = resolve(p);
-    if (!n->isDir()){
+    auto node = resolveForOverlay(p, 0);
+    if(!node->isDir()){
         std::cout << p << "\n";
         return;
     }
-    for (auto& kv : n->children()){
-        auto& v=kv.second;
-        char t = v->kind==VfsNode::Kind::Dir? 'd' : (v->kind==VfsNode::Kind::File? 'f' : 'a');
-        std::cout << t << " " << kv.first << "\n";
+    for(auto& kv : node->children()){
+        auto& child = kv.second;
+        std::cout << type_char(child) << " " << kv.first << "\n";
     }
 }
+
 void Vfs::tree(std::shared_ptr<VfsNode> n, std::string pref){
     TRACE_FN("node=", n ? n->name : std::string("<root>"), ", pref=", pref);
-    if (!n) n=root;
-    char t = n->kind==VfsNode::Kind::Dir? 'd' : (n->kind==VfsNode::Kind::File? 'f' : 'a');
-    std::cout << pref << t << " " << n->name << "\n";
-    if (n->isDir()){
-        for (auto& kv: n->children()){
-            tree(kv.second, pref+"  ");
+    if(!n) n = root;
+    std::cout << pref << type_char(n) << " " << n->name << "\n";
+    if(n->isDir()){
+        for(auto& kv : n->children()){
+            tree(kv.second, pref + "  ");
         }
     }
 }
@@ -1119,20 +1526,20 @@ void install_builtins(std::shared_ptr<Env> g){
         if(!G_VFS) throw std::runtime_error("no vfs");
         if(av.size()!=2 || !std::holds_alternative<std::string>(av[0].v) || !std::holds_alternative<std::string>(av[1].v))
             throw std::runtime_error("vfs-write path string");
-        G_VFS->write(std::get<std::string>(av[0].v), std::get<std::string>(av[1].v));
+        G_VFS->write(std::get<std::string>(av[0].v), std::get<std::string>(av[1].v), 0);
         return av[0];
     }));
     g->set("vfs-read", Value::Built([](std::vector<Value>& av, std::shared_ptr<Env>){
         if(!G_VFS) throw std::runtime_error("no vfs");
         if(av.size()!=1 || !std::holds_alternative<std::string>(av[0].v))
             throw std::runtime_error("vfs-read path");
-        return Value::S(G_VFS->read(std::get<std::string>(av[0].v)));
+        return Value::S(G_VFS->read(std::get<std::string>(av[0].v), 0));
     }));
     g->set("vfs-ls", Value::Built([](std::vector<Value>& av, std::shared_ptr<Env>){
         if(!G_VFS) throw std::runtime_error("no vfs");
         if(av.size()!=1 || !std::holds_alternative<std::string>(av[0].v))
             throw std::runtime_error("vfs-ls \"/path\"");
-        auto n = G_VFS->resolve(std::get<std::string>(av[0].v));
+        auto n = G_VFS->resolveForOverlay(std::get<std::string>(av[0].v), 0);
         if(!n->isDir()) throw std::runtime_error("vfs-ls: not dir");
         Value::List entries;
         for(auto& kv : n->children()){
@@ -1149,7 +1556,7 @@ void install_builtins(std::shared_ptr<Env> g){
         if(!G_VFS) throw std::runtime_error("no vfs");
         if(av.size()!=2 || !std::holds_alternative<std::string>(av[0].v) || !std::holds_alternative<std::string>(av[1].v))
             throw std::runtime_error("export vfs host");
-        std::string data = G_VFS->read(std::get<std::string>(av[0].v));
+        std::string data = G_VFS->read(std::get<std::string>(av[0].v), 0);
         std::string host = std::get<std::string>(av[1].v);
         std::ofstream f(host, std::ios::binary);
         if(!f) throw std::runtime_error("export: cannot open host file");
@@ -1432,16 +1839,18 @@ std::shared_ptr<CppCompound> expect_block(std::shared_ptr<VfsNode> n){
     if(auto loop = std::dynamic_pointer_cast<CppRangeFor>(n)) return loop->body;
     throw std::runtime_error("node does not own a compound body");
 }
-void vfs_add(Vfs& vfs, const std::string& path, std::shared_ptr<VfsNode> node){
-    std::string dir = path.substr(0, path.find_last_of('/')); if(dir.empty()) dir = "/";
+void vfs_add(Vfs& vfs, const std::string& path, std::shared_ptr<VfsNode> node, size_t overlayId){
+    std::string dir = path.substr(0, path.find_last_of('/'));
+    if(dir.empty()) dir = "/";
     std::string name = path.substr(path.find_last_of('/')+1);
-    node->name = name; vfs.addNode(dir, node);
+    node->name = name;
+    vfs.addNode(dir, node, overlayId);
 }
-void cpp_dump_to_vfs(Vfs& vfs, const std::string& tuPath, const std::string& filePath){
-    auto n = vfs.resolve(tuPath);
+void cpp_dump_to_vfs(Vfs& vfs, size_t overlayId, const std::string& tuPath, const std::string& filePath){
+    auto n = vfs.resolveForOverlay(tuPath, overlayId);
     auto tu = expect_tu(n);
     std::string code = tu->dump(0);
-    vfs.write(filePath, code);
+    vfs.write(filePath, code, overlayId);
 }
 
 // ====== OpenAI helpers ======
@@ -1877,6 +2286,11 @@ R"(Commands:
   ai <prompt...>
   ai.brief <key> [extra...]
   tools
+  overlay.list
+  overlay.mount <name> <file>
+  overlay.unmount <name>
+  overlay.policy [manual|oldest|newest]
+  overlay.use <name>
   # C++ builder
   cpp.tu <ast-path>
   cpp.include <tu-path> <header> [angled0/1]
@@ -1943,11 +2357,12 @@ int main(int argc, char** argv){
 
     Vfs vfs; auto env = std::make_shared<Env>(); install_builtins(env);
     vfs.mkdir("/src"); vfs.mkdir("/ast"); vfs.mkdir("/env"); vfs.mkdir("/astcpp"); vfs.mkdir("/cpp");
+    WorkingDirectory cwd;
+    update_directory_context(vfs, cwd, cwd.path);
 
     std::cout << "codex-mini 🌲 VFS+AST+AI — 'help' kertoo karun totuuden.\n";
     string line;
     size_t repl_iter = 0;
-    std::string cwd = "/";
     std::vector<std::string> history;
     load_history(history);
     history.reserve(history.size() + 256);
@@ -1958,35 +2373,135 @@ int main(int argc, char** argv){
         CommandResult result;
         const std::string& cmd = inv.name;
 
+        auto read_path = [&](const std::string& operand) -> std::string {
+            std::string abs = normalize_path(cwd.path, operand);
+            if(auto node = vfs.tryResolveForOverlay(abs, cwd.primary_overlay)){
+                if(node->kind == VfsNode::Kind::Dir)
+                    throw std::runtime_error("cannot read directory: " + operand);
+                return node->read();
+            }
+            auto hits = vfs.resolveMulti(abs);
+            if(hits.empty()) throw std::runtime_error("path not found: " + operand);
+            std::vector<size_t> overlays;
+            for(const auto& hit : hits){
+                if(hit.node->kind != VfsNode::Kind::Dir)
+                    overlays.push_back(hit.overlay_id);
+            }
+            if(overlays.empty()) throw std::runtime_error("cannot read directory: " + operand);
+            sort_unique(overlays);
+            size_t chosen = select_overlay(vfs, cwd, overlays);
+            auto node = vfs.resolveForOverlay(abs, chosen);
+            if(node->kind == VfsNode::Kind::Dir) throw std::runtime_error("cannot read directory: " + operand);
+            return node->read();
+        };
+
         if(cmd == "pwd"){
-            result.output = cwd + "\n";
+            std::ostringstream oss;
+            oss << cwd.path << overlay_suffix(vfs, cwd.overlays, cwd.primary_overlay) << "\n";
+            result.output = oss.str();
 
         } else if(cmd == "cd"){
             std::string target = inv.args.empty() ? std::string("/") : inv.args[0];
-            std::string abs = normalize_path(cwd, target);
-            auto node = vfs.resolve(abs);
-            if(!node->isDir()) throw std::runtime_error("cd: not a directory");
-            cwd = abs;
+            std::string abs = normalize_path(cwd.path, target);
+            auto dirOverlays = vfs.overlaysForPath(abs);
+            if(dirOverlays.empty()){
+                auto hits = vfs.resolveMulti(abs);
+                if(hits.empty()) throw std::runtime_error("cd: no such path");
+                throw std::runtime_error("cd: not a directory");
+            }
+            update_directory_context(vfs, cwd, abs);
 
         } else if(cmd == "ls"){
-            std::string abs = inv.args.empty() ? cwd : normalize_path(cwd, inv.args[0]);
-            vfs.ls(abs);
+            std::string abs = inv.args.empty() ? cwd.path : normalize_path(cwd.path, inv.args[0]);
+            auto hits = vfs.resolveMulti(abs);
+            if(hits.empty()) throw std::runtime_error("ls: path not found");
+
+            bool anyDir = false;
+            std::vector<size_t> listingOverlays;
+            for(const auto& hit : hits){
+                if(hit.node->isDir()){
+                    anyDir = true;
+                    listingOverlays.push_back(hit.overlay_id);
+                } else {
+                    listingOverlays.push_back(hit.overlay_id);
+                }
+            }
+            sort_unique(listingOverlays);
+
+            if(anyDir){
+                auto listing = vfs.listDir(abs, listingOverlays);
+                for(const auto& [name, entry] : listing){
+                    std::vector<size_t> ids = entry.overlays;
+                    sort_unique(ids);
+                    char type = entry.types.size() == 1 ? *entry.types.begin() : '!';
+                    std::cout << type << " " << name;
+                    if(ids.size() > 1 || (ids.size() == 1 && ids[0] != cwd.primary_overlay)){
+                        std::cout << overlay_suffix(vfs, ids, cwd.primary_overlay);
+                    }
+                    std::cout << "\n";
+                }
+            } else {
+                size_t fileCount = 0;
+                std::shared_ptr<VfsNode> node;
+                std::vector<size_t> ids;
+                for(const auto& hit : hits){
+                    if(hit.node->kind != VfsNode::Kind::Dir){
+                        ++fileCount;
+                        node = hit.node;
+                        ids.push_back(hit.overlay_id);
+                    }
+                }
+                if(!node) throw std::runtime_error("ls: unsupported node type");
+                sort_unique(ids);
+                char type = fileCount > 1 ? '!' : type_char(node);
+                std::cout << type << " " << path_basename(abs);
+                if(ids.size() > 1 || (ids.size() == 1 && ids[0] != cwd.primary_overlay)){
+                    std::cout << overlay_suffix(vfs, ids, cwd.primary_overlay);
+                }
+                std::cout << "\n";
+            }
 
         } else if(cmd == "tree"){
-            if(inv.args.empty()){
-                vfs.tree();
-            } else {
-                std::string abs = normalize_path(cwd, inv.args[0]);
-                vfs.tree(vfs.resolve(abs));
+            std::string abs = inv.args.empty() ? cwd.path : normalize_path(cwd.path, inv.args[0]);
+            auto hits = vfs.resolveMulti(abs);
+            if(hits.empty()) throw std::runtime_error("tree: path not found");
+            std::vector<size_t> ids;
+            for(const auto& hit : hits){
+                if(hit.node->isDir()) ids.push_back(hit.overlay_id);
             }
+            if(ids.empty()) throw std::runtime_error("tree: not a directory");
+            sort_unique(ids);
+
+            std::function<void(const std::string&, const std::string&, const std::vector<size_t>&)> dump;
+            dump = [&](const std::string& path, const std::string& prefix, const std::vector<size_t>& overlays){
+                auto currentHits = vfs.resolveMulti(path, overlays);
+                char type = 'd';
+                if(!currentHits.empty()){
+                    std::set<char> types;
+                    for(const auto& h : currentHits) types.insert(type_char(h.node));
+                    type = types.size()==1 ? *types.begin() : '!';
+                }
+                std::cout << prefix << type << " " << path_basename(path) << overlay_suffix(vfs, overlays, cwd.primary_overlay) << "\n";
+                auto listing = vfs.listDir(path, overlays);
+                for(const auto& [name, entry] : listing){
+                    std::string childPath = path == "/" ? join_path(path, name) : join_path(path, name);
+                    std::vector<size_t> childIds = entry.overlays;
+                    sort_unique(childIds);
+                    dump(childPath, prefix + "  ", childIds);
+                }
+            };
+
+            dump(abs, "", ids);
 
         } else if(cmd == "mkdir"){
             if(inv.args.empty()) throw std::runtime_error("mkdir <path>");
-            vfs.mkdir(normalize_path(cwd, inv.args[0]));
+            std::string abs = normalize_path(cwd.path, inv.args[0]);
+            vfs.mkdir(abs, cwd.primary_overlay);
 
         } else if(cmd == "touch"){
             if(inv.args.empty()) throw std::runtime_error("touch <path>");
-            vfs.touch(normalize_path(cwd, inv.args[0]));
+            std::string abs = normalize_path(cwd.path, inv.args[0]);
+            vfs.touch(abs, cwd.primary_overlay);
 
         } else if(cmd == "cat"){
             if(inv.args.empty()){
@@ -1994,7 +2509,7 @@ int main(int argc, char** argv){
             } else {
                 std::ostringstream oss;
                 for(size_t i = 0; i < inv.args.size(); ++i){
-                    std::string data = vfs.read(normalize_path(cwd, inv.args[i]));
+                    std::string data = read_path(inv.args[i]);
                     oss << data;
                     if(data.empty() || data.back() != '\n') oss << '\n';
                 }
@@ -2011,7 +2526,7 @@ int main(int argc, char** argv){
                 if(idx >= inv.args.size()) throw std::runtime_error("grep [-i] <pattern> [path]");
             }
             std::string pattern = inv.args[idx++];
-            std::string data = idx < inv.args.size() ? vfs.read(normalize_path(cwd, inv.args[idx])) : stdin_data;
+            std::string data = idx < inv.args.size() ? read_path(inv.args[idx]) : stdin_data;
             auto lines = split_lines(data);
             std::ostringstream oss;
             bool matched = false;
@@ -2052,7 +2567,7 @@ int main(int argc, char** argv){
             } catch(const std::regex_error& e){
                 throw std::runtime_error(std::string("rg regex error: ") + e.what());
             }
-            std::string data = idx < inv.args.size() ? vfs.read(normalize_path(cwd, inv.args[idx])) : stdin_data;
+            std::string data = idx < inv.args.size() ? read_path(inv.args[idx]) : stdin_data;
             auto lines = split_lines(data);
             std::ostringstream oss;
             bool matched = false;
@@ -2068,7 +2583,7 @@ int main(int argc, char** argv){
             result.success = matched;
 
         } else if(cmd == "count"){
-            std::string data = inv.args.empty() ? stdin_data : vfs.read(normalize_path(cwd, inv.args[0]));
+            std::string data = inv.args.empty() ? stdin_data : read_path(inv.args[0]);
             size_t lines = count_lines(data);
             result.output = std::to_string(lines) + "\n";
 
@@ -2124,7 +2639,7 @@ int main(int argc, char** argv){
                     ++idx;
                 }
             }
-            std::string data = idx < inv.args.size() ? vfs.read(normalize_path(cwd, inv.args[idx])) : stdin_data;
+            std::string data = idx < inv.args.size() ? read_path(inv.args[idx]) : stdin_data;
             auto lines = split_lines(data);
             size_t total = lines.lines.size();
             size_t begin = take >= total ? 0 : total - take;
@@ -2146,13 +2661,13 @@ int main(int argc, char** argv){
                     ++idx;
                 }
             }
-            std::string data = idx < inv.args.size() ? vfs.read(normalize_path(cwd, inv.args[idx])) : stdin_data;
+            std::string data = idx < inv.args.size() ? read_path(inv.args[idx]) : stdin_data;
             auto lines = split_lines(data);
             size_t end = std::min(take, lines.lines.size());
             result.output = join_line_range(lines, 0, end);
 
         } else if(cmd == "uniq"){
-            std::string data = inv.args.empty() ? stdin_data : vfs.read(normalize_path(cwd, inv.args[0]));
+            std::string data = inv.args.empty() ? stdin_data : read_path(inv.args[0]);
             auto lines = split_lines(data);
             std::ostringstream oss;
             std::string prev;
@@ -2187,24 +2702,29 @@ int main(int argc, char** argv){
         } else if(cmd == "echo"){
             if(inv.args.empty()) throw std::runtime_error("echo <path> <data>");
             std::string rest = join_args(inv.args, 1);
-            vfs.write(normalize_path(cwd, inv.args[0]), rest);
+            std::string abs = normalize_path(cwd.path, inv.args[0]);
+            vfs.write(abs, rest, cwd.primary_overlay);
 
         } else if(cmd == "rm"){
             if(inv.args.empty()) throw std::runtime_error("rm <path>");
-            vfs.rm(normalize_path(cwd, inv.args[0]));
+            std::string abs = normalize_path(cwd.path, inv.args[0]);
+            vfs.rm(abs, cwd.primary_overlay);
 
         } else if(cmd == "mv"){
             if(inv.args.size() < 2) throw std::runtime_error("mv <src> <dst>");
-            vfs.mv(normalize_path(cwd, inv.args[0]), normalize_path(cwd, inv.args[1]));
+            std::string absSrc = normalize_path(cwd.path, inv.args[0]);
+            std::string absDst = normalize_path(cwd.path, inv.args[1]);
+            vfs.mv(absSrc, absDst, cwd.primary_overlay);
 
         } else if(cmd == "link"){
             if(inv.args.size() < 2) throw std::runtime_error("link <src> <dst>");
-            vfs.link(normalize_path(cwd, inv.args[0]), normalize_path(cwd, inv.args[1]));
+            std::string absSrc = normalize_path(cwd.path, inv.args[0]);
+            std::string absDst = normalize_path(cwd.path, inv.args[1]);
+            vfs.link(absSrc, absDst, cwd.primary_overlay);
 
         } else if(cmd == "export"){
             if(inv.args.size() < 2) throw std::runtime_error("export <vfs> <host>");
-            std::string abs = normalize_path(cwd, inv.args[0]);
-            std::string data = vfs.read(abs);
+            std::string data = read_path(inv.args[0]);
             std::ofstream out(inv.args[1], std::ios::binary);
             if(!out) throw std::runtime_error("export: cannot open host file");
             out.write(data.data(), static_cast<std::streamsize>(data.size()));
@@ -2212,19 +2732,33 @@ int main(int argc, char** argv){
 
         } else if(cmd == "parse"){
             if(inv.args.size() < 2) throw std::runtime_error("parse <src> <dst>");
-            std::string absSrc = normalize_path(cwd, inv.args[0]);
-            std::string absDst = normalize_path(cwd, inv.args[1]);
-            auto text = vfs.read(absSrc);
+            std::string absDst = normalize_path(cwd.path, inv.args[1]);
+            auto text = read_path(inv.args[0]);
             auto ast = parse(text);
             auto holder = std::make_shared<AstHolder>(path_basename(absDst), ast);
             std::string dir = absDst.substr(0, absDst.find_last_of('/'));
             if(dir.empty()) dir = "/";
-            vfs.addNode(dir, holder);
+            vfs.addNode(dir, holder, cwd.primary_overlay);
             std::cout << "AST @ " << absDst << " valmis.\n";
 
         } else if(cmd == "eval"){
             if(inv.args.empty()) throw std::runtime_error("eval <path>");
-            auto n = vfs.resolve(normalize_path(cwd, inv.args[0]));
+            std::string abs = normalize_path(cwd.path, inv.args[0]);
+            std::shared_ptr<VfsNode> n;
+            try{
+                n = vfs.resolveForOverlay(abs, cwd.primary_overlay);
+            } catch(const std::exception&){
+                auto hits = vfs.resolveMulti(abs);
+                if(hits.empty()) throw;
+                std::vector<size_t> overlays;
+                for(const auto& h : hits){
+                    if(h.node->kind == VfsNode::Kind::Ast || h.node->kind == VfsNode::Kind::File)
+                        overlays.push_back(h.overlay_id);
+                }
+                sort_unique(overlays);
+                size_t chosen = select_overlay(vfs, cwd, overlays);
+                n = vfs.resolveForOverlay(abs, chosen);
+            }
             if(n->kind != VfsNode::Kind::Ast) throw std::runtime_error("not AST");
             auto a = std::dynamic_pointer_cast<AstNode>(n);
             auto val = a->eval(env);
@@ -2266,16 +2800,60 @@ int main(int argc, char** argv){
             std::cout << tools;
             if(tools.empty() || tools.back() != '\n') std::cout << '\n';
 
+        } else if(cmd == "overlay.list"){
+            for(size_t i = 0; i < vfs.overlayCount(); ++i){
+                bool in_scope = std::find(cwd.overlays.begin(), cwd.overlays.end(), i) != cwd.overlays.end();
+                bool primary = (i == cwd.primary_overlay);
+                std::cout << (primary ? '*' : ' ') << (in_scope ? '+' : ' ') << " [" << i << "] " << vfs.overlayName(i) << "\n";
+            }
+            std::cout << "policy: " << policy_label(cwd.conflict_policy) << "\n";
+
+        } else if(cmd == "overlay.use"){
+            if(inv.args.empty()) throw std::runtime_error("overlay.use <name>");
+            auto name = inv.args[0];
+            auto idOpt = vfs.findOverlayByName(name);
+            if(!idOpt) throw std::runtime_error("overlay: unknown overlay");
+            size_t id = *idOpt;
+            if(std::find(cwd.overlays.begin(), cwd.overlays.end(), id) == cwd.overlays.end())
+                throw std::runtime_error("overlay not active in current directory");
+            cwd.primary_overlay = id;
+
+        } else if(cmd == "overlay.policy"){
+            if(inv.args.empty()){
+                std::cout << "overlay policy: " << policy_label(cwd.conflict_policy) << " (manual|oldest|newest)\n";
+            } else {
+                auto parsed = parse_policy(inv.args[0]);
+                if(!parsed) throw std::runtime_error("overlay.policy manual|oldest|newest");
+                cwd.conflict_policy = *parsed;
+                update_directory_context(vfs, cwd, cwd.path);
+                std::cout << "overlay policy set to " << policy_label(cwd.conflict_policy) << "\n";
+            }
+
+        } else if(cmd == "overlay.mount"){
+            if(inv.args.size() < 2) throw std::runtime_error("overlay.mount <name> <file>");
+            size_t id = mount_overlay_from_file(vfs, inv.args[0], inv.args[1]);
+            maybe_extend_context(vfs, cwd);
+            std::cout << "mounted overlay " << inv.args[0] << " (#" << id << ")\n";
+
+        } else if(cmd == "overlay.unmount"){
+            if(inv.args.empty()) throw std::runtime_error("overlay.unmount <name>");
+            auto idOpt = vfs.findOverlayByName(inv.args[0]);
+            if(!idOpt) throw std::runtime_error("overlay: unknown overlay");
+            if(*idOpt == 0) throw std::runtime_error("cannot unmount base overlay");
+            vfs.unregisterOverlay(*idOpt);
+            adjust_context_after_unmount(vfs, cwd, *idOpt);
+
         } else if(cmd == "cpp.tu"){
             if(inv.args.empty()) throw std::runtime_error("cpp.tu <path>");
-            std::string abs = normalize_path(cwd, inv.args[0]);
+            std::string abs = normalize_path(cwd.path, inv.args[0]);
             auto tu = std::make_shared<CppTranslationUnit>(path_basename(abs));
-            vfs_add(vfs, abs, tu);
+            vfs_add(vfs, abs, tu, cwd.primary_overlay);
             std::cout << "cpp tu @ " << abs << "\n";
 
         } else if(cmd == "cpp.include"){
             if(inv.args.size() < 2) throw std::runtime_error("cpp.include <tu> <header> [angled]");
-            auto tu = expect_tu(vfs.resolve(normalize_path(cwd, inv.args[0])));
+            std::string absTu = normalize_path(cwd.path, inv.args[0]);
+            auto tu = expect_tu(vfs.resolveForOverlay(absTu, cwd.primary_overlay));
             int angled = 0;
             if(inv.args.size() > 2){
                 try{
@@ -2290,24 +2868,24 @@ int main(int argc, char** argv){
 
         } else if(cmd == "cpp.func"){
             if(inv.args.size() < 3) throw std::runtime_error("cpp.func <tu> <name> <ret>");
-            std::string absTu = normalize_path(cwd, inv.args[0]);
-            auto tu = expect_tu(vfs.resolve(absTu));
+            std::string absTu = normalize_path(cwd.path, inv.args[0]);
+            auto tu = expect_tu(vfs.resolveForOverlay(absTu, cwd.primary_overlay));
             auto fn = std::make_shared<CppFunction>(inv.args[1], inv.args[2], inv.args[1]);
             std::string fnPath = join_path(absTu, inv.args[1]);
-            vfs_add(vfs, fnPath, fn);
+            vfs_add(vfs, fnPath, fn, cwd.primary_overlay);
             tu->funcs.push_back(fn);
-            vfs_add(vfs, join_path(fnPath, "body"), fn->body);
+            vfs_add(vfs, join_path(fnPath, "body"), fn->body, cwd.primary_overlay);
             std::cout << "+func " << inv.args[1] << "\n";
 
         } else if(cmd == "cpp.param"){
             if(inv.args.size() < 3) throw std::runtime_error("cpp.param <fn> <type> <name>");
-            auto fn = expect_fn(vfs.resolve(normalize_path(cwd, inv.args[0])));
+            auto fn = expect_fn(vfs.resolveForOverlay(normalize_path(cwd.path, inv.args[0]), cwd.primary_overlay));
             fn->params.push_back(CppParam{inv.args[1], inv.args[2]});
             std::cout << "+param " << inv.args[1] << " " << inv.args[2] << "\n";
 
         } else if(cmd == "cpp.print"){
             if(inv.args.empty()) throw std::runtime_error("cpp.print <scope> <text>");
-            auto block = expect_block(vfs.resolve(normalize_path(cwd, inv.args[0])));
+            auto block = expect_block(vfs.resolveForOverlay(normalize_path(cwd.path, inv.args[0]), cwd.primary_overlay));
             std::string text = unescape_meta(join_args(inv.args, 1));
             auto s = std::make_shared<CppString>("s", text);
             auto chain = std::vector<std::shared_ptr<CppExpr>>{ s, std::make_shared<CppId>("endl", "std::endl") };
@@ -2317,14 +2895,14 @@ int main(int argc, char** argv){
 
         } else if(cmd == "cpp.returni"){
             if(inv.args.size() < 2) throw std::runtime_error("cpp.returni <scope> <int>");
-            auto block = expect_block(vfs.resolve(normalize_path(cwd, inv.args[0])));
+            auto block = expect_block(vfs.resolveForOverlay(normalize_path(cwd.path, inv.args[0]), cwd.primary_overlay));
             long long value = std::stoll(inv.args[1]);
             block->stmts.push_back(std::make_shared<CppReturn>("ret", std::make_shared<CppInt>("i", value)));
             std::cout << "+return " << value << "\n";
 
         } else if(cmd == "cpp.return"){
             if(inv.args.empty()) throw std::runtime_error("cpp.return <scope> [expr]");
-            auto block = expect_block(vfs.resolve(normalize_path(cwd, inv.args[0])));
+            auto block = expect_block(vfs.resolveForOverlay(normalize_path(cwd.path, inv.args[0]), cwd.primary_overlay));
             std::string trimmed = unescape_meta(trim_copy(join_args(inv.args, 1)));
             std::shared_ptr<CppExpr> expr;
             if(!trimmed.empty()) expr = std::make_shared<CppRawExpr>("rexpr", trimmed);
@@ -2333,13 +2911,13 @@ int main(int argc, char** argv){
 
         } else if(cmd == "cpp.expr"){
             if(inv.args.empty()) throw std::runtime_error("cpp.expr <scope> <expr>");
-            auto block = expect_block(vfs.resolve(normalize_path(cwd, inv.args[0])));
+            auto block = expect_block(vfs.resolveForOverlay(normalize_path(cwd.path, inv.args[0]), cwd.primary_overlay));
             block->stmts.push_back(std::make_shared<CppExprStmt>("expr", std::make_shared<CppRawExpr>("rexpr", unescape_meta(join_args(inv.args, 1)))));
             std::cout << "+expr " << inv.args[0] << "\n";
 
         } else if(cmd == "cpp.vardecl"){
             if(inv.args.size() < 3) throw std::runtime_error("cpp.vardecl <scope> <type> <name> [init]");
-            auto block = expect_block(vfs.resolve(normalize_path(cwd, inv.args[0])));
+            auto block = expect_block(vfs.resolveForOverlay(normalize_path(cwd.path, inv.args[0]), cwd.primary_overlay));
             std::string init = unescape_meta(trim_copy(join_args(inv.args, 3)));
             bool hasInit = !init.empty();
             block->stmts.push_back(std::make_shared<CppVarDecl>("var", inv.args[1], inv.args[2], init, hasInit));
@@ -2347,7 +2925,7 @@ int main(int argc, char** argv){
 
         } else if(cmd == "cpp.stmt"){
             if(inv.args.empty()) throw std::runtime_error("cpp.stmt <scope> <stmt>");
-            auto block = expect_block(vfs.resolve(normalize_path(cwd, inv.args[0])));
+            auto block = expect_block(vfs.resolveForOverlay(normalize_path(cwd.path, inv.args[0]), cwd.primary_overlay));
             block->stmts.push_back(std::make_shared<CppRawStmt>("stmt", unescape_meta(join_args(inv.args, 1))));
             std::cout << "+stmt " << inv.args[0] << "\n";
 
@@ -2359,20 +2937,20 @@ int main(int argc, char** argv){
             std::string decl = unescape_meta(trim_copy(rest.substr(0, bar)));
             std::string range = unescape_meta(trim_copy(rest.substr(bar + 1)));
             if(decl.empty() || range.empty()) throw std::runtime_error("cpp.rangefor missing decl or range");
-            std::string absScope = normalize_path(cwd, inv.args[0]);
-            auto block = expect_block(vfs.resolve(absScope));
+            std::string absScope = normalize_path(cwd.path, inv.args[0]);
+            auto block = expect_block(vfs.resolveForOverlay(absScope, cwd.primary_overlay));
             auto loop = std::make_shared<CppRangeFor>(inv.args[1], decl, range);
             block->stmts.push_back(loop);
             std::string loopPath = join_path(absScope, inv.args[1]);
-            vfs_add(vfs, loopPath, loop);
-            vfs_add(vfs, join_path(loopPath, "body"), loop->body);
+            vfs_add(vfs, loopPath, loop, cwd.primary_overlay);
+            vfs_add(vfs, join_path(loopPath, "body"), loop->body, cwd.primary_overlay);
             std::cout << "+rangefor " << inv.args[1] << "\n";
 
         } else if(cmd == "cpp.dump"){
             if(inv.args.size() < 2) throw std::runtime_error("cpp.dump <tu> <out>");
-            std::string absTu = normalize_path(cwd, inv.args[0]);
-            std::string absOut = normalize_path(cwd, inv.args[1]);
-            cpp_dump_to_vfs(vfs, absTu, absOut);
+            std::string absTu = normalize_path(cwd.path, inv.args[0]);
+            std::string absOut = normalize_path(cwd.path, inv.args[1]);
+            cpp_dump_to_vfs(vfs, cwd.primary_overlay, absTu, absOut);
             std::cout << "dump -> " << absOut << "\n";
 
         } else if(cmd == "help"){

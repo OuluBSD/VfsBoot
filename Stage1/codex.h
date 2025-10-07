@@ -13,6 +13,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -172,21 +173,53 @@ struct Env : std::enable_shared_from_this<Env> {
 // VFS
 //
 struct Vfs {
+    struct Overlay {
+        std::string name;
+        std::shared_ptr<DirNode> root;
+    };
+    struct OverlayHit {
+        size_t overlay_id;
+        std::shared_ptr<VfsNode> node;
+    };
+    struct DirListingEntry {
+        std::set<char> types;
+        std::vector<size_t> overlays;
+        std::vector<std::shared_ptr<VfsNode>> nodes;
+    };
+    using DirListing = std::map<std::string, DirListingEntry>;
+
     std::shared_ptr<DirNode> root = std::make_shared<DirNode>("/");
+    std::vector<Overlay> overlay_stack;
+
     Vfs();
 
     static std::vector<std::string> splitPath(const std::string& p);
-    std::shared_ptr<VfsNode> resolve(const std::string& path);
-    std::shared_ptr<DirNode> ensureDir(const std::string& path);
 
-    void mkdir(const std::string& p);
-    void touch(const std::string& p);
-    void write(const std::string& p, const std::string& data);
-    std::string read(const std::string& p);
-    void addNode(const std::string& dirpath, std::shared_ptr<VfsNode> n);
-    void rm(const std::string& p);
-    void mv(const std::string& src, const std::string& dst);
-    void link(const std::string& src, const std::string& dst);
+    size_t overlayCount() const;
+    const std::string& overlayName(size_t id) const;
+    std::optional<size_t> findOverlayByName(const std::string& name) const;
+    size_t registerOverlay(std::string name, std::shared_ptr<DirNode> overlayRoot);
+    void unregisterOverlay(size_t overlayId);
+
+    std::vector<size_t> overlaysForPath(const std::string& path) const;
+    std::vector<OverlayHit> resolveMulti(const std::string& path) const;
+    std::vector<OverlayHit> resolveMulti(const std::string& path, const std::vector<size_t>& allowed) const;
+    std::shared_ptr<VfsNode> resolve(const std::string& path);
+    std::shared_ptr<VfsNode> resolveForOverlay(const std::string& path, size_t overlayId);
+    std::shared_ptr<VfsNode> tryResolveForOverlay(const std::string& path, size_t overlayId) const;
+    std::shared_ptr<DirNode> ensureDir(const std::string& path, size_t overlayId = 0);
+    std::shared_ptr<DirNode> ensureDirForOverlay(const std::string& path, size_t overlayId);
+
+    void mkdir(const std::string& p, size_t overlayId = 0);
+    void touch(const std::string& p, size_t overlayId = 0);
+    void write(const std::string& p, const std::string& data, size_t overlayId = 0);
+    std::string read(const std::string& p, std::optional<size_t> overlayId = std::nullopt) const;
+    void addNode(const std::string& dirpath, std::shared_ptr<VfsNode> n, size_t overlayId = 0);
+    void rm(const std::string& p, size_t overlayId = 0);
+    void mv(const std::string& src, const std::string& dst, size_t overlayId = 0);
+    void link(const std::string& src, const std::string& dst, size_t overlayId = 0);
+
+    DirListing listDir(const std::string& p, const std::vector<size_t>& overlays) const;
     void ls(const std::string& p);
     void tree(std::shared_ptr<VfsNode> n = nullptr, std::string pref = "");
 };
@@ -327,8 +360,8 @@ struct CppTranslationUnit : CppNode {
 std::shared_ptr<CppTranslationUnit> expect_tu(std::shared_ptr<VfsNode> n);
 std::shared_ptr<CppFunction>        expect_fn(std::shared_ptr<VfsNode> n);
 std::shared_ptr<CppCompound>        expect_block(std::shared_ptr<VfsNode> n);
-void vfs_add(Vfs& vfs, const std::string& path, std::shared_ptr<VfsNode> node);
-void cpp_dump_to_vfs(Vfs& vfs, const std::string& tuPath, const std::string& filePath);
+void vfs_add(Vfs& vfs, const std::string& path, std::shared_ptr<VfsNode> node, size_t overlayId = 0);
+void cpp_dump_to_vfs(Vfs& vfs, size_t overlayId, const std::string& tuPath, const std::string& filePath);
 
 //
 // AI helpers (OpenAI + llama.cpp bridge)

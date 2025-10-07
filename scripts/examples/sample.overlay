@@ -1,0 +1,4 @@
+# codex-vfs-overlay 1
+D /src/overlay
+F /src/overlay/overlay.txt 19
+Overlay says hello

@@ -42,6 +42,10 @@ Environment variables:
 - `CODEX_AI_PROVIDER` force-selects `openai` or `llama` for the Stage1 `ai` command; omit to auto-detect based on available credentials.
 - The harness assumes the Stage1 binary lives at `./codex`; override with `--binary` if needed.
 
+## Overlays
+
+`codex` can load multiple persistent overlays simultaneously. Use `overlay.mount <name> <file>` to register a VFS snapshot (text format headed by `# codex-vfs-overlay 1`). The shell shows aggregated directory listings across matching overlays, `overlay.list` prints the active stack (`*` = primary write target, `+` = visible at the current path), and `overlay.unmount <name>` detaches an overlay (base overlay `0` is permanent). The active read/write policy can be tuned via `overlay.policy manual|oldest|newest`; under `manual` (default) ambiguous paths require `overlay.use <name>` to pick the write target, while `oldest`/`newest` resolve ties automatically.
+
 ## Extended C++ Builder Surface
 
 The Stage1 shell now supports richer translation-unit scripting. Beyond `cpp.tu`, `cpp.include`, `cpp.func`, and `cpp.param`, you can build statements structurally:

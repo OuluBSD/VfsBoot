@@ -1,0 +1,11 @@
+overlay.list
+overlay.mount scratch scripts/examples/sample.overlay
+overlay.list
+overlay.policy newest
+cd /src
+ls
+ls overlay
+cat overlay/overlay.txt
+cd /
+overlay.unmount scratch
+overlay.list

@@ -129,6 +129,7 @@ std::string tool_list(){
         "- Builtins: + - * = < print, if, lambda(1), strings, bool #t/#f\n"
         "- Lists: list cons head tail null? ; Strings: str.cat str.sub str.find\n"
         "- Pipelines & chaining: command | command, command && command, command || command\n"
+        "- Overlays: overlay.list, overlay.mount <name> <file>, overlay.unmount <name>, overlay.use <name>, overlay.policy manual|oldest|newest\n"
         "- VFS ops: vfs-write vfs-read vfs-ls\n"
         "- C++ AST ops via shell: cpp.tu /astcpp/X ; cpp.include TU header [0/1] ; cpp.func TU name rettype ; cpp.param FN type name ; cpp.print FN text ; cpp.vardecl scope type name [init] ; cpp.expr scope expr ; cpp.stmt scope raw ; cpp.return scope [expr] ; cpp.returni scope int ; cpp.rangefor scope name decl | range ; cpp.dump TU /cpp/file.cpp\n";
     return get_or("tools-list", fallback);

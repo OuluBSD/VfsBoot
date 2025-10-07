@@ -3,8 +3,7 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 
 ## Upcoming: important
-- overlays. support multiple persistent vfs files simultaneously in same vfs, without mixing files. when multiple overlays matches a path where you "cd", you virtually are in all of them.
-	- conflicting overlays and files needs advanced policy handling; basically it shouldn't happen too often if we work via this program and don't copy-paste directories and files
+- add shell commands ctrl+u and ctrl+k for clearing text
 - vfs as persistent file. have single and/or multiple files, which encodes the content of the data in a way, that git commits work well (diffs or binary diffs?), and is size efficient too
 	- autoload, if the app is ran in a directory with a default name file. (default name is yet to be decided; maybe like title of the directory + ".cx" ext)
 	- autosave, backup save, restore from crash,
@@ -69,6 +68,7 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
   - `make sample` exercises the C++ AST builder, exports generated code, compiles it, and checks the runtime output.
 - Stage1 harness (`tools/test_harness.py`) runs `.sexp` specs end-to-end against configured LLM targets and validates results inside codex-mini.
 - C++ AST shell surface now includes statements (`cpp.vardecl`, `cpp.expr`, `cpp.stmt`, `cpp.return`, `cpp.rangefor`) for structural codegen beyond canned print/return helpers.
+- overlays: multiple persistent VFS overlays can now coexist without mixing nodes; the CLI exposes `overlay.*` commands and aggregate listings.
 
 ## Backlog / Ideas
 - Harden string escaping in the C++ AST dumper before expanding code generation.
