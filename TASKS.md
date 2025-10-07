@@ -39,6 +39,7 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 - netcat -like client and server. Also like tty server for CLI. Have room for minimal SSH later
 	- also oneliner for remote computer usage; one line would some "remote" command or something; advanced remote shell integration
 	- also filetransfer like scp (but like nc = without additional layers (encryption etc.))
+- some internal logs visible in /log (vfs)
 - CLI autocomplete with tab
 - ncurses (+ windows etc alternative) minimal text editor
 - resolver for cpp ast nodes
