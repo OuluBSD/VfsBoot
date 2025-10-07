@@ -1206,6 +1206,12 @@ static std::optional<std::string> decode_json_string(const std::string& raw, siz
     }
     return std::nullopt;
 }
+static std::optional<std::string> json_string_value_after_colon(const std::string& raw, size_t colon_pos){
+    if(colon_pos==std::string::npos) return std::nullopt;
+    size_t value_pos = raw.find_first_not_of(" \t\r\n", colon_pos + 1);
+    if(value_pos==std::string::npos || raw[value_pos] != '"') return std::nullopt;
+    return decode_json_string(raw, value_pos);
+}
 static std::optional<std::string> find_json_string_field(const std::string& raw, const std::string& field, size_t startPos=0){
     std::string marker = std::string("\"") + field + "\"";
     size_t pos = raw.find(marker, startPos);
@@ -1215,6 +1221,37 @@ static std::optional<std::string> find_json_string_field(const std::string& raw,
     size_t quote = raw.find('"', colon+1);
     if(quote==std::string::npos) return std::nullopt;
     return decode_json_string(raw, quote);
+}
+static std::optional<std::string> openai_extract_output_text(const std::string& raw){
+    size_t search_pos = 0;
+    while(true){
+        size_t type_pos = raw.find("\"type\"", search_pos);
+        if(type_pos==std::string::npos) break;
+        size_t colon = raw.find(':', type_pos);
+        if(colon==std::string::npos) break;
+        auto type_val = json_string_value_after_colon(raw, colon);
+        if(type_val && *type_val == "output_text"){
+            size_t text_pos = raw.find("\"text\"", colon);
+            while(text_pos!=std::string::npos){
+                size_t text_colon = raw.find(':', text_pos);
+                if(text_colon==std::string::npos) break;
+                if(auto text_val = json_string_value_after_colon(raw, text_colon)) return text_val;
+                text_pos = raw.find("\"text\"", text_pos + 6);
+            }
+        }
+        search_pos = colon + 1;
+    }
+
+    std::string legacy_marker = "\"output_text\"";
+    if(size_t legacy_pos = raw.find(legacy_marker); legacy_pos!=std::string::npos){
+        size_t colon = raw.find(':', legacy_pos);
+        if(auto legacy_val = json_string_value_after_colon(raw, colon)) return legacy_val;
+        if(colon!=std::string::npos){
+            size_t quote = raw.find('"', colon);
+            if(auto legacy_val = decode_json_string(raw, quote)) return legacy_val;
+        }
+    }
+    return std::nullopt;
 }
 static std::string build_llama_completion_payload(const std::string& system_prompt, const std::string& user_prompt){
     std::string prompt = std::string("<|system|>\n") + system_prompt + "\n<|user|>\n" + user_prompt + "\n<|assistant|>";
@@ -1265,17 +1302,8 @@ std::string call_openai(const std::string& prompt){
     if(raw.empty()) return "error: tyhjä vastaus OpenAI:lta\n";
 
     // very crude output_text extraction
-    std::string marker = "\"output_text\"";
-    size_t p = raw.find(marker);
-    if(p!=std::string::npos){
-        size_t colon = raw.find(':', p);
-        size_t q1 = raw.find('"', colon+1);
-        size_t q2 = raw.find('"', q1+1);
-        if(q1!=std::string::npos && q2!=std::string::npos && q2>q1){
-            std::string text = raw.substr(q1+1, q2-q1-1);
-            for(size_t i=0;(i=text.find("\\n", i))!=std::string::npos; ) { text.replace(i,2,"\n"); i+=1; }
-            return std::string("AI: ")+text+"\n";
-        }
+    if(auto text = openai_extract_output_text(raw)){
+        return std::string("AI: ") + *text + "\n";
     }
     return raw + "\n";
 }
