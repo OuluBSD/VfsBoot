@@ -1827,7 +1827,7 @@ R"(Commands:
   tail [-n N] [path]
   uniq [path]
   count [path]
-  history
+  history [-a | -n N]
   random [min [max]]
   true / false
   echo <path> <data...>
@@ -2032,7 +2032,32 @@ int main(int argc, char** argv){
             result.output = std::to_string(lines) + "\n";
 
         } else if(cmd == "history"){
-            for(size_t i = 0; i < history.size(); ++i){
+            bool show_all = false;
+            size_t requested = 10;
+            size_t idx = 0;
+            while(idx < inv.args.size()){
+                const std::string& opt = inv.args[idx];
+                if(opt == "-a"){
+                    show_all = true;
+                    ++idx;
+                } else if(opt == "-n"){
+                    if(idx + 1 >= inv.args.size()) throw std::runtime_error("history -n <count>");
+                    requested = parse_size_arg(inv.args[idx + 1], "history count");
+                    show_all = false;
+                    idx += 2;
+                } else {
+                    throw std::runtime_error("history [-a | -n <count>]");
+                }
+            }
+
+            size_t total = history.size();
+            size_t start = 0;
+            if(!show_all){
+                if(requested < total){
+                    start = total - requested;
+                }
+            }
+            for(size_t i = start; i < total; ++i){
                 std::cout << (i + 1) << "  " << history[i] << "\n";
             }
 
@@ -2367,10 +2392,18 @@ int main(int argc, char** argv){
         if(!have_line) break;
 
         if(trim_copy(line).empty()) continue;
-        history.push_back(line);
         try{
             auto tokens = tokenize_command_line(line);
             if(tokens.empty()) continue;
+            bool simple_history = false;
+            if(tokens[0] == "history"){
+                simple_history = true;
+                for(const auto& tok : tokens){
+                    if(tok == "|" || tok == "&&" || tok == "||"){ simple_history = false; break; }
+                }
+            }
+            bool record_line = !simple_history;
+            if(record_line) history.push_back(line);
             auto chain = parse_command_chain(tokens);
             bool exit_requested = false;
             bool last_success = true;
