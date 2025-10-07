@@ -14,6 +14,7 @@
 #include <system_error>
 #include <thread>
 #include <sys/types.h>
+#include <termios.h>
 #include <unistd.h>
 
 #ifdef CODEX_TRACE
@@ -162,6 +163,251 @@ static std::string join_args(const std::vector<std::string>& args, size_t start 
         out += args[i];
     }
     return out;
+}
+
+static bool terminal_available(){
+    return ::isatty(STDIN_FILENO) == 1 && ::isatty(STDOUT_FILENO) == 1;
+}
+
+struct RawTerminalMode {
+    termios original{};
+    bool active = false;
+
+    RawTerminalMode(){
+        if(::isatty(STDIN_FILENO) != 1) return;
+        if(tcgetattr(STDIN_FILENO, &original) != 0) return;
+        termios raw = original;
+        raw.c_lflag &= static_cast<tcflag_t>(~(ICANON | ECHO));
+        raw.c_iflag &= static_cast<tcflag_t>(~(IXON | ICRNL));
+        raw.c_oflag &= static_cast<tcflag_t>(~OPOST);
+        raw.c_cc[VMIN] = 1;
+        raw.c_cc[VTIME] = 0;
+        if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == 0){
+            active = true;
+        }
+    }
+
+    ~RawTerminalMode(){
+        if(active){
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &original);
+        }
+    }
+
+    bool ok() const { return active; }
+};
+
+static void redraw_prompt_line(const std::string& prompt, const std::string& buffer, size_t cursor){
+    std::cout << '\r' << prompt << buffer << "\x1b[K";
+    if(cursor < buffer.size()){
+        size_t tail = buffer.size() - cursor;
+        std::cout << "\x1b[" << tail << 'D';
+    }
+    std::cout.flush();
+}
+
+static bool read_line_with_history(const std::string& prompt, std::string& out, const std::vector<std::string>& history){
+    std::cout << prompt;
+    std::cout.flush();
+
+    if(!terminal_available()){
+        if(!std::getline(std::cin, out)){
+            return false;
+        }
+        return true;
+    }
+
+    RawTerminalMode guard;
+    if(!guard.ok()){
+        if(!std::getline(std::cin, out)){
+            return false;
+        }
+        return true;
+    }
+
+    std::string buffer;
+    size_t cursor = 0;
+    size_t history_pos = history.size();
+    std::string saved_new_entry;
+    bool saved_valid = false;
+
+    while(true){
+        unsigned char ch = 0;
+        ssize_t n = ::read(STDIN_FILENO, &ch, 1);
+        if(n <= 0){
+            std::cout << '\n';
+            return false;
+        }
+
+        if(ch == '\r' || ch == '\n'){
+            std::cout << '\n';
+            out = buffer;
+            return true;
+        }
+
+        if(ch == 3){ // Ctrl-C
+            std::cout << "^C\n";
+            buffer.clear();
+            cursor = 0;
+            history_pos = history.size();
+            saved_valid = false;
+            std::cout << prompt;
+            std::cout.flush();
+            continue;
+        }
+
+        if(ch == 4){ // Ctrl-D
+            if(buffer.empty()){
+                std::cout << '\n';
+                return false;
+            }
+            if(cursor < buffer.size()){
+                auto pos = buffer.begin() + static_cast<std::string::difference_type>(cursor);
+                buffer.erase(pos);
+                redraw_prompt_line(prompt, buffer, cursor);
+                if(history_pos != history.size()){
+                    history_pos = history.size();
+                    saved_valid = false;
+                }
+            }
+            continue;
+        }
+
+        if(ch == 127 || ch == 8){ // backspace
+            if(cursor > 0){
+                auto pos = buffer.begin() + static_cast<std::string::difference_type>(cursor) - 1;
+                buffer.erase(pos);
+                --cursor;
+                redraw_prompt_line(prompt, buffer, cursor);
+                if(history_pos != history.size()){
+                    history_pos = history.size();
+                    saved_valid = false;
+                }
+            }
+            continue;
+        }
+
+        if(ch == 1){ // Ctrl-A
+            if(cursor != 0){
+                cursor = 0;
+                redraw_prompt_line(prompt, buffer, cursor);
+            }
+            continue;
+        }
+
+        if(ch == 5){ // Ctrl-E
+            if(cursor != buffer.size()){
+                cursor = buffer.size();
+                redraw_prompt_line(prompt, buffer, cursor);
+            }
+            continue;
+        }
+
+        if(ch == 27){ // escape sequences
+            unsigned char seq1 = 0;
+            if(::read(STDIN_FILENO, &seq1, 1) <= 0) continue;
+            if(seq1 != '['){
+                continue;
+            }
+            unsigned char seq2 = 0;
+            if(::read(STDIN_FILENO, &seq2, 1) <= 0) continue;
+
+            if(seq2 >= '0' && seq2 <= '9'){
+                unsigned char seq3 = 0;
+                if(::read(STDIN_FILENO, &seq3, 1) <= 0) continue;
+                if(seq2 == '3' && seq3 == '~'){ // delete key
+                    if(cursor < buffer.size()){
+                        auto pos = buffer.begin() + static_cast<std::string::difference_type>(cursor);
+                        buffer.erase(pos);
+                        redraw_prompt_line(prompt, buffer, cursor);
+                        if(history_pos != history.size()){
+                            history_pos = history.size();
+                            saved_valid = false;
+                        }
+                    }
+                }
+                continue;
+            }
+
+            if(seq2 == 'A'){ // up
+                if(history.empty()){
+                    std::cout << '\a' << std::flush;
+                    continue;
+                }
+                if(history_pos == history.size()){
+                    if(!saved_valid){
+                        saved_new_entry = buffer;
+                        saved_valid = true;
+                    }
+                    history_pos = history.empty() ? 0 : history.size() - 1;
+                } else if(history_pos > 0){
+                    --history_pos;
+                } else {
+                    std::cout << '\a' << std::flush;
+                    continue;
+                }
+                buffer = history[history_pos];
+                cursor = buffer.size();
+                redraw_prompt_line(prompt, buffer, cursor);
+                continue;
+            }
+
+            if(seq2 == 'B'){ // down
+                if(history_pos == history.size()){
+                    if(saved_valid){
+                        buffer = saved_new_entry;
+                        cursor = buffer.size();
+                        redraw_prompt_line(prompt, buffer, cursor);
+                        saved_valid = false;
+                    } else {
+                        std::cout << '\a' << std::flush;
+                    }
+                    continue;
+                }
+                ++history_pos;
+                if(history_pos == history.size()){
+                    buffer = saved_valid ? saved_new_entry : std::string{};
+                    cursor = buffer.size();
+                    redraw_prompt_line(prompt, buffer, cursor);
+                    saved_valid = false;
+                } else {
+                    buffer = history[history_pos];
+                    cursor = buffer.size();
+                    redraw_prompt_line(prompt, buffer, cursor);
+                }
+                continue;
+            }
+
+            if(seq2 == 'C'){ // right
+                if(cursor < buffer.size()){
+                    ++cursor;
+                    redraw_prompt_line(prompt, buffer, cursor);
+                }
+                continue;
+            }
+
+            if(seq2 == 'D'){ // left
+                if(cursor > 0){
+                    --cursor;
+                    redraw_prompt_line(prompt, buffer, cursor);
+                }
+                continue;
+            }
+
+            continue;
+        }
+
+        if(ch >= 32 && ch <= 126){
+            auto pos = buffer.begin() + static_cast<std::string::difference_type>(cursor);
+            buffer.insert(pos, static_cast<char>(ch));
+            ++cursor;
+            redraw_prompt_line(prompt, buffer, cursor);
+            if(history_pos != history.size()){
+                history_pos = history.size();
+                saved_valid = false;
+            }
+            continue;
+        }
+    }
 }
 
 struct CommandInvocation {
@@ -1581,6 +1827,7 @@ R"(Commands:
   tail [-n N] [path]
   uniq [path]
   count [path]
+  history
   random [min [max]]
   true / false
   echo <path> <data...>
@@ -1662,6 +1909,8 @@ int main(int argc, char** argv){
     string line;
     size_t repl_iter = 0;
     std::string cwd = "/";
+    std::vector<std::string> history;
+    history.reserve(256);
 
     auto execute_single = [&](const CommandInvocation& inv, const std::string& stdin_data) -> CommandResult {
         ScopedCoutCapture capture;
@@ -1781,6 +2030,11 @@ int main(int argc, char** argv){
             std::string data = inv.args.empty() ? stdin_data : vfs.read(normalize_path(cwd, inv.args[0]));
             size_t lines = count_lines(data);
             result.output = std::to_string(lines) + "\n";
+
+        } else if(cmd == "history"){
+            for(size_t i = 0; i < history.size(); ++i){
+                std::cout << (i + 1) << "  " << history[i] << "\n";
+            }
 
         } else if(cmd == "true"){
             result.success = true;
@@ -2088,23 +2342,32 @@ int main(int argc, char** argv){
     while(true){
         TRACE_LOOP("repl.iter", std::string("iter=") + std::to_string(repl_iter));
         ++repl_iter;
-        if(interactive){
-            std::cout << "> " << std::flush;
-        }
-        if(!std::getline(*input, line)){
-            if(script_active && fallback_after_script){
-                script_active = false;
-                fallback_after_script = false;
-                scriptStream.reset();
-                input = &std::cin;
-                interactive = true;
-                if(!std::cin.good()) std::cin.clear();
-                continue;
+        bool have_line = false;
+        if(interactive && input == &std::cin){
+            if(!read_line_with_history("> ", line, history)){
+                break;
             }
-            break;
+            have_line = true;
+        } else {
+            if(!std::getline(*input, line)){
+                if(script_active && fallback_after_script){
+                    script_active = false;
+                    fallback_after_script = false;
+                    scriptStream.reset();
+                    input = &std::cin;
+                    interactive = true;
+                    if(!std::cin.good()) std::cin.clear();
+                    continue;
+                }
+                break;
+            }
+            have_line = true;
         }
 
-        if(line.empty()) continue;
+        if(!have_line) break;
+
+        if(trim_copy(line).empty()) continue;
+        history.push_back(line);
         try{
             auto tokens = tokenize_command_line(line);
             if(tokens.empty()) continue;
