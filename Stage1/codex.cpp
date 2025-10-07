@@ -14,6 +14,8 @@
 #include <regex>
 #include <system_error>
 #include <thread>
+#include <unordered_map>
+#include <limits>
 #include <sys/types.h>
 #include <termios.h>
 #include <unistd.h>
@@ -100,6 +102,13 @@ static std::string path_basename(const std::string& path){
     if(pos==std::string::npos) return path;
     return path.substr(pos+1);
 }
+
+static std::pair<std::string, std::string> serialize_ast_node(const std::shared_ptr<AstNode>& node);
+static std::shared_ptr<AstNode> deserialize_ast_node(const std::string& type,
+                                                     const std::string& payload,
+                                                     const std::string& path,
+                                                     std::vector<std::function<void()>>& fixups,
+                                                     std::unordered_map<std::string, std::shared_ptr<VfsNode>>& path_map);
 
 struct WorkingDirectory {
     std::string path = "/";
@@ -243,17 +252,25 @@ static size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const s
 
     std::string header;
     if(!std::getline(in, header)) throw std::runtime_error("overlay: empty file");
-    if(trim_copy(header) != "# codex-vfs-overlay 1")
-        throw std::runtime_error("overlay: invalid header");
+    auto trimmed = trim_copy(header);
+    int version = 0;
+    if(trimmed == "# codex-vfs-overlay 1") version = 1;
+    if(trimmed == "# codex-vfs-overlay 2") version = 2;
+    if(version == 0) throw std::runtime_error("overlay: invalid header");
 
     auto root = std::make_shared<DirNode>("/");
     root->name = "/";
     root->parent.reset();
 
+    std::unordered_map<std::string, std::shared_ptr<VfsNode>> path_map;
+    path_map["/"] = root;
+    std::vector<std::function<void()>> ast_fixups;
+
     auto ensure_dir = [&](const std::string& path) -> std::shared_ptr<DirNode> {
         if(path.empty() || path == "/") return root;
         auto parts = Vfs::splitPath(path);
         std::shared_ptr<VfsNode> cur = root;
+        std::string curPath = "/";
         for(const auto& part : parts){
             if(!cur->isDir()) throw std::runtime_error("overlay: conflicting node at " + path);
             auto& ch = cur->children();
@@ -266,6 +283,8 @@ static size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const s
             } else {
                 cur = it->second;
             }
+            curPath = join_path(curPath, part);
+            path_map[curPath] = cur;
         }
         if(!cur->isDir()) throw std::runtime_error("overlay: conflicting node at " + path);
         return std::static_pointer_cast<DirNode>(cur);
@@ -286,6 +305,25 @@ static size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const s
         auto file = std::make_shared<FileNode>(namePart, std::move(content));
         file->parent = dir;
         ch[namePart] = file;
+        path_map[path] = file;
+    };
+
+    auto create_ast = [&](const std::string& path, const std::string& type, std::string payload){
+        auto parts = Vfs::splitPath(path);
+        if(parts.empty()) throw std::runtime_error("overlay: invalid ast path");
+        std::string namePart = parts.back();
+        parts.pop_back();
+        std::shared_ptr<DirNode> dir = root;
+        if(!parts.empty()){
+            std::string dirPath = "/";
+            for(const auto& part : parts) dirPath = join_path(dirPath, part);
+            dir = ensure_dir(dirPath);
+        }
+        auto node = deserialize_ast_node(type, payload, path, ast_fixups, path_map);
+        node->name = namePart;
+        node->parent = dir;
+        dir->children()[namePart] = node;
+        path_map[path] = node;
     };
 
     while(true){
@@ -328,8 +366,36 @@ static size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const s
             continue;
         }
 
+        if(line[0] == 'A' && line.size() > 1 && std::isspace(static_cast<unsigned char>(line[1]))){
+            if(version < 2) throw std::runtime_error("overlay: AST entry not supported in version 1 snapshot");
+            std::istringstream meta(line);
+            char tag;
+            std::string path;
+            std::string type;
+            size_t size = 0;
+            if(!(meta >> tag >> path >> type >> size))
+                throw std::runtime_error("overlay: malformed ast entry");
+            if(path.empty() || path[0] != '/')
+                throw std::runtime_error("overlay: invalid ast path");
+            std::string payload(size, '\0');
+            in.read(payload.data(), static_cast<std::streamsize>(size));
+            if(static_cast<size_t>(in.gcount()) != size)
+                throw std::runtime_error("overlay: truncated ast payload");
+            int term = in.peek();
+            if(term == '\r'){
+                in.get();
+                if(in.peek() == '\n') in.get();
+            } else if(term == '\n'){
+                in.get();
+            }
+            create_ast(path, type, std::move(payload));
+            continue;
+        }
+
         throw std::runtime_error("overlay: unknown entry near byte " + std::to_string(static_cast<long long>(entry_pos)));
     }
+
+    for(auto& fix : ast_fixups) fix();
 
     auto id = vfs.registerOverlay(name, root);
     vfs.setOverlaySource(id, hostPath);
@@ -353,23 +419,17 @@ static void save_overlay_to_file(Vfs& vfs, size_t overlayId, const std::string& 
     std::ofstream out(hostPath, std::ios::binary | std::ios::trunc);
     if(!out) throw std::runtime_error("overlay.save: cannot open file for writing");
 
-    out << "# codex-vfs-overlay 1\n";
+    out << "# codex-vfs-overlay 2\n";
 
     std::function<void(const std::shared_ptr<VfsNode>&, const std::string&)> dump;
     dump = [&](const std::shared_ptr<VfsNode>& node, const std::string& path){
         if(!node) return;
+        bool traverse = node->isDir();
         if(node->kind == VfsNode::Kind::Dir){
             if(path != "/"){
                 out << "D " << path << "\n";
             }
-            auto dir = std::static_pointer_cast<DirNode>(node);
-            for(const auto& [name, child] : dir->children()){
-                std::string childPath = join_path(path, name);
-                dump(child, childPath);
-            }
-            return;
-        }
-        if(node->kind == VfsNode::Kind::File){
+        } else if(node->kind == VfsNode::Kind::File){
             auto data = node->read();
             out << "F " << path << " " << data.size() << "\n";
             if(!data.empty()){
@@ -377,8 +437,26 @@ static void save_overlay_to_file(Vfs& vfs, size_t overlayId, const std::string& 
             }
             out << "\n";
             return;
+        } else if(node->kind == VfsNode::Kind::Ast){
+            auto ast = std::dynamic_pointer_cast<AstNode>(node);
+            if(!ast) throw std::runtime_error("overlay.save: ast node cast failed at " + path);
+            auto payload = serialize_ast_node(ast);
+            out << "A " << path << " " << payload.first << " " << payload.second.size() << "\n";
+            if(!payload.second.empty()){
+                out.write(payload.second.data(), static_cast<std::streamsize>(payload.second.size()));
+            }
+            out << "\n";
+        } else {
+            throw std::runtime_error("overlay.save: unsupported node type at " + path);
         }
-        throw std::runtime_error("overlay.save: unsupported node type at " + path);
+
+        if(traverse){
+            const auto& children = node->children();
+            for(const auto& [name, child] : children){
+                std::string childPath = join_path(path, name);
+                dump(child, childPath);
+            }
+        }
     };
 
     dump(root, "/");
@@ -517,6 +595,81 @@ static std::string sanitize_component(const std::string& s){
     return out;
 }
 
+namespace {
+struct BinaryWriter {
+    std::string data;
+
+    void u8(uint8_t v){ data.push_back(static_cast<char>(v)); }
+    void u32(uint32_t v){
+        for(int i = 0; i < 4; ++i){
+            data.push_back(static_cast<char>((v >> (i * 8)) & 0xff));
+        }
+    }
+    void i64(int64_t v){
+        uint64_t raw = static_cast<uint64_t>(v);
+        for(int i = 0; i < 8; ++i){
+            data.push_back(static_cast<char>((raw >> (i * 8)) & 0xff));
+        }
+    }
+    void str(const std::string& s){
+        if(s.size() > std::numeric_limits<uint32_t>::max())
+            throw std::runtime_error("string too large for serialization");
+        u32(static_cast<uint32_t>(s.size()));
+        data.append(s);
+    }
+};
+
+struct BinaryReader {
+    const std::string& data;
+    size_t pos = 0;
+    explicit BinaryReader(const std::string& d) : data(d) {}
+
+    uint8_t u8(){
+        if(pos >= data.size()) throw std::runtime_error("unexpected EOF while decoding u8");
+        return static_cast<uint8_t>(data[pos++]);
+    }
+    uint32_t u32(){
+        if(data.size() - pos < 4) throw std::runtime_error("unexpected EOF while decoding u32");
+        uint32_t v = 0;
+        for(int i = 0; i < 4; ++i){
+            v |= static_cast<uint32_t>(static_cast<unsigned char>(data[pos++])) << (i * 8);
+        }
+        return v;
+    }
+    int64_t i64(){
+        if(data.size() - pos < 8) throw std::runtime_error("unexpected EOF while decoding i64");
+        uint64_t v = 0;
+        for(int i = 0; i < 8; ++i){
+            v |= static_cast<uint64_t>(static_cast<unsigned char>(data[pos++])) << (i * 8);
+        }
+        return static_cast<int64_t>(v);
+    }
+    std::string str(){
+        uint32_t len = u32();
+        if(data.size() - pos < len) throw std::runtime_error("unexpected EOF while decoding string");
+        std::string out = data.substr(pos, len);
+        pos += len;
+        return out;
+    }
+    bool eof() const { return pos == data.size(); }
+    void expect_eof() const {
+        if(pos != data.size()) throw std::runtime_error("extra bytes in AST payload");
+    }
+};
+} // namespace
+
+static std::pair<std::string, std::string> serialize_s_ast_node(const std::shared_ptr<AstNode>& node);
+static std::shared_ptr<AstNode> deserialize_s_ast_node(const std::string& type, const std::string& payload);
+static bool is_s_ast_type(const std::string& type);
+static void serialize_cpp_expr(BinaryWriter& w, const std::shared_ptr<CppExpr>& expr);
+static std::shared_ptr<CppExpr> deserialize_cpp_expr(BinaryReader& r);
+static void deserialize_cpp_compound_into(const std::string& payload,
+                                          const std::string& node_path,
+                                          const std::shared_ptr<CppCompound>& compound,
+                                          std::vector<std::function<void()>>& fixups,
+                                          std::unordered_map<std::string, std::shared_ptr<VfsNode>>& path_map);
+static std::string serialize_cpp_compound_payload(const std::shared_ptr<CppCompound>& compound);
+
 static uint64_t fnv1a64(const std::string& data){
     const uint64_t offset = 1469598103934665603ull;
     const uint64_t prime  = 1099511628211ull;
@@ -532,6 +685,547 @@ static std::string hash_hex(uint64_t value){
     std::ostringstream oss;
     oss << std::hex << std::setw(16) << std::setfill('0') << value;
     return oss.str();
+}
+
+// ====== S-expression AST serialization ======
+static std::pair<std::string, std::string> serialize_s_ast_node(const std::shared_ptr<AstNode>& node){
+    if(!node) throw std::runtime_error("cannot serialize null AST node");
+
+    if(auto n = std::dynamic_pointer_cast<AstInt>(node)){
+        BinaryWriter w;
+        w.i64(n->val);
+        return {"AstInt", std::move(w.data)};
+    }
+    if(auto n = std::dynamic_pointer_cast<AstBool>(node)){
+        BinaryWriter w;
+        w.u8(n->val ? 1 : 0);
+        return {"AstBool", std::move(w.data)};
+    }
+    if(auto n = std::dynamic_pointer_cast<AstStr>(node)){
+        BinaryWriter w;
+        w.str(n->val);
+        return {"AstStr", std::move(w.data)};
+    }
+    if(auto n = std::dynamic_pointer_cast<AstSym>(node)){
+        BinaryWriter w;
+        w.str(n->id);
+        return {"AstSym", std::move(w.data)};
+    }
+    if(auto n = std::dynamic_pointer_cast<AstIf>(node)){
+        BinaryWriter w;
+        auto c = serialize_s_ast_node(n->c);
+        auto a = serialize_s_ast_node(n->a);
+        auto b = serialize_s_ast_node(n->b);
+        w.str(c.first); w.str(c.second);
+        w.str(a.first); w.str(a.second);
+        w.str(b.first); w.str(b.second);
+        return {"AstIf", std::move(w.data)};
+    }
+    if(auto n = std::dynamic_pointer_cast<AstLambda>(node)){
+        BinaryWriter w;
+        if(n->params.size() > std::numeric_limits<uint32_t>::max())
+            throw std::runtime_error("lambda parameter list too large to serialize");
+        w.u32(static_cast<uint32_t>(n->params.size()));
+        for(const auto& p : n->params) w.str(p);
+        auto body = serialize_s_ast_node(n->body);
+        w.str(body.first);
+        w.str(body.second);
+        return {"AstLambda", std::move(w.data)};
+    }
+    if(auto n = std::dynamic_pointer_cast<AstCall>(node)){
+        BinaryWriter w;
+        auto fn = serialize_s_ast_node(n->fn);
+        w.str(fn.first);
+        w.str(fn.second);
+        if(n->args.size() > std::numeric_limits<uint32_t>::max())
+            throw std::runtime_error("call argument list too large to serialize");
+        w.u32(static_cast<uint32_t>(n->args.size()));
+        for(const auto& arg : n->args){
+            auto ap = serialize_s_ast_node(arg);
+            w.str(ap.first);
+            w.str(ap.second);
+        }
+        return {"AstCall", std::move(w.data)};
+    }
+
+    throw std::runtime_error("serialize_s_ast_node: unsupported node type");
+}
+
+static std::shared_ptr<AstNode> deserialize_s_ast_node(const std::string& type, const std::string& payload){
+    BinaryReader r(payload);
+    std::shared_ptr<AstNode> node;
+    if(type == "AstInt"){
+        node = std::make_shared<AstInt>("<i>", r.i64());
+    } else if(type == "AstBool"){
+        node = std::make_shared<AstBool>("<b>", r.u8() != 0);
+    } else if(type == "AstStr"){
+        node = std::make_shared<AstStr>("<s>", r.str());
+    } else if(type == "AstSym"){
+        node = std::make_shared<AstSym>("<sym>", r.str());
+    } else if(type == "AstIf"){
+        auto cType = r.str(); auto cData = r.str();
+        auto aType = r.str(); auto aData = r.str();
+        auto bType = r.str(); auto bData = r.str();
+        auto c = deserialize_s_ast_node(cType, cData);
+        auto a = deserialize_s_ast_node(aType, aData);
+        auto b = deserialize_s_ast_node(bType, bData);
+        node = std::make_shared<AstIf>("<if>", c, a, b);
+    } else if(type == "AstLambda"){
+        uint32_t count = r.u32();
+        std::vector<std::string> params;
+        params.reserve(count);
+        for(uint32_t i = 0; i < count; ++i) params.push_back(r.str());
+        auto bodyType = r.str();
+        auto bodyData = r.str();
+        auto body = deserialize_s_ast_node(bodyType, bodyData);
+        node = std::make_shared<AstLambda>("<lam>", params, body);
+    } else if(type == "AstCall"){
+        auto fnType = r.str();
+        auto fnData = r.str();
+        auto fn = deserialize_s_ast_node(fnType, fnData);
+        uint32_t argc = r.u32();
+        std::vector<std::shared_ptr<AstNode>> args;
+        args.reserve(argc);
+        for(uint32_t i = 0; i < argc; ++i){
+            auto aType = r.str();
+            auto aData = r.str();
+            args.push_back(deserialize_s_ast_node(aType, aData));
+        }
+        node = std::make_shared<AstCall>("<call>", fn, args);
+    } else {
+        throw std::runtime_error("deserialize_s_ast_node: unsupported node type '" + type + "'");
+    }
+    r.expect_eof();
+    return node;
+}
+
+static bool is_s_ast_type(const std::string& type){
+    return type == "AstInt" || type == "AstBool" || type == "AstStr" ||
+           type == "AstSym" || type == "AstIf" || type == "AstLambda" ||
+           type == "AstCall";
+}
+
+static bool is_s_ast_instance(const std::shared_ptr<AstNode>& node){
+    return std::dynamic_pointer_cast<AstInt>(node) ||
+           std::dynamic_pointer_cast<AstBool>(node) ||
+           std::dynamic_pointer_cast<AstStr>(node) ||
+           std::dynamic_pointer_cast<AstSym>(node) ||
+           std::dynamic_pointer_cast<AstIf>(node) ||
+           std::dynamic_pointer_cast<AstLambda>(node) ||
+           std::dynamic_pointer_cast<AstCall>(node);
+}
+
+// ====== C++ AST serialization ======
+enum class CppExprTag : uint8_t {
+    Id = 1,
+    String = 2,
+    Int = 3,
+    Call = 4,
+    BinOp = 5,
+    StreamOut = 6,
+    Raw = 7
+};
+
+enum class CppStmtTag : uint8_t {
+    ExprStmt = 1,
+    Return = 2,
+    Raw = 3,
+    VarDecl = 4,
+    RangeForRef = 5
+};
+
+static void serialize_cpp_expr(BinaryWriter& w, const std::shared_ptr<CppExpr>& expr){
+    if(!expr) throw std::runtime_error("serialize_cpp_expr: null expression");
+
+    if(auto id = std::dynamic_pointer_cast<CppId>(expr)){
+        w.u8(static_cast<uint8_t>(CppExprTag::Id));
+        w.str(id->id);
+        return;
+    }
+    if(auto s = std::dynamic_pointer_cast<CppString>(expr)){
+        w.u8(static_cast<uint8_t>(CppExprTag::String));
+        w.str(s->s);
+        return;
+    }
+    if(auto i = std::dynamic_pointer_cast<CppInt>(expr)){
+        w.u8(static_cast<uint8_t>(CppExprTag::Int));
+        w.i64(i->v);
+        return;
+    }
+    if(auto call = std::dynamic_pointer_cast<CppCall>(expr)){
+        w.u8(static_cast<uint8_t>(CppExprTag::Call));
+        serialize_cpp_expr(w, call->fn);
+        if(call->args.size() > std::numeric_limits<uint32_t>::max())
+            throw std::runtime_error("serialize_cpp_expr: argument list too large");
+        w.u32(static_cast<uint32_t>(call->args.size()));
+        for(const auto& a : call->args) serialize_cpp_expr(w, a);
+        return;
+    }
+    if(auto bin = std::dynamic_pointer_cast<CppBinOp>(expr)){
+        w.u8(static_cast<uint8_t>(CppExprTag::BinOp));
+        w.str(bin->op);
+        serialize_cpp_expr(w, bin->a);
+        serialize_cpp_expr(w, bin->b);
+        return;
+    }
+    if(auto stream = std::dynamic_pointer_cast<CppStreamOut>(expr)){
+        w.u8(static_cast<uint8_t>(CppExprTag::StreamOut));
+        if(stream->chain.size() > std::numeric_limits<uint32_t>::max())
+            throw std::runtime_error("serialize_cpp_expr: stream chain too large");
+        w.u32(static_cast<uint32_t>(stream->chain.size()));
+        for(const auto& part : stream->chain) serialize_cpp_expr(w, part);
+        return;
+    }
+    if(auto raw = std::dynamic_pointer_cast<CppRawExpr>(expr)){
+        w.u8(static_cast<uint8_t>(CppExprTag::Raw));
+        w.str(raw->text);
+        return;
+    }
+
+    throw std::runtime_error("serialize_cpp_expr: unsupported expression type");
+}
+
+static std::shared_ptr<CppExpr> deserialize_cpp_expr(BinaryReader& r){
+    if(r.eof()) throw std::runtime_error("deserialize_cpp_expr: unexpected EOF");
+    auto tag = static_cast<CppExprTag>(r.u8());
+    switch(tag){
+        case CppExprTag::Id:
+            return std::make_shared<CppId>("id", r.str());
+        case CppExprTag::String:
+            return std::make_shared<CppString>("s", r.str());
+        case CppExprTag::Int:
+            return std::make_shared<CppInt>("i", r.i64());
+        case CppExprTag::Call: {
+            auto fn = deserialize_cpp_expr(r);
+            uint32_t argc = r.u32();
+            std::vector<std::shared_ptr<CppExpr>> args;
+            args.reserve(argc);
+            for(uint32_t i = 0; i < argc; ++i){
+                args.push_back(deserialize_cpp_expr(r));
+            }
+            return std::make_shared<CppCall>("call", fn, args);
+        }
+        case CppExprTag::BinOp: {
+            auto op = r.str();
+            auto a = deserialize_cpp_expr(r);
+            auto b = deserialize_cpp_expr(r);
+            return std::make_shared<CppBinOp>("binop", op, a, b);
+        }
+        case CppExprTag::StreamOut: {
+            uint32_t count = r.u32();
+            std::vector<std::shared_ptr<CppExpr>> chain;
+            chain.reserve(count);
+            for(uint32_t i = 0; i < count; ++i) chain.push_back(deserialize_cpp_expr(r));
+            return std::make_shared<CppStreamOut>("cout", chain);
+        }
+        case CppExprTag::Raw:
+            return std::make_shared<CppRawExpr>("rexpr", r.str());
+    }
+    throw std::runtime_error("deserialize_cpp_expr: unknown tag");
+}
+
+static std::string serialize_cpp_compound_payload(const std::shared_ptr<CppCompound>& compound){
+    if(!compound) throw std::runtime_error("serialize_cpp_compound_payload: null compound");
+    BinaryWriter w;
+    if(compound->stmts.size() > std::numeric_limits<uint32_t>::max())
+        throw std::runtime_error("serialize_cpp_compound_payload: too many statements");
+    w.u32(static_cast<uint32_t>(compound->stmts.size()));
+    for(const auto& stmt : compound->stmts){
+        if(!stmt) throw std::runtime_error("serialize_cpp_compound_payload: null statement");
+        if(auto es = std::dynamic_pointer_cast<CppExprStmt>(stmt)){
+            w.u8(static_cast<uint8_t>(CppStmtTag::ExprStmt));
+            serialize_cpp_expr(w, es->e);
+        } else if(auto ret = std::dynamic_pointer_cast<CppReturn>(stmt)){
+            w.u8(static_cast<uint8_t>(CppStmtTag::Return));
+            w.u8(ret->e ? 1 : 0);
+            if(ret->e) serialize_cpp_expr(w, ret->e);
+        } else if(auto raw = std::dynamic_pointer_cast<CppRawStmt>(stmt)){
+            w.u8(static_cast<uint8_t>(CppStmtTag::Raw));
+            w.str(raw->text);
+        } else if(auto var = std::dynamic_pointer_cast<CppVarDecl>(stmt)){
+            w.u8(static_cast<uint8_t>(CppStmtTag::VarDecl));
+            w.str(var->type);
+            w.str(var->name);
+            w.u8(var->hasInit ? 1 : 0);
+            if(var->hasInit) w.str(var->init);
+        } else if(auto loop = std::dynamic_pointer_cast<CppRangeFor>(stmt)){
+            w.u8(static_cast<uint8_t>(CppStmtTag::RangeForRef));
+            w.str(loop->name);
+        } else {
+            throw std::runtime_error("serialize_cpp_compound_payload: unsupported statement type");
+        }
+    }
+    return w.data;
+}
+
+static void deserialize_cpp_compound_into(const std::string& payload,
+                                          const std::string& node_path,
+                                          const std::shared_ptr<CppCompound>& compound,
+                                          std::vector<std::function<void()>>& fixups,
+                                          std::unordered_map<std::string, std::shared_ptr<VfsNode>>& path_map){
+    if(!compound) throw std::runtime_error("deserialize_cpp_compound_into: null compound");
+    BinaryReader r(payload);
+    uint32_t count = r.u32();
+    std::vector<std::shared_ptr<CppStmt>> parsed;
+    parsed.reserve(count);
+    std::vector<std::pair<size_t, std::string>> pending_rangefor;
+
+    for(uint32_t idx = 0; idx < count; ++idx){
+        auto tag = static_cast<CppStmtTag>(r.u8());
+        switch(tag){
+            case CppStmtTag::ExprStmt: {
+                auto expr = deserialize_cpp_expr(r);
+                parsed.push_back(std::make_shared<CppExprStmt>("expr", expr));
+                break;
+            }
+            case CppStmtTag::Return: {
+                bool hasExpr = r.u8() != 0;
+                std::shared_ptr<CppExpr> expr;
+                if(hasExpr) expr = deserialize_cpp_expr(r);
+                parsed.push_back(std::make_shared<CppReturn>("ret", expr));
+                break;
+            }
+            case CppStmtTag::Raw: {
+                parsed.push_back(std::make_shared<CppRawStmt>("stmt", r.str()));
+                break;
+            }
+            case CppStmtTag::VarDecl: {
+                auto type = r.str();
+                auto name = r.str();
+                bool hasInit = r.u8() != 0;
+                std::string init;
+                if(hasInit) init = r.str();
+                parsed.push_back(std::make_shared<CppVarDecl>("var", type, name, init, hasInit));
+                break;
+            }
+            case CppStmtTag::RangeForRef: {
+                auto childName = r.str();
+                pending_rangefor.emplace_back(parsed.size(), childName);
+                parsed.push_back(nullptr);
+                break;
+            }
+            default:
+                throw std::runtime_error("deserialize_cpp_compound_into: unknown statement tag");
+        }
+    }
+    r.expect_eof();
+    compound->stmts = std::move(parsed);
+
+    if(!pending_rangefor.empty()){
+        auto compoundWeak = std::weak_ptr<CppCompound>(compound);
+        fixups.push_back([compoundWeak, node_path, pending_rangefor, &path_map](){
+            auto locked = compoundWeak.lock();
+            if(!locked) return;
+            for(const auto& pair : pending_rangefor){
+                const auto& child = pair.second;
+                auto full = join_path(node_path, child);
+                auto it = path_map.find(full);
+                if(it == path_map.end())
+                    throw std::runtime_error("compound fixup missing child node: " + full);
+                auto loop = std::dynamic_pointer_cast<CppRangeFor>(it->second);
+                if(!loop)
+                    throw std::runtime_error("compound fixup expected CppRangeFor at: " + full);
+                locked->stmts[pair.first] = loop;
+            }
+        });
+    }
+}
+
+static std::pair<std::string, std::string> serialize_ast_node(const std::shared_ptr<AstNode>& node){
+    if(!node) throw std::runtime_error("serialize_ast_node: null node");
+
+    if(auto holder = std::dynamic_pointer_cast<AstHolder>(node)){
+        if(!holder->inner) throw std::runtime_error("AstHolder missing inner node");
+        BinaryWriter w;
+        auto inner = serialize_s_ast_node(holder->inner);
+        w.str(inner.first);
+        w.str(inner.second);
+        return {"AstHolder", std::move(w.data)};
+    }
+
+    if(is_s_ast_instance(node)){
+        return serialize_s_ast_node(node);
+    }
+
+    if(auto tu = std::dynamic_pointer_cast<CppTranslationUnit>(node)){
+        BinaryWriter w;
+        if(tu->includes.size() > std::numeric_limits<uint32_t>::max())
+            throw std::runtime_error("serialize_ast_node: too many includes");
+        w.u32(static_cast<uint32_t>(tu->includes.size()));
+        for(const auto& inc : tu->includes){
+            if(!inc) throw std::runtime_error("serialize_ast_node: null include");
+            w.str(inc->header);
+            w.u8(inc->angled ? 1 : 0);
+        }
+        if(tu->funcs.size() > std::numeric_limits<uint32_t>::max())
+            throw std::runtime_error("serialize_ast_node: too many functions");
+        w.u32(static_cast<uint32_t>(tu->funcs.size()));
+        for(const auto& fn : tu->funcs){
+            if(!fn) throw std::runtime_error("serialize_ast_node: null function pointer");
+            w.str(fn->name);
+        }
+        return {"CppTranslationUnit", std::move(w.data)};
+    }
+
+    if(auto fn = std::dynamic_pointer_cast<CppFunction>(node)){
+        BinaryWriter w;
+        w.str(fn->retType);
+        w.str(fn->name);
+        if(fn->params.size() > std::numeric_limits<uint32_t>::max())
+            throw std::runtime_error("serialize_ast_node: function parameter list too large");
+        w.u32(static_cast<uint32_t>(fn->params.size()));
+        for(const auto& p : fn->params){
+            w.str(p.type);
+            w.str(p.name);
+        }
+        std::string bodyName = (fn->body ? fn->body->name : std::string("body"));
+        w.str(bodyName);
+        return {"CppFunction", std::move(w.data)};
+    }
+
+    if(auto compound = std::dynamic_pointer_cast<CppCompound>(node)){
+        auto payload = serialize_cpp_compound_payload(compound);
+        return {"CppCompound", std::move(payload)};
+    }
+
+    if(auto loop = std::dynamic_pointer_cast<CppRangeFor>(node)){
+        BinaryWriter w;
+        w.str(loop->decl);
+        w.str(loop->range);
+        std::string bodyName = (loop->body ? loop->body->name : std::string("body"));
+        w.str(bodyName);
+        return {"CppRangeFor", std::move(w.data)};
+    }
+
+    throw std::runtime_error("serialize_ast_node: unsupported node type");
+}
+
+static std::shared_ptr<AstNode> deserialize_ast_node(const std::string& type,
+                                                     const std::string& payload,
+                                                     const std::string& path,
+                                                     std::vector<std::function<void()>>& fixups,
+                                                     std::unordered_map<std::string, std::shared_ptr<VfsNode>>& path_map){
+    auto basename = path_basename(path);
+
+    if(type == "AstHolder"){
+        BinaryReader r(payload);
+        auto innerType = r.str();
+        auto innerPayload = r.str();
+        r.expect_eof();
+        auto inner = deserialize_s_ast_node(innerType, innerPayload);
+        auto holder = std::make_shared<AstHolder>(basename, inner);
+        return holder;
+    }
+
+    if(is_s_ast_type(type)){
+        auto node = deserialize_s_ast_node(type, payload);
+        node->name = basename;
+        return node;
+    }
+
+    if(type == "CppTranslationUnit"){
+        BinaryReader r(payload);
+        uint32_t includeCount = r.u32();
+        auto tu = std::make_shared<CppTranslationUnit>(basename);
+        tu->includes.clear();
+        for(uint32_t i = 0; i < includeCount; ++i){
+            auto header = r.str();
+            bool angled = r.u8() != 0;
+            tu->includes.push_back(std::make_shared<CppInclude>("include", header, angled));
+        }
+        uint32_t funcCount = r.u32();
+        std::vector<std::string> funcNames;
+        funcNames.reserve(funcCount);
+        for(uint32_t i = 0; i < funcCount; ++i){
+            funcNames.push_back(r.str());
+        }
+        r.expect_eof();
+        auto weakTu = std::weak_ptr<CppTranslationUnit>(tu);
+        fixups.push_back([weakTu, path, funcNames, &path_map](){
+            auto locked = weakTu.lock();
+            if(!locked) return;
+            locked->funcs.clear();
+            for(const auto& name : funcNames){
+                auto full = join_path(path, name);
+                auto it = path_map.find(full);
+                if(it == path_map.end())
+                    throw std::runtime_error("translation unit fixup missing function node: " + full);
+                auto fn = std::dynamic_pointer_cast<CppFunction>(it->second);
+                if(!fn)
+                    throw std::runtime_error("translation unit fixup expected CppFunction at: " + full);
+                locked->funcs.push_back(fn);
+            }
+        });
+        return tu;
+    }
+
+    if(type == "CppFunction"){
+        BinaryReader r(payload);
+        auto retType = r.str();
+        auto fnName = r.str();
+        uint32_t paramCount = r.u32();
+        std::vector<CppParam> params;
+        params.reserve(paramCount);
+        for(uint32_t i = 0; i < paramCount; ++i){
+            CppParam p;
+            p.type = r.str();
+            p.name = r.str();
+            params.push_back(std::move(p));
+        }
+        auto bodyName = r.str();
+        r.expect_eof();
+        auto fn = std::make_shared<CppFunction>(basename, retType, fnName);
+        fn->retType = retType;
+        fn->name = fnName;
+        fn->params = std::move(params);
+        fn->body.reset();
+        auto weakFn = std::weak_ptr<CppFunction>(fn);
+        fixups.push_back([weakFn, path, bodyName, &path_map](){
+            auto locked = weakFn.lock();
+            if(!locked) return;
+            auto bodyPath = join_path(path, bodyName);
+            auto it = path_map.find(bodyPath);
+            if(it == path_map.end())
+                throw std::runtime_error("function fixup missing body node: " + bodyPath);
+            auto body = std::dynamic_pointer_cast<CppCompound>(it->second);
+            if(!body)
+                throw std::runtime_error("function fixup expected CppCompound at: " + bodyPath);
+            locked->body = body;
+        });
+        return fn;
+    }
+
+    if(type == "CppCompound"){
+        auto compound = std::make_shared<CppCompound>(basename);
+        deserialize_cpp_compound_into(payload, path, compound, fixups, path_map);
+        return compound;
+    }
+
+    if(type == "CppRangeFor"){
+        BinaryReader r(payload);
+        auto decl = r.str();
+        auto range = r.str();
+        auto bodyName = r.str();
+        r.expect_eof();
+        auto loop = std::make_shared<CppRangeFor>(basename, decl, range);
+        loop->body.reset();
+        auto weakLoop = std::weak_ptr<CppRangeFor>(loop);
+        fixups.push_back([weakLoop, path, bodyName, &path_map](){
+            auto locked = weakLoop.lock();
+            if(!locked) return;
+            auto bodyPath = join_path(path, bodyName);
+            auto it = path_map.find(bodyPath);
+            if(it == path_map.end())
+                throw std::runtime_error("rangefor fixup missing body node: " + bodyPath);
+            auto body = std::dynamic_pointer_cast<CppCompound>(it->second);
+            if(!body)
+                throw std::runtime_error("rangefor fixup expected CppCompound at: " + bodyPath);
+            locked->body = body;
+        });
+        return loop;
+    }
+
+    throw std::runtime_error("deserialize_ast_node: unsupported node type '" + type + "'");
 }
 
 static std::string join_args(const std::vector<std::string>& args, size_t start = 0){

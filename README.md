@@ -44,7 +44,7 @@ Environment variables:
 
 ## Overlays
 
-`codex` can load multiple persistent overlays simultaneously. Use `overlay.mount <name> <file>` to register a VFS snapshot (text format headed by `# codex-vfs-overlay 1`). The shell shows aggregated directory listings across matching overlays, `overlay.list` prints the active stack (`*` = primary write target, `+` = visible at the current path), and `overlay.unmount <name>` detaches an overlay (base overlay `0` is permanent). The active read/write policy can be tuned via `overlay.policy manual|oldest|newest`; under `manual` (default) ambiguous paths require `overlay.use <name>` to pick the write target, while `oldest`/`newest` resolve ties automatically. Persist a snapshot back to disk with `overlay.save <name> <file>` (directories are emitted before file payloads; non-file nodes are rejected for now so you can see the limitation immediately).
+`codex` can load multiple persistent overlays simultaneously. Use `overlay.mount <name> <file>` to register a VFS snapshot (text format headed by `# codex-vfs-overlay 2`). The shell shows aggregated directory listings across matching overlays, `overlay.list` prints the active stack (`*` = primary write target, `+` = visible at the current path), and `overlay.unmount <name>` detaches an overlay (base overlay `0` is permanent). The active read/write policy can be tuned via `overlay.policy manual|oldest|newest`; under `manual` (default) ambiguous paths require `overlay.use <name>` to pick the write target, while `oldest`/`newest` resolve ties automatically. Persist a snapshot back to disk with `overlay.save <name> <file>` — directories, regular files, and AST nodes now round-trip so parsed S-expressions and C++ builder artifacts survive reloads.
 
 ## Solutions
 
