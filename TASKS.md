@@ -3,9 +3,6 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 
 ## Upcoming: important (in order)
-- when I run "python tools/test_harness.py --target llama -v" I see some fails even though they shouldn't. I think you should add c++ compiler and to compile and to run given programs to make them pass. We can't really pass or fail these responses based on AST. We can only pass them if they echo some expected message. So you need to change all tests made by test_harness to compare echoed text to expected
-	- safe sandbox for running these executables
-	- tests/003-string-view.sexp seems to hang for me and do something incorrect: it just prints tools
 - vfs as persistent file. have single and/or multiple files, which encodes the content of the data in a way, that git commits work well (diffs or binary diffs?), and is size efficient too
 	- autoload, if the app is ran in a directory with a default name file. (default name is yet to be decided; maybe like title of the directory + ".cx" ext)
 	- autosave, backup save, restore from crash,
@@ -73,6 +70,14 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 ## 
 
 ## Completed
+- **Test harness C++ compilation and execution** (2025-10-07):
+  - test_harness.py now compiles generated C++ code using g++/c++ with -std=c++17 -O2
+  - Added Linux sandbox execution using unshare (Gentoo-style) with timeout fallback for non-privileged environments
+  - Implemented runtime output validation with `expected-runtime-output` field supporting contains/not-contains/equals assertions
+  - All test .sexp files updated with runtime expectations for program output verification
+  - Tests now verify actual program behavior (compilation + execution), not just AST structure
+  - Sandbox provides network/PID namespace isolation on Linux, gracefully falls back to timeout-only when privileges unavailable
+  - Compile timeout: 30s, execution timeout: 10s with automatic temp file cleanup
 - Renamed Stage1 to VfsShell and updated all references (Makefile, header guards, documentation, test harness)
 - Created VfsShell/AGENTS.md documenting implementation architecture (VFS design, S-expression language, C++ AST builder, AI bridge, code organization with line numbers, extension points)
 - Linked VfsShell/AGENTS.md from root AGENTS.md under "Implementation details" section
