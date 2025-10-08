@@ -4819,7 +4819,7 @@ int main(int argc, char** argv){
         std::cout << "note: auto-load plan.vfs failed: " << e.what() << "\n";
     }
 
-    std::cout << "codex-mini 🌲 VFS+AST+AI — 'help' kertoo karun totuuden.\n";
+    std::cout << "VfsShell 🌲 VFS+AST+AI — type 'help' for available commands.\n";
     string line;
     // Daemon mode: run server and exit
     if(daemon_port > 0){
@@ -5757,7 +5757,7 @@ int main(int argc, char** argv){
             // nothing
 
         } else {
-            std::cout << "tuntematon komento. 'help' kertoo karun totuuden.\n";
+            std::cout << "error: unknown command. Type 'help' for available commands.\n";
             result.success = false;
         }
 
@@ -5824,7 +5824,10 @@ int main(int argc, char** argv){
 
         if(!have_line) break;
 
-        if(trim_copy(line).empty()) continue;
+        auto trimmed = trim_copy(line);
+        if(trimmed.empty()) continue;
+        // Skip comment lines starting with #
+        if(!trimmed.empty() && trimmed[0] == '#') continue;
         try{
             auto tokens = tokenize_command_line(line);
             if(tokens.empty()) continue;
