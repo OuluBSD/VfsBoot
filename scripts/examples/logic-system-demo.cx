@@ -1,0 +1,88 @@
+# Logic System and Tag Mining Demo
+# Run with: ./codex scripts/examples/logic-system-demo.cx
+#
+# This script demonstrates the logic-based tag system with theorem proving:
+# - Tag inference with forward chaining
+# - Consistency checking and conflict detection
+# - Tag mining workflow
+# - SAT solving for formula satisfiability
+# - Inference explanation
+
+echo "=== Logic System and Tag Mining Demo ==="
+echo ""
+
+echo "1. Initialize logic engine with hardcoded rules"
+logic.init
+echo ""
+
+echo "2. List all loaded rules"
+logic.listrules
+echo ""
+
+echo "3. Test tag inference (fast → cached)"
+echo "   Input: fast, offline"
+logic.infer fast offline
+echo ""
+
+echo "4. Test consistency checking (offline + network = conflict)"
+echo "   Input: offline, network"
+logic.check offline network
+echo ""
+
+echo "5. Test consistency checking (consistent tags)"
+echo "   Input: fast, cached, offline"
+logic.check fast cached offline
+echo ""
+
+echo "6. Explain inference (why cached is inferred from fast)"
+logic.explain cached fast
+echo ""
+
+echo "7. Explain inference (why offline is inferred from local-only)"
+logic.explain offline local-only
+echo ""
+
+echo "8. Test SAT solver (can fast and cached coexist?)"
+logic.sat fast cached
+echo ""
+
+echo "9. Test SAT solver (can offline and network coexist?)"
+logic.sat offline network
+echo ""
+
+echo "10. Tag mining workflow - start session"
+echo "    User provides: fast, local-only"
+tag.mine.start fast local-only
+echo ""
+
+echo "11. Check mining session status"
+tag.mine.status
+echo ""
+
+echo "12. Provide feedback on inferred tags"
+echo "    Accepting 'offline' tag"
+tag.mine.feedback offline yes
+echo ""
+
+echo "13. Provide feedback on another inferred tag"
+echo "    Rejecting 'cached' tag"
+tag.mine.feedback cached no
+echo ""
+
+echo "14. Check final mining session status"
+tag.mine.status
+echo ""
+
+echo "15. Complex inference chain test"
+echo "    Input: no-network"
+echo "    Expected: should infer offline, then infer NOT network"
+logic.infer no-network
+echo ""
+
+echo "16. Test mutually exclusive tags"
+echo "    Input: cache-write-through, cache-write-back"
+echo "    Expected: conflict (cannot have both)"
+logic.check cache-write-through cache-write-back
+echo ""
+
+echo "=== Demo Complete ==="

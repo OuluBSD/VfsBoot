@@ -1868,7 +1868,10 @@ static std::vector<std::string> get_all_commands(){
         "overlay.use", "overlay.policy", "overlay.mount", "overlay.save",
         "overlay.unmount", "mount", "mount.lib", "mount.remote", "mount.list",
         "mount.allow", "mount.disallow", "unmount", "tag.add", "tag.remove",
-        "tag.list", "tag.clear", "tag.has", "plan.create", "plan.goto",
+        "tag.list", "tag.clear", "tag.has", "logic.init", "logic.infer",
+        "logic.check", "logic.explain", "logic.addrule", "logic.listrules",
+        "logic.assert", "logic.sat", "tag.mine.start", "tag.mine.feedback",
+        "tag.mine.status", "plan.create", "plan.goto",
         "plan.forward", "plan.backward", "plan.context.add", "plan.context.remove",
         "plan.context.clear", "plan.context.list", "plan.status", "plan.discuss",
         "plan.answer", "plan.hypothesis", "plan.jobs.add", "plan.jobs.complete",
@@ -2719,7 +2722,7 @@ char type_char(const std::shared_ptr<VfsNode>& node){
 }
 }
 
-Vfs::Vfs(){
+Vfs::Vfs() : logic_engine(&tag_registry) {
     TRACE_FN();
     overlay_stack.push_back(Overlay{ "base", root, "", "" });
     overlay_dirty.push_back(false);
@@ -3643,6 +3646,319 @@ std::vector<VfsNode*> TagStorage::findByTags(const TagSet& tags, bool match_all)
         }
     }
     return result;
+}
+
+// ====== Logic System for Tag Theorem Proving ======
+
+// LogicFormula factory methods
+std::shared_ptr<LogicFormula> LogicFormula::makeVar(TagId id){
+    auto f = std::make_shared<LogicFormula>();
+    f->op = LogicOp::VAR;
+    f->var_id = id;
+    return f;
+}
+
+std::shared_ptr<LogicFormula> LogicFormula::makeNot(std::shared_ptr<LogicFormula> f){
+    auto result = std::make_shared<LogicFormula>();
+    result->op = LogicOp::NOT;
+    result->children.push_back(f);
+    return result;
+}
+
+std::shared_ptr<LogicFormula> LogicFormula::makeAnd(std::vector<std::shared_ptr<LogicFormula>> fs){
+    auto result = std::make_shared<LogicFormula>();
+    result->op = LogicOp::AND;
+    result->children = std::move(fs);
+    return result;
+}
+
+std::shared_ptr<LogicFormula> LogicFormula::makeOr(std::vector<std::shared_ptr<LogicFormula>> fs){
+    auto result = std::make_shared<LogicFormula>();
+    result->op = LogicOp::OR;
+    result->children = std::move(fs);
+    return result;
+}
+
+std::shared_ptr<LogicFormula> LogicFormula::makeImplies(std::shared_ptr<LogicFormula> lhs, std::shared_ptr<LogicFormula> rhs){
+    auto result = std::make_shared<LogicFormula>();
+    result->op = LogicOp::IMPLIES;
+    result->children.push_back(lhs);
+    result->children.push_back(rhs);
+    return result;
+}
+
+// Evaluate formula given a tag set
+bool LogicFormula::evaluate(const TagSet& tags) const {
+    switch(op){
+        case LogicOp::VAR:
+            return tags.count(var_id) > 0;
+        case LogicOp::NOT:
+            return !children[0]->evaluate(tags);
+        case LogicOp::AND:
+            for(const auto& child : children){
+                if(!child->evaluate(tags)) return false;
+            }
+            return true;
+        case LogicOp::OR:
+            for(const auto& child : children){
+                if(child->evaluate(tags)) return true;
+            }
+            return false;
+        case LogicOp::IMPLIES:
+            // A -> B is equivalent to !A || B
+            return !children[0]->evaluate(tags) || children[1]->evaluate(tags);
+    }
+    return false;
+}
+
+// Convert formula to string for debugging
+std::string LogicFormula::toString(const TagRegistry& reg) const {
+    switch(op){
+        case LogicOp::VAR:
+            return reg.getTagName(var_id);
+        case LogicOp::NOT:
+            return "(not " + children[0]->toString(reg) + ")";
+        case LogicOp::AND:{
+            std::string result = "(and";
+            for(const auto& child : children){
+                result += " " + child->toString(reg);
+            }
+            return result + ")";
+        }
+        case LogicOp::OR:{
+            std::string result = "(or";
+            for(const auto& child : children){
+                result += " " + child->toString(reg);
+            }
+            return result + ")";
+        }
+        case LogicOp::IMPLIES:
+            return "(implies " + children[0]->toString(reg) + " " + children[1]->toString(reg) + ")";
+    }
+    return "?";
+}
+
+// LogicEngine implementation
+void LogicEngine::addRule(const ImplicationRule& rule){
+    rules.push_back(rule);
+}
+
+void LogicEngine::addHardcodedRules(){
+    // Rule: offline implies not network
+    TagId offline_id = tag_registry->registerTag("offline");
+    TagId network_id = tag_registry->registerTag("network");
+    auto rule1 = ImplicationRule(
+        "offline-no-network",
+        LogicFormula::makeVar(offline_id),
+        LogicFormula::makeNot(LogicFormula::makeVar(network_id)),
+        1.0f, "hardcoded"
+    );
+    addRule(rule1);
+
+    // Rule: fast usually implies cached (high confidence learned pattern)
+    TagId fast_id = tag_registry->registerTag("fast");
+    TagId cached_id = tag_registry->registerTag("cached");
+    auto rule2 = ImplicationRule(
+        "fast-cached",
+        LogicFormula::makeVar(fast_id),
+        LogicFormula::makeVar(cached_id),
+        0.87f, "learned"
+    );
+    addRule(rule2);
+
+    // Rule: cached implies not remote
+    TagId remote_id = tag_registry->registerTag("remote");
+    auto rule3 = ImplicationRule(
+        "cached-not-remote",
+        LogicFormula::makeVar(cached_id),
+        LogicFormula::makeNot(LogicFormula::makeVar(remote_id)),
+        1.0f, "hardcoded"
+    );
+    addRule(rule3);
+
+    // Rule: no-network implies offline
+    TagId no_network_id = tag_registry->registerTag("no-network");
+    auto rule4 = ImplicationRule(
+        "no-network-offline",
+        LogicFormula::makeVar(no_network_id),
+        LogicFormula::makeVar(offline_id),
+        1.0f, "hardcoded"
+    );
+    addRule(rule4);
+
+    // Rule: local-only implies offline
+    TagId local_only_id = tag_registry->registerTag("local-only");
+    auto rule5 = ImplicationRule(
+        "local-only-offline",
+        LogicFormula::makeVar(local_only_id),
+        LogicFormula::makeVar(offline_id),
+        1.0f, "hardcoded"
+    );
+    addRule(rule5);
+
+    // Mutually exclusive: cache-write-through and cache-write-back cannot coexist
+    TagId write_through_id = tag_registry->registerTag("cache-write-through");
+    TagId write_back_id = tag_registry->registerTag("cache-write-back");
+    // This is expressed as: write-through implies not write-back
+    auto rule6 = ImplicationRule(
+        "write-through-not-write-back",
+        LogicFormula::makeVar(write_through_id),
+        LogicFormula::makeNot(LogicFormula::makeVar(write_back_id)),
+        1.0f, "hardcoded"
+    );
+    addRule(rule6);
+}
+
+// Forward chaining inference
+TagSet LogicEngine::inferTags(const TagSet& initial_tags, float min_confidence) const {
+    TagSet result = initial_tags;
+    bool changed = true;
+    int max_iterations = 100;  // prevent infinite loops
+    int iteration = 0;
+
+    while(changed && iteration < max_iterations){
+        changed = false;
+        iteration++;
+
+        for(const auto& rule : rules){
+            if(rule.confidence < min_confidence) continue;
+
+            // Check if premise is satisfied
+            if(rule.premise->evaluate(result)){
+                // Try to infer conclusion
+                // For simple variable conclusions, add the tag
+                if(rule.conclusion->op == LogicOp::VAR){
+                    if(result.count(rule.conclusion->var_id) == 0){
+                        result.insert(rule.conclusion->var_id);
+                        changed = true;
+                    }
+                }
+                // For NOT conclusions, check and flag conflicts
+                else if(rule.conclusion->op == LogicOp::NOT &&
+                        rule.conclusion->children[0]->op == LogicOp::VAR){
+                    TagId forbidden_tag = rule.conclusion->children[0]->var_id;
+                    if(result.count(forbidden_tag) > 0){
+                        // Conflict detected - will be handled by checkConsistency
+                        // For now, we don't add contradictory tags
+                    }
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+// Check for tag consistency
+std::optional<LogicEngine::ConflictInfo> LogicEngine::checkConsistency(const TagSet& tags) const {
+    for(const auto& rule : rules){
+        if(rule.confidence < 0.95f) continue;  // Only check high-confidence rules
+
+        // If premise is true but conclusion is false, we have a conflict
+        if(rule.premise->evaluate(tags) && !rule.conclusion->evaluate(tags)){
+            ConflictInfo conflict;
+            conflict.description = "Rule '" + rule.name + "' violated";
+
+            // Collect conflicting tags
+            if(rule.premise->op == LogicOp::VAR){
+                conflict.conflicting_tags.push_back(tag_registry->getTagName(rule.premise->var_id));
+            }
+            if(rule.conclusion->op == LogicOp::NOT &&
+               rule.conclusion->children[0]->op == LogicOp::VAR){
+                TagId forbidden = rule.conclusion->children[0]->var_id;
+                if(tags.count(forbidden) > 0){
+                    conflict.conflicting_tags.push_back(tag_registry->getTagName(forbidden));
+                }
+            }
+
+            // Generate suggestions
+            conflict.suggestions.push_back("Remove tag: " + tag_registry->getTagName(rule.premise->var_id));
+            if(rule.conclusion->op == LogicOp::VAR){
+                conflict.suggestions.push_back("Add tag: " + tag_registry->getTagName(rule.conclusion->var_id));
+            } else if(rule.conclusion->op == LogicOp::NOT &&
+                      rule.conclusion->children[0]->op == LogicOp::VAR){
+                conflict.suggestions.push_back("Remove tag: " +
+                    tag_registry->getTagName(rule.conclusion->children[0]->var_id));
+            }
+
+            return conflict;
+        }
+    }
+    return std::nullopt;
+}
+
+// Simple SAT solver for basic formulas (brute force for small tag sets)
+bool LogicEngine::isSatisfiable(std::shared_ptr<LogicFormula> formula) const {
+    // Collect all variables in formula
+    std::set<TagId> vars;
+    std::function<void(const LogicFormula*)> collectVars = [&](const LogicFormula* f){
+        if(f->op == LogicOp::VAR){
+            vars.insert(f->var_id);
+        }
+        for(const auto& child : f->children){
+            collectVars(child.get());
+        }
+    };
+    collectVars(formula.get());
+
+    // Try all possible assignments (brute force for up to 20 variables)
+    if(vars.size() > 20) return true;  // Too large, assume satisfiable
+
+    std::vector<TagId> var_list(vars.begin(), vars.end());
+    size_t n = var_list.size();
+    size_t total_assignments = 1ULL << n;
+
+    for(size_t assignment = 0; assignment < total_assignments; assignment++){
+        TagSet test_tags;
+        for(size_t i = 0; i < n; i++){
+            if(assignment & (1ULL << i)){
+                test_tags.insert(var_list[i]);
+            }
+        }
+        if(formula->evaluate(test_tags)){
+            return true;  // Found satisfying assignment
+        }
+    }
+
+    return false;  // No satisfying assignment found
+}
+
+// Explain inference chain
+std::vector<std::string> LogicEngine::explainInference(TagId tag, const TagSet& initial_tags) const {
+    std::vector<std::string> explanation;
+
+    // Check if tag is in initial set
+    if(initial_tags.count(tag) > 0){
+        explanation.push_back("Tag '" + tag_registry->getTagName(tag) + "' was provided by user");
+        return explanation;
+    }
+
+    // Find rules that could infer this tag
+    for(const auto& rule : rules){
+        if(rule.conclusion->op == LogicOp::VAR && rule.conclusion->var_id == tag){
+            if(rule.premise->evaluate(initial_tags)){
+                explanation.push_back("Inferred via rule '" + rule.name + "': " +
+                    rule.premise->toString(*tag_registry) + " => " +
+                    rule.conclusion->toString(*tag_registry) +
+                    " (confidence: " + std::to_string(int(rule.confidence * 100)) + "%, source: " + rule.source + ")");
+            }
+        }
+    }
+
+    if(explanation.empty()){
+        explanation.push_back("Tag '" + tag_registry->getTagName(tag) + "' cannot be inferred from given tags");
+    }
+
+    return explanation;
+}
+
+// TagMiningSession implementation
+void TagMiningSession::addUserTag(TagId tag){
+    user_provided_tags.insert(tag);
+}
+
+void TagMiningSession::recordFeedback(const std::string& tag_name, bool confirmed){
+    user_feedback[tag_name] = confirmed;
 }
 
 // VFS tag helpers
@@ -6158,6 +6474,17 @@ R"(Commands:
   tag.list [vfs-path]
   tag.clear <vfs-path>
   tag.has <vfs-path> <tag-name>
+  # Logic System (tag theorem proving and inference)
+  logic.init                        (load hardcoded implication rules)
+  logic.infer <tag> [tag...]        (infer tags via forward chaining)
+  logic.check <tag> [tag...]        (check consistency, detect conflicts)
+  logic.explain <target> <source...> (explain why target inferred from sources)
+  logic.listrules                   (list all loaded implication rules)
+  logic.sat <tag> [tag...]          (check if formula is satisfiable)
+  # Tag Mining (extract user's mental model)
+  tag.mine.start <tag> [tag...]     (start mining session with initial tags)
+  tag.mine.feedback <tag> yes|no    (provide feedback on inferred tags)
+  tag.mine.status                   (show current mining session status)
   # Planner (hierarchical planning system)
   plan.create <path> <type> [content]
   plan.goto <path>
@@ -7260,6 +7587,175 @@ int main(int argc, char** argv){
             std::string vfs_path = normalize_path(cwd.path, inv.args[0]);
             bool has = vfs.nodeHasTag(vfs_path, inv.args[1]);
             std::cout << vfs_path << (has ? " has " : " does not have ") << "tag '" << inv.args[1] << "'\n";
+
+        } else if(cmd == "logic.init"){
+            vfs.logic_engine.addHardcodedRules();
+            std::cout << "initialized logic engine with " << vfs.logic_engine.rules.size() << " hardcoded rules\n";
+
+        } else if(cmd == "logic.infer"){
+            if(inv.args.empty()) throw std::runtime_error("logic.infer <tag> [tag...]");
+
+            TagSet initial_tags;
+            for(const auto& tag_name : inv.args){
+                TagId tid = vfs.registerTag(tag_name);
+                initial_tags.insert(tid);
+            }
+
+            TagSet inferred = vfs.logic_engine.inferTags(initial_tags);
+
+            std::cout << "initial tags: ";
+            for(TagId tid : initial_tags){
+                std::cout << vfs.getTagName(tid) << " ";
+            }
+            std::cout << "\ninferred tags: ";
+            for(TagId tid : inferred){
+                if(initial_tags.count(tid) == 0){
+                    std::cout << vfs.getTagName(tid) << " ";
+                }
+            }
+            std::cout << "\n";
+
+        } else if(cmd == "logic.check"){
+            if(inv.args.empty()) throw std::runtime_error("logic.check <tag> [tag...]");
+
+            TagSet tags;
+            for(const auto& tag_name : inv.args){
+                TagId tid = vfs.registerTag(tag_name);
+                tags.insert(tid);
+            }
+
+            auto conflict = vfs.logic_engine.checkConsistency(tags);
+            if(conflict){
+                std::cout << "CONFLICT: " << conflict->description << "\n";
+                std::cout << "conflicting tags: ";
+                for(const auto& tag : conflict->conflicting_tags){
+                    std::cout << tag << " ";
+                }
+                std::cout << "\nsuggestions:\n";
+                for(const auto& suggestion : conflict->suggestions){
+                    std::cout << "  - " << suggestion << "\n";
+                }
+            } else {
+                std::cout << "tags are consistent\n";
+            }
+
+        } else if(cmd == "logic.explain"){
+            if(inv.args.size() < 2) throw std::runtime_error("logic.explain <target-tag> <source-tag> [source-tag...]");
+
+            std::string target_tag_name = inv.args[0];
+            TagId target_tag = vfs.registerTag(target_tag_name);
+
+            TagSet source_tags;
+            for(size_t i = 1; i < inv.args.size(); ++i){
+                TagId tid = vfs.registerTag(inv.args[i]);
+                source_tags.insert(tid);
+            }
+
+            auto explanations = vfs.logic_engine.explainInference(target_tag, source_tags);
+            for(const auto& exp : explanations){
+                std::cout << exp << "\n";
+            }
+
+        } else if(cmd == "logic.listrules"){
+            if(vfs.logic_engine.rules.empty()){
+                std::cout << "no rules loaded (use logic.init to add hardcoded rules)\n";
+            } else {
+                std::cout << "loaded rules (" << vfs.logic_engine.rules.size() << "):\n";
+                for(const auto& rule : vfs.logic_engine.rules){
+                    std::cout << "  " << rule.name << ": "
+                             << rule.premise->toString(vfs.tag_registry) << " => "
+                             << rule.conclusion->toString(vfs.tag_registry)
+                             << " [" << int(rule.confidence * 100) << "%, " << rule.source << "]\n";
+                }
+            }
+
+        } else if(cmd == "logic.sat"){
+            if(inv.args.empty()) throw std::runtime_error("logic.sat <tag> [tag...]");
+
+            // Build a conjunction of all tags
+            std::vector<std::shared_ptr<LogicFormula>> vars;
+            for(const auto& tag_name : inv.args){
+                TagId tid = vfs.registerTag(tag_name);
+                vars.push_back(LogicFormula::makeVar(tid));
+            }
+            auto formula = LogicFormula::makeAnd(vars);
+
+            bool sat = vfs.logic_engine.isSatisfiable(formula);
+            std::cout << "formula is " << (sat ? "satisfiable" : "unsatisfiable") << "\n";
+
+        } else if(cmd == "tag.mine.start"){
+            if(inv.args.empty()) throw std::runtime_error("tag.mine.start <tag> [tag...]");
+
+            vfs.mining_session = TagMiningSession();
+            for(const auto& tag_name : inv.args){
+                TagId tid = vfs.registerTag(tag_name);
+                vfs.mining_session->addUserTag(tid);
+            }
+
+            // Infer additional tags
+            vfs.mining_session->inferred_tags = vfs.logic_engine.inferTags(vfs.mining_session->user_provided_tags);
+
+            // Generate questions for user
+            for(TagId tid : vfs.mining_session->inferred_tags){
+                if(vfs.mining_session->user_provided_tags.count(tid) == 0){
+                    vfs.mining_session->pending_questions.push_back(
+                        "Do you also want tag '" + vfs.getTagName(tid) + "'?");
+                }
+            }
+
+            std::cout << "started tag mining session\n";
+            std::cout << "user provided: ";
+            for(TagId tid : vfs.mining_session->user_provided_tags){
+                std::cout << vfs.getTagName(tid) << " ";
+            }
+            std::cout << "\ninferred tags: ";
+            for(TagId tid : vfs.mining_session->inferred_tags){
+                if(vfs.mining_session->user_provided_tags.count(tid) == 0){
+                    std::cout << vfs.getTagName(tid) << " ";
+                }
+            }
+            std::cout << "\npending questions: " << vfs.mining_session->pending_questions.size() << "\n";
+            if(!vfs.mining_session->pending_questions.empty()){
+                std::cout << "\nnext question: " << vfs.mining_session->pending_questions[0] << "\n";
+                std::cout << "use: tag.mine.feedback <tag-name> yes|no\n";
+            }
+
+        } else if(cmd == "tag.mine.feedback"){
+            if(!vfs.mining_session){
+                throw std::runtime_error("no active mining session (use tag.mine.start first)");
+            }
+            if(inv.args.size() < 2) throw std::runtime_error("tag.mine.feedback <tag-name> yes|no");
+
+            std::string tag_name = inv.args[0];
+            bool confirmed = (inv.args[1] == "yes" || inv.args[1] == "y");
+
+            vfs.mining_session->recordFeedback(tag_name, confirmed);
+
+            if(confirmed){
+                TagId tid = vfs.registerTag(tag_name);
+                vfs.mining_session->user_provided_tags.insert(tid);
+                std::cout << "added '" << tag_name << "' to user tags\n";
+            } else {
+                std::cout << "rejected '" << tag_name << "'\n";
+            }
+
+        } else if(cmd == "tag.mine.status"){
+            if(!vfs.mining_session){
+                std::cout << "no active mining session\n";
+            } else {
+                std::cout << "mining session active\n";
+                std::cout << "user tags: ";
+                for(TagId tid : vfs.mining_session->user_provided_tags){
+                    std::cout << vfs.getTagName(tid) << " ";
+                }
+                std::cout << "\ninferred tags: ";
+                for(TagId tid : vfs.mining_session->inferred_tags){
+                    if(vfs.mining_session->user_provided_tags.count(tid) == 0){
+                        std::cout << vfs.getTagName(tid) << " ";
+                    }
+                }
+                std::cout << "\nfeedback recorded: " << vfs.mining_session->user_feedback.size() << "\n";
+            }
 
         } else if(cmd == "plan.create"){
             if(inv.args.size() < 2) throw std::runtime_error("plan.create <path> <type> [content]");

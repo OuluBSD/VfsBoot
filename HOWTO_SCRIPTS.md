@@ -95,6 +95,48 @@ Shows how to:
 - Work with multiple VFS layers
 - List and manage overlays
 
+**scripts/examples/action-planner-demo.cx** - Action planner and context building:
+```bash
+./codex scripts/examples/action-planner-demo.cx
+```
+Demonstrates:
+- Tag-based filtering and context building
+- Path and content filters
+- Token budget management
+- Code replacement strategies
+
+**scripts/examples/tree-viz-context-demo.cx** - Advanced tree visualization:
+```bash
+./codex scripts/examples/tree-viz-context-demo.cx
+```
+Shows:
+- Box-drawing character trees
+- ANSI color coding
+- Tag and size displays
+- Advanced context builder with deduplication
+
+**scripts/examples/hypothesis-testing-demo.cx** - Hypothesis testing system:
+```bash
+./codex scripts/examples/hypothesis-testing-demo.cx
+```
+Demonstrates 5 levels of hypothesis testing:
+- Simple query (pattern matching)
+- Code modification (error handling)
+- Refactoring (duplicate detection)
+- Feature addition (logging)
+- Architecture (design patterns)
+
+**scripts/examples/logic-system-demo.cx** - Logic system and tag mining:
+```bash
+./codex scripts/examples/logic-system-demo.cx
+```
+Demonstrates:
+- Tag inference with forward chaining
+- Consistency checking and conflict detection
+- Tag mining workflow
+- SAT solving for formula satisfiability
+- Inference explanation
+
 ## Running .sexp Scripts
 
 S-expression scripts are primarily used by the test harness, but can be run manually:

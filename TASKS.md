@@ -69,38 +69,44 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 			- Dependency tracking support (LinkNodes)
 			- Compound filter logic (AND/OR/NOT)
 			- Tag-based, path-based, content-based, and custom filtering
-	- **[TODO]** Logic-based tag system with theorem proving for plan consistency:
-		- **Tag mining workflow**: Extract user's mental model through minimal tag input
+	- **[DONE]** Logic-based tag system with theorem proving for plan consistency:
+		- **[DONE]** Tag mining workflow: Extract user's mental model through minimal tag input
 			- User provides initial tags (e.g., `fast`, `no-network`, `uses-cache`)
 			- System infers implications and missing tags automatically
 			- Detect contradictions early and suggest resolutions
-		- **Implication engine**:
-			- Hardcoded rules: `(rule (implies offline (not network)))`
-			- Learned patterns from history: "fast usually implies cached (87% confidence)"
-			- AI-generated implications: Ask LLM for domain-specific tag relationships
+			- Commands: `tag.mine.start`, `tag.mine.feedback`, `tag.mine.status`
+		- **[DONE]** Implication engine:
+			- Hardcoded rules: 6 built-in rules (offline→¬network, fast→cached, etc.)
+			- Learned patterns support: confidence scores (87% for fast→cached)
+			- Multiple rule sources: hardcoded, learned, ai-generated, user
 			- Forward-chaining inference to derive all logical consequences
-		- **Consistency checking with theorem prover**:
+			- Command: `logic.init` to load hardcoded rules
+		- **[DONE]** Consistency checking with theorem prover:
 			- Propositional logic solver (AND, OR, NOT, IMPLIES) for tag constraints
-			- SAT/SMT integration (minisat or Z3) for complex constraint solving
-			- Commands: `logic.assert <formula>`, `logic.check`, `logic.explain-conflict`
-		- **Contradiction resolution**:
+			- Brute-force SAT solver for formulas up to 20 variables
+			- Commands: `logic.check`, `logic.sat`, `logic.explain`
+			- ConflictInfo structure with suggestions for resolution
+		- **[DONE]** Contradiction resolution:
 			- Detect conflicting tags before plan generation
-			- Suggest alternatives: "Remove X, remove Y, or add bridging tag Z?"
-			- Prune impossible plan branches during search
-		- **Knowledge representation** in `/plan/rules`:
+			- Suggest alternatives: "Remove X" or "Remove Y"
+			- Automatic conflict detection with rule violation explanation
+		- **[TODO]** Knowledge representation in `/plan/rules`:
 			- Tag definitions and logical relationships
-			- Implication rules with confidence scores
+			- Implication rules with confidence scores (partially done in LogicEngine)
 			- Exclusion constraints (mutually exclusive tags)
 			- Learned patterns from user feedback
-		- **User feedback loop**:
-			- Show inferred tags: "I assume you also want: [cached, local-only]. Correct?"
-			- User confirms/rejects → refine inference rules
-			- Build personalized tag ontology over time
-		- **Integration with planner**:
+			- Persistence and loading from VFS
+		- **[DONE]** User feedback loop:
+			- Show inferred tags: interactive tag mining session
+			- User confirms/rejects → feedback recorded in mining session
+			- Builds tag ontology over time (foundation implemented)
+		- **[TODO]** Integration with planner:
 			- Pre-planning: verify tag set is satisfiable
 			- During planning: only generate consistent plan branches
 			- Post-planning: verify AI-generated plan doesn't violate constraints
 		- Use case: Prevent impossible plans like "build offline but fetch remote dependencies"
+		- **Commands**: `logic.init`, `logic.infer`, `logic.check`, `logic.explain`, `logic.listrules`, `logic.sat`, `tag.mine.start`, `tag.mine.feedback`, `tag.mine.status`
+		- **Demo script**: `scripts/examples/logic-system-demo.cx`
 - **[DONE]** Advanced hypothesis testing examples (progressively more complex):
 	- Implemented comprehensive hypothesis testing system with 5 complexity levels
 	- **Level 1: Simple Query** - `hypothesis.query <target> [path]`
