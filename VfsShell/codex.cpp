@@ -67,6 +67,75 @@ namespace codex_trace {
 }
 #endif
 
+//
+// Internationalization implementation
+//
+namespace i18n {
+    namespace {
+        enum class Lang { EN, FI };
+        Lang current_lang = Lang::EN;
+
+        struct MsgTable {
+            const char* en;
+#ifdef CODEX_I18N_ENABLED
+            const char* fi;
+#endif
+        };
+
+        const MsgTable messages[] = {
+            // WELCOME
+            { "VfsShell 🌲 VFS+AST+AI — type 'help' for available commands."
+#ifdef CODEX_I18N_ENABLED
+            , "VfsShell 🌲 VFS+AST+AI — 'help' kertoo karun totuuden."
+#endif
+            },
+            // UNKNOWN_COMMAND
+            { "error: unknown command. Type 'help' for available commands."
+#ifdef CODEX_I18N_ENABLED
+            , "virhe: tuntematon komento. 'help' kertoo karun totuuden."
+#endif
+            },
+        };
+
+        Lang detect_language() {
+            const char* lang_env = std::getenv("LANG");
+            if(!lang_env) lang_env = std::getenv("LC_MESSAGES");
+            if(!lang_env) lang_env = std::getenv("LC_ALL");
+
+            if(lang_env) {
+                std::string lang_str(lang_env);
+                if(lang_str.find("fi_") == 0 || lang_str.find("fi.") == 0 ||
+                   lang_str.find("finnish") != std::string::npos ||
+                   lang_str.find("Finnish") != std::string::npos) {
+                    return Lang::FI;
+                }
+            }
+            return Lang::EN;
+        }
+    }
+
+    void init() {
+#ifdef CODEX_I18N_ENABLED
+        current_lang = detect_language();
+#else
+        current_lang = Lang::EN;
+#endif
+    }
+
+    const char* get(MsgId id) {
+        size_t idx = static_cast<size_t>(id);
+        if(idx >= sizeof(messages) / sizeof(messages[0])) {
+            return "??? missing translation ???";
+        }
+#ifdef CODEX_I18N_ENABLED
+        if(current_lang == Lang::FI) {
+            return messages[idx].fi;
+        }
+#endif
+        return messages[idx].en;
+    }
+}
+
 static std::string trim_copy(const std::string& s){
     size_t a = 0, b = s.size();
     while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
@@ -4685,6 +4754,7 @@ int main(int argc, char** argv){
     TRACE_FN();
     using std::string; using std::shared_ptr;
     std::ios::sync_with_stdio(false); std::cin.tie(nullptr);
+    i18n::init();
     snippets::initialize(argc > 0 ? argv[0] : nullptr);
 
     auto usage = [&](const std::string& msg){
@@ -4819,7 +4889,7 @@ int main(int argc, char** argv){
         std::cout << "note: auto-load plan.vfs failed: " << e.what() << "\n";
     }
 
-    std::cout << "VfsShell 🌲 VFS+AST+AI — type 'help' for available commands.\n";
+    std::cout << _(WELCOME) << "\n";
     string line;
     // Daemon mode: run server and exit
     if(daemon_port > 0){
@@ -5757,7 +5827,7 @@ int main(int argc, char** argv){
             // nothing
 
         } else {
-            std::cout << "error: unknown command. Type 'help' for available commands.\n";
+            std::cout << _(UNKNOWN_COMMAND) << "\n";
             result.success = false;
         }
 

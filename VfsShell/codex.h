@@ -63,6 +63,26 @@ namespace codex_trace {
 #endif
 
 //
+// Internationalization (i18n)
+//
+#ifndef CODEX_DISABLE_I18N
+#define CODEX_I18N_ENABLED
+#endif
+
+namespace i18n {
+    enum class MsgId {
+        WELCOME,
+        UNKNOWN_COMMAND,
+        // Add more message IDs as needed
+    };
+
+    const char* get(MsgId id);
+    void init();
+}
+
+#define _(msg_id) ::i18n::get(::i18n::MsgId::msg_id)
+
+//
 // Tag Registry (enumerated tags for memory efficiency)
 //
 using TagId = uint32_t;

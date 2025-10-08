@@ -11,6 +11,21 @@ make debug      # rebuilt with -O0 -g
 make release    # rebuilt with -O3 -DNDEBUG
 ```
 
+### Internationalization (i18n)
+
+VfsShell includes internationalization support with Finnish and English translations. The language is automatically detected from your environment (`LANG`, `LC_MESSAGES`, or `LC_ALL`):
+
+- Finnish locale (`fi_FI.*`) displays Finnish messages
+- All other locales default to English
+
+To disable i18n support and reduce binary size, compile with `-DCODEX_DISABLE_I18N`:
+
+```sh
+make CXXFLAGS="-O2 -DCODEX_DISABLE_I18N"
+```
+
+This removes all non-English translations and locale detection code. Useful for size-optimized builds, embedded systems, or when creating distribution packages (e.g., Gentoo ebuilds with `USE=-nls` or `LINGUAS` filtering).
+
 ## OpenAI key bootstrap
 
 `codex` reads the OpenAI API token from `OPENAI_API_KEY` and falls back to `~/openai-key.txt`. Store the key as a single line in that file if you do not want to export the environment variable.
