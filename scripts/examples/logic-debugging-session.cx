@@ -1,0 +1,192 @@
+# Logic System - Debugging Session Example
+# Run with: ./codex scripts/examples/logic-debugging-session.cx
+#
+# This script demonstrates using the logic system for debugging
+# configuration issues by analyzing tag relationships and conflicts.
+#
+# Use case: A system is failing with cryptic errors. The developer
+# uses the logic system to understand tag implications and find
+# the root cause of configuration conflicts.
+
+echo "=== Logic System: Debugging Session Example ==="
+echo ""
+echo "Scenario: Debugging a failing microservice deployment"
+echo "Error: 'Cache miss rate 100%, remote fetch failing'"
+echo ""
+
+# Initialize the logic engine
+echo "Step 1: Initialize logic engine"
+logic.init
+echo ""
+
+echo "Step 2: List available inference rules"
+logic.listrules
+echo ""
+
+# Create nodes for different system components
+echo "Step 3: Create VFS nodes for system components"
+mkdir -p /system/api-gateway
+mkdir -p /system/cache-layer
+mkdir -p /system/database
+touch /system/api-gateway/config.txt
+touch /system/cache-layer/config.txt
+touch /system/database/config.txt
+echo ""
+
+# Tag the failing component with observed behavior
+echo "Step 4: Tag components with observed behavior"
+tag.add /system/cache-layer/config.txt fast
+tag.add /system/cache-layer/config.txt remote
+tag.add /system/api-gateway/config.txt network
+echo "Tagged cache-layer: fast, remote"
+echo "Tagged api-gateway: network"
+echo ""
+
+# Check what should be inferred from 'fast'
+echo "Step 5: Investigate 'fast' tag implications"
+echo "Question: What does 'fast' imply?"
+logic.infer fast
+echo ""
+
+# The issue: we have 'cached' inferred but also 'remote'
+echo "Step 6: Check if 'cached' and 'remote' are compatible"
+logic.check cached remote
+echo ""
+
+# Aha! The conflict is found
+echo "Step 7: Explain the conflict"
+echo "We inferred 'cached' from 'fast', but we also have 'remote'"
+echo "Rule: cached → ¬remote (cached data should not be remote)"
+echo ""
+echo "Root cause: Cache layer is configured for remote fetch"
+echo "            but performance requirement implies local cache"
+echo ""
+
+# Try different debugging scenarios
+echo "Step 8: Verify the fix - remove 'remote' tag"
+tag.remove /system/cache-layer/config.txt remote
+tag.list /system/cache-layer/config.txt
+logic.check fast cached
+echo ""
+
+# Another debugging scenario: offline mode issues
+echo "=== Second Debug Scenario: Offline Mode Failures ==="
+echo ""
+echo "Scenario: App fails in airplane mode"
+echo "Error: 'Network timeout after 30s'"
+echo ""
+
+echo "Step 9: Tag the app configuration"
+mkdir -p /system/mobile-app
+touch /system/mobile-app/config.txt
+tag.add /system/mobile-app/config.txt offline
+tag.add /system/mobile-app/config.txt network
+tag.list /system/mobile-app/config.txt
+echo ""
+
+echo "Step 10: Validate configuration"
+logic.check offline network
+echo ""
+
+echo "Step 11: Trace the problem"
+echo "Explanation: App is tagged 'offline' but still trying 'network' calls"
+logic.explain network offline
+echo ""
+
+# Third scenario: Performance debugging with tag mining
+echo "=== Third Debug Scenario: Performance Investigation ==="
+echo ""
+echo "Scenario: API response time degraded from 50ms to 500ms"
+echo ""
+
+echo "Step 12: Start tag mining session to understand system state"
+tag.mine.start fast network
+echo ""
+
+echo "Step 13: System inferred 'cached' - is our cache working?"
+echo "Let's verify cache configuration..."
+tag.mine.feedback cached yes
+echo ""
+
+echo "Step 14: Check what else fast+network+cached implies"
+logic.infer fast network cached
+echo ""
+
+# Use SAT solver to check if configuration is even possible
+echo "Step 15: Verify configuration is satisfiable"
+echo "Question: Can we have fast+network+cached+local-only simultaneously?"
+logic.sat fast network cached local-only
+echo ""
+
+echo "Step 16: Found the issue! Let's test without local-only"
+logic.sat fast network cached
+echo "Configuration is satisfiable without local-only"
+echo ""
+
+# Demonstrate building a diagnostic tree
+echo "=== Building Diagnostic Tree ==="
+echo ""
+echo "Step 17: Create diagnostic nodes"
+mkdir -p /diagnostics/hypothesis-1
+mkdir -p /diagnostics/hypothesis-2
+mkdir -p /diagnostics/hypothesis-3
+touch /diagnostics/hypothesis-1/analysis.txt
+touch /diagnostics/hypothesis-2/analysis.txt
+touch /diagnostics/hypothesis-3/analysis.txt
+
+echo "Hypothesis 1: Cache disabled"
+tag.add /diagnostics/hypothesis-1/analysis.txt no-cache
+echo ""
+
+echo "Hypothesis 2: Cache cold start"
+tag.add /diagnostics/hypothesis-2/analysis.txt cached
+tag.add /diagnostics/hypothesis-2/analysis.txt cache-cold-start
+echo ""
+
+echo "Hypothesis 3: Remote fetch fallback"
+tag.add /diagnostics/hypothesis-3/analysis.txt cached
+tag.add /diagnostics/hypothesis-3/analysis.txt remote
+tag.add /diagnostics/hypothesis-3/analysis.txt fallback-mode
+echo ""
+
+echo "Step 18: Validate each hypothesis"
+echo ""
+echo "Hypothesis 3 validation:"
+tag.list /diagnostics/hypothesis-3/analysis.txt
+logic.check cached remote
+echo ""
+echo "FOUND: Hypothesis 3 has a conflict!"
+echo "Remote + cached contradicts the 'cached-not-remote' rule"
+echo ""
+
+echo "Step 19: Check other hypotheses"
+tag.list /diagnostics/hypothesis-1/analysis.txt
+tag.list /diagnostics/hypothesis-2/analysis.txt
+echo "Hypotheses 1 and 2 are consistent"
+echo ""
+
+# Final summary with all diagnostic info
+echo "=== Debugging Summary ==="
+echo ""
+echo "Found Issues:"
+echo "1. Cache layer: remote + cached conflict (Rule: cached → ¬remote)"
+echo "2. Mobile app: offline + network conflict (Rule: offline → ¬network)"
+echo "3. Performance: Hypothesis 3 (remote fallback) violates consistency"
+echo ""
+echo "Recommendations:"
+echo "1. Ensure cache-layer uses local storage, not remote"
+echo "2. Implement proper offline mode without network calls"
+echo "3. Investigate cache cold-start (Hypothesis 2) as likely cause"
+echo ""
+echo "Step 20: Verify recommended configuration"
+echo "Recommended tags for cache-layer: fast, cached, local-only"
+logic.check fast cached local-only
+echo ""
+
+echo "=== Debugging Complete ==="
+echo ""
+echo "The logic system helped identify:"
+echo "- Configuration conflicts before deployment"
+echo "- Impossible tag combinations in requirements"
+echo "- Root cause analysis through rule explanation"
+echo "- Validation of fix hypotheses"

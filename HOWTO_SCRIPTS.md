@@ -137,6 +137,28 @@ Demonstrates:
 - SAT solving for formula satisfiability
 - Inference explanation
 
+**scripts/examples/logic-plan-validation.cx** - Plan validation with logic system:
+```bash
+./codex scripts/examples/logic-plan-validation.cx
+```
+Real-world scenario for validating plan configurations:
+- Detecting conflicting requirements (offline + network)
+- Preventing mutually exclusive configurations (write-through + write-back)
+- Automatic inference of missing tags (fast → cached)
+- Interactive tag mining for plan refinement
+- Building consistent plans before implementation
+
+**scripts/examples/logic-debugging-session.cx** - Debugging with logic system:
+```bash
+./codex scripts/examples/logic-debugging-session.cx
+```
+Debugging workflow using tag logic:
+- Root cause analysis of configuration conflicts
+- Hypothesis validation with consistency checking
+- Building diagnostic trees with tagged hypotheses
+- Tracing implications through rule chains
+- Finding impossible configurations before deployment
+
 ## Running .sexp Scripts
 
 S-expression scripts are primarily used by the test harness, but can be run manually:

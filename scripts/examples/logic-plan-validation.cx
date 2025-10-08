@@ -1,0 +1,113 @@
+# Logic System - Plan Validation Example
+# Run with: ./codex scripts/examples/logic-plan-validation.cx
+#
+# This script demonstrates using the logic system to validate plan tags
+# before executing a plan, preventing impossible configurations.
+#
+# Use case: A developer wants to build a caching system but hasn't thought
+# through all the constraints. The logic system helps catch contradictions
+# early and suggests missing tags.
+
+echo "=== Logic System: Plan Validation Example ==="
+echo ""
+echo "Scenario: Building a distributed caching system"
+echo "Developer provides initial requirements as tags"
+echo ""
+
+# Initialize logic engine
+echo "Step 1: Initialize logic engine with domain rules"
+logic.init
+echo ""
+
+# Create a plan node to tag
+echo "Step 2: Create a plan for the caching system"
+mkdir -p /plan/cache-system
+echo "Build distributed caching layer" > /plan/cache-system/description.txt
+echo ""
+
+# Developer adds initial tags (their requirements)
+echo "Step 3: Developer tags the plan with initial requirements"
+tag.add /plan/cache-system fast
+tag.add /plan/cache-system network
+tag.add /plan/cache-system cache-write-through
+echo "Added tags: fast, network, cache-write-through"
+echo ""
+
+# Show what tags are on the plan
+echo "Step 4: Review current plan tags"
+tag.list /plan/cache-system
+echo ""
+
+# Infer additional tags that should be added
+echo "Step 5: Infer missing tags from requirements"
+echo "Input tags: fast, network, cache-write-through"
+logic.infer fast network cache-write-through
+echo ""
+
+# Check if adding 'offline' would cause conflicts
+echo "Step 6: Developer considers adding 'offline' mode"
+echo "Question: Can we support offline mode with network access?"
+tag.add /plan/cache-system offline
+tag.list /plan/cache-system
+echo ""
+
+echo "Step 7: Validate plan consistency"
+logic.check offline network fast cache-write-through
+echo ""
+
+# The conflict is detected! Remove offline tag
+echo "Step 8: Fix the conflict by removing offline tag"
+tag.remove /plan/cache-system offline
+echo "Removed offline tag to resolve conflict"
+echo ""
+
+# Try another scenario: what if we want both write-through and write-back?
+echo "Step 9: Developer wants both write-through and write-back caching"
+tag.add /plan/cache-system cache-write-back
+echo "Added cache-write-back tag"
+tag.list /plan/cache-system
+echo ""
+
+echo "Step 10: Validate new configuration"
+logic.check fast network cache-write-through cache-write-back
+echo ""
+
+echo "Step 11: Remove conflicting write-back tag"
+tag.remove /plan/cache-system cache-write-back
+echo "Kept write-through, removed write-back"
+echo ""
+
+# Final validation
+echo "Step 12: Final plan validation"
+tag.list /plan/cache-system
+logic.check fast network cache-write-through cached
+echo ""
+
+# Explain why 'cached' is inferred
+echo "Step 13: Explain why 'cached' tag is implied"
+logic.explain cached fast
+echo ""
+
+# Start tag mining to discover more implications
+echo "Step 14: Use tag mining to discover more requirements"
+tag.mine.start fast network cache-write-through
+echo ""
+
+echo "Step 15: Accept inferred 'cached' tag"
+tag.mine.feedback cached yes
+echo ""
+
+echo "Step 16: Final mining session status"
+tag.mine.status
+echo ""
+
+echo "=== Plan Validation Complete ==="
+echo ""
+echo "Summary:"
+echo "- Detected offline/network conflict before implementation"
+echo "- Prevented mutually exclusive write-through/write-back configuration"
+echo "- Automatically inferred 'cached' from 'fast' requirement"
+echo "- Built consistent plan with validated tag set"
+echo ""
+echo "Final validated tags:"
+tag.list /plan/cache-system
