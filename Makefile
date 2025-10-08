@@ -6,7 +6,7 @@ VFSSHELL_SRC := VfsShell/codex.cpp VfsShell/snippet_catalog.cpp
 VFSSHELL_HDR := VfsShell/codex.h VfsShell/snippet_catalog.h
 VFSSHELL_BIN := codex
 
-.PHONY: all clean debug release sample
+.PHONY: all clean debug release sample test-lib
 
 all: $(VFSSHELL_BIN)
 
@@ -44,3 +44,10 @@ release: clean all
 
 debug: CXXFLAGS += -O0 -g
 debug: clean all
+
+# Test library
+TEST_LIB := tests/libtest.so
+test-lib: $(TEST_LIB)
+
+$(TEST_LIB): tests/test_lib.c
+	$(CC) -shared -fPIC -o $@ $<

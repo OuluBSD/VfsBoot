@@ -236,7 +236,27 @@ c++ myprogram.cpp -o myprogram
 ./myprogram
 ```
 
-### Pattern 2: Work with Overlays
+### Pattern 2: Mount Host Filesystems
+```bash
+cat > mount-demo.cx << 'EOF'
+mkdir /mnt
+mkdir /dev
+mount tests /mnt/tests
+ls /mnt/tests
+mount.lib tests/libtest.so /dev/testlib
+cat /dev/testlib/_info
+mount.list
+unmount /mnt/tests
+unmount /dev/testlib
+exit
+EOF
+
+cat mount-demo.cx | ./codex
+```
+
+See `scripts/examples/mount-demo.cx` for a complete mounting example.
+
+### Pattern 3: Work with Overlays
 ```bash
 cat > overlay-work.cx << 'EOF'
 overlay.mount mywork mywork.cxpkg
@@ -251,7 +271,7 @@ EOF
 cat overlay-work.cx | ./codex
 ```
 
-### Pattern 3: S-Expression Programming
+### Pattern 4: S-Expression Programming
 ```bash
 cat > lisp-demo.cx << 'EOF'
 echo /src/fib.cx (lambda n (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2)))))

@@ -3,8 +3,11 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 
 ## Upcoming: important (in order)
-- mount actual filesystems to directories (always as overlays though); enables actual file system reading/writing/browsing better; supports remote filesystems over network (see netcat later)
-	- mount .dll or .so files to vfs' "/dev/" sub-directies: e.g. you have graphics windows, which can be written with raw data functions
+- remote filesystem mounting over network (requires netcat-like implementation or library like libssh/libfuse)
+	- enable mounting of network filesystems using protocol over socket
+	- consider using existing libraries (libssh for SFTP, libfuse for custom protocols)
+	- may require background thread for network I/O
+	- should integrate with existing mount system architecture
 - planner core engine for breakdown/context (action/state model, A* search, cost heuristics)
 	- we need a very hierarchical repository-wide plan with many vertical steps and details, to work even with low quality AI. we need multiple types of AI (generic, pair programming). let's discuss how we create a system to use low quality AI agents
 		- we should take hints from Gentoo's emerge: USE flags and a list of "packages" to emerge. We should estimate the whole program starting from the most coarsest node and then add details
@@ -64,8 +67,19 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 	- you should plan like 5 progressively more difficult interaction demos
 - we should have actual programming project in a directory, with multiple files, which is mounted to the vfs as overlay. the code is kept both in persistent vfs-file and as cpp/h/Makefile files
 
-## 
+##
 
+## Completed
+- **Filesystem and library mounting** (2025-10-08):
+  - Implemented MountNode for transparent host filesystem access (read/write to real files and directories)
+  - Implemented LibraryNode for .so/.dll shared library loading via dlopen/dlsym
+  - Added mount commands: mount, mount.lib, mount.list, mount.allow, mount.disallow, unmount
+  - Mount nodes appear with type markers: m=filesystem mount, l=library
+  - Created test shared library (tests/libtest.so) with 10 functions demonstrating various signatures
+  - Added mount control system: mount.allow/mount.disallow gates new mounts without affecting existing ones
+  - Mount tracking with MountInfo structure stores vfs_path, host_path, mount_node reference, and type
+  - Updated documentation in AGENTS.md, README.md, and HOWTO_SCRIPTS.md
+  - Created scripts/examples/mount-demo.cx demonstrating filesystem and library mounting
 ## Completed
 - **VFS persistence with BLAKE3 hashing and autosave** (2025-10-07):
   - VFS overlay format upgraded to version 3 with BLAKE3 hash tracking for source files

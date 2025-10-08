@@ -42,9 +42,30 @@ Environment variables:
 - `CODEX_AI_PROVIDER` force-selects `openai` or `llama` for the VfsShell `ai` command; omit to auto-detect based on available credentials.
 - The harness assumes the VfsShell binary lives at `./codex`; override with `--binary` if needed.
 
+## Filesystem Mounting
+
+`codex` supports mounting host filesystems and shared libraries into the VFS:
+
+- `mount <host-path> <vfs-path>` — bind a host directory or file into the VFS, enabling transparent read/write access to real files
+- `mount.lib <lib-path> <vfs-path>` — load a shared library (.so/.dll) and expose it as a VFS directory with symbol information
+- `mount.list` — show all active mounts with their host paths and types (m=filesystem, l=library)
+- `mount.allow` / `mount.disallow` — enable/disable mounting capability (existing mounts remain active)
+- `unmount <vfs-path>` — remove a mount point
+
+Example:
+```sh
+mkdir /mnt
+mount tests /mnt/tests          # mount host directory
+ls /mnt/tests                   # browse mounted files
+mount.lib tests/libtest.so /dev/testlib  # mount shared library
+cat /dev/testlib/_info          # view library metadata
+```
+
+Mount nodes (`m`) and library nodes (`l`) appear in directory listings with their special type markers. Mounted filesystems provide full read/write access to host files, while library nodes expose loaded symbols for inspection.
+
 ## Overlays
 
-`codex` can load multiple persistent overlays simultaneously. Use `overlay.mount <name> <file>` to register a VFS snapshot (text format headed by `# codex-vfs-overlay 2`). The shell shows aggregated directory listings across matching overlays, `overlay.list` prints the active stack (`*` = primary write target, `+` = visible at the current path), and `overlay.unmount <name>` detaches an overlay (base overlay `0` is permanent). The active read/write policy can be tuned via `overlay.policy manual|oldest|newest`; under `manual` (default) ambiguous paths require `overlay.use <name>` to pick the write target, while `oldest`/`newest` resolve ties automatically. Persist a snapshot back to disk with `overlay.save <name> <file>` — directories, regular files, and AST nodes now round-trip so parsed S-expressions and C++ builder artifacts survive reloads.
+`codex` can load multiple persistent overlays simultaneously. Use `overlay.mount <name> <file>` to register a VFS snapshot (text format headed by `# codex-vfs-overlay 3`). The shell shows aggregated directory listings across matching overlays, `overlay.list` prints the active stack (`*` = primary write target, `+` = visible at the current path), and `overlay.unmount <name>` detaches an overlay (base overlay `0` is permanent). The active read/write policy can be tuned via `overlay.policy manual|oldest|newest`; under `manual` (default) ambiguous paths require `overlay.use <name>` to pick the write target, while `oldest`/`newest` resolve ties automatically. Persist a snapshot back to disk with `overlay.save <name> <file>` — directories, regular files, and AST nodes now round-trip so parsed S-expressions and C++ builder artifacts survive reloads.
 
 ## Solutions
 

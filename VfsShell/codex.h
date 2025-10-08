@@ -61,7 +61,7 @@ namespace codex_trace {
 // VFS perus
 //
 struct VfsNode : std::enable_shared_from_this<VfsNode> {
-    enum class Kind { Dir, File, Ast };
+    enum class Kind { Dir, File, Ast, Mount, Library };
     std::string name;
     std::weak_ptr<VfsNode> parent;
     Kind kind;
@@ -89,6 +89,35 @@ struct FileNode : VfsNode {
         : VfsNode(std::move(n), Kind::File), content(std::move(c)) {}
     std::string read() const override { return content; }
     void write(const std::string& s) override { const_cast<std::string&>(content) = s; }
+};
+
+struct MountNode : VfsNode {
+    std::string host_path;
+    mutable std::map<std::string, std::shared_ptr<VfsNode>> cache;
+    MountNode(std::string n, std::string hp);
+    bool isDir() const override;
+    std::string read() const override;
+    void write(const std::string& s) override;
+    std::map<std::string, std::shared_ptr<VfsNode>>& children() override;
+private:
+    void populateCache() const;
+};
+
+struct LibraryNode : VfsNode {
+    std::string lib_path;
+    void* handle;
+    std::map<std::string, std::shared_ptr<VfsNode>> symbols;
+    LibraryNode(std::string n, std::string lp);
+    ~LibraryNode() override;
+    bool isDir() const override { return true; }
+    std::map<std::string, std::shared_ptr<VfsNode>>& children() override { return symbols; }
+};
+
+struct LibrarySymbolNode : VfsNode {
+    void* func_ptr;
+    std::string signature;
+    LibrarySymbolNode(std::string n, void* ptr, std::string sig);
+    std::string read() const override { return signature; }
 };
 
 struct Env; // forward
@@ -232,6 +261,23 @@ struct Vfs {
     DirListing listDir(const std::string& p, const std::vector<size_t>& overlays) const;
     void ls(const std::string& p);
     void tree(std::shared_ptr<VfsNode> n = nullptr, std::string pref = "");
+
+    // Mount management
+    struct MountInfo {
+        std::string vfs_path;
+        std::string host_path;
+        std::shared_ptr<VfsNode> mount_node;
+        bool is_library;
+    };
+    std::vector<MountInfo> mounts;
+    bool mount_allowed = true;
+
+    void mountFilesystem(const std::string& host_path, const std::string& vfs_path, size_t overlayId = 0);
+    void mountLibrary(const std::string& lib_path, const std::string& vfs_path, size_t overlayId = 0);
+    void unmount(const std::string& vfs_path);
+    std::vector<MountInfo> listMounts() const;
+    void setMountAllowed(bool allowed);
+    bool isMountAllowed() const;
 };
 
 extern Vfs* G_VFS; // glob aputinta varten

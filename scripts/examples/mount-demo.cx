@@ -1,0 +1,50 @@
+#!/usr/bin/env -S ../codex -
+
+# Demonstration of filesystem and library mounting
+
+# Create mount points
+mkdir /mnt
+mkdir /dev
+
+echo "=== Initial mount status ==="
+mount.list
+
+echo ""
+echo "=== Mounting tests directory ==="
+mount tests /mnt/tests
+
+echo ""
+echo "=== Contents of /mnt/tests ==="
+ls /mnt/tests
+
+echo ""
+echo "=== Mounting test library ==="
+mount.lib tests/libtest.so /dev/testlib
+
+echo ""
+echo "=== Library info ==="
+ls /dev/testlib
+cat /dev/testlib/_info
+
+echo ""
+echo "=== Current mounts ==="
+mount.list
+
+echo ""
+echo "=== Testing mount control ==="
+mount.disallow
+mount.list
+
+mount.allow
+mount.list
+
+echo ""
+echo "=== Unmounting ==="
+unmount /mnt/tests
+unmount /dev/testlib
+
+echo ""
+echo "=== Final mount status ==="
+mount.list
+
+exit

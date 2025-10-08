@@ -20,6 +20,7 @@
 #include <termios.h>
 #include <unistd.h>
 #include <blake3.h>
+#include <dlfcn.h>
 
 #ifdef CODEX_TRACE
 #include <fstream>
@@ -102,6 +103,13 @@ static std::string path_basename(const std::string& path){
     auto pos = path.find_last_of('/');
     if(pos==std::string::npos) return path;
     return path.substr(pos+1);
+}
+static std::string path_dirname(const std::string& path){
+    if(path.empty() || path=="/") return "/";
+    auto pos = path.find_last_of('/');
+    if(pos==std::string::npos) return "";
+    if(pos==0) return "/";
+    return path.substr(0, pos);
 }
 
 //
@@ -2233,6 +2241,8 @@ char type_char(const std::shared_ptr<VfsNode>& node){
     if(!node) return '?';
     if(node->kind == VfsNode::Kind::Dir) return 'd';
     if(node->kind == VfsNode::Kind::File) return 'f';
+    if(node->kind == VfsNode::Kind::Mount) return 'm';
+    if(node->kind == VfsNode::Kind::Library) return 'l';
     return 'a';
 }
 }
@@ -2590,6 +2600,189 @@ void Vfs::tree(std::shared_ptr<VfsNode> n, std::string pref){
             tree(kv.second, pref + "  ");
         }
     }
+}
+
+// ====== Mount Nodes ======
+
+MountNode::MountNode(std::string n, std::string hp)
+    : VfsNode(std::move(n), Kind::Mount), host_path(std::move(hp)) {}
+
+bool MountNode::isDir() const {
+    namespace fs = std::filesystem;
+    try {
+        return fs::is_directory(host_path);
+    } catch(...) {
+        return false;
+    }
+}
+
+std::string MountNode::read() const {
+    namespace fs = std::filesystem;
+    if(fs::is_directory(host_path)){
+        return "";
+    }
+    std::ifstream ifs(host_path, std::ios::binary);
+    if(!ifs) throw std::runtime_error("mount: cannot read file " + host_path);
+    std::ostringstream oss;
+    oss << ifs.rdbuf();
+    return oss.str();
+}
+
+void MountNode::write(const std::string& s) {
+    namespace fs = std::filesystem;
+    if(fs::is_directory(host_path)){
+        throw std::runtime_error("mount: cannot write to directory");
+    }
+    std::ofstream ofs(host_path, std::ios::binary | std::ios::trunc);
+    if(!ofs) throw std::runtime_error("mount: cannot write file " + host_path);
+    ofs << s;
+}
+
+void MountNode::populateCache() const {
+    namespace fs = std::filesystem;
+    if(!fs::is_directory(host_path)) return;
+
+    cache.clear();
+    try {
+        for(const auto& entry : fs::directory_iterator(host_path)){
+            auto filename = entry.path().filename().string();
+            auto node = std::make_shared<MountNode>(filename, entry.path().string());
+            cache[filename] = node;
+        }
+    } catch(const std::exception& e){
+        throw std::runtime_error(std::string("mount: directory iteration failed: ") + e.what());
+    }
+}
+
+std::map<std::string, std::shared_ptr<VfsNode>>& MountNode::children() {
+    populateCache();
+    return cache;
+}
+
+LibrarySymbolNode::LibrarySymbolNode(std::string n, void* ptr, std::string sig)
+    : VfsNode(std::move(n), Kind::File), func_ptr(ptr), signature(std::move(sig)) {}
+
+LibraryNode::LibraryNode(std::string n, std::string lp)
+    : VfsNode(std::move(n), Kind::Library), lib_path(std::move(lp)), handle(nullptr) {
+
+    handle = dlopen(lib_path.c_str(), RTLD_LAZY);
+    if(!handle){
+        throw std::runtime_error(std::string("mount.lib: dlopen failed: ") + dlerror());
+    }
+
+    // Note: Automatic symbol enumeration is platform-specific and complex.
+    // For now, we create a placeholder. Users can query symbols manually or
+    // we can extend this with platform-specific code (e.g., parsing .so with libelf)
+    auto placeholder = std::make_shared<FileNode>("_info",
+        "Library loaded: " + lib_path + "\nUse dlsym or add symbol discovery");
+    symbols["_info"] = placeholder;
+}
+
+LibraryNode::~LibraryNode() {
+    if(handle){
+        dlclose(handle);
+        handle = nullptr;
+    }
+}
+
+// ====== Mount Management ======
+
+void Vfs::mountFilesystem(const std::string& host_path, const std::string& vfs_path, size_t overlayId) {
+    TRACE_FN("host=", host_path, ", vfs=", vfs_path, ", overlay=", overlayId);
+
+    if(!mount_allowed){
+        throw std::runtime_error("mount: mounting is currently disabled (use mount.allow)");
+    }
+
+    namespace fs = std::filesystem;
+    if(!fs::exists(host_path)){
+        throw std::runtime_error("mount: host path does not exist: " + host_path);
+    }
+
+    auto abs_host = fs::absolute(host_path).string();
+
+    // Check if already mounted
+    for(const auto& m : mounts){
+        if(m.vfs_path == vfs_path){
+            throw std::runtime_error("mount: path already has a mount: " + vfs_path);
+        }
+    }
+
+    auto mount_node = std::make_shared<MountNode>(path_basename(vfs_path), abs_host);
+    // addNode expects parent directory path, so we need to get the parent
+    auto parent_path = path_dirname(vfs_path);
+    if(parent_path.empty()) parent_path = "/";
+    addNode(parent_path, mount_node, overlayId);
+
+    MountInfo info;
+    info.vfs_path = vfs_path;
+    info.host_path = abs_host;
+    info.mount_node = mount_node;
+    info.is_library = false;
+    mounts.push_back(info);
+}
+
+void Vfs::mountLibrary(const std::string& lib_path, const std::string& vfs_path, size_t overlayId) {
+    TRACE_FN("lib=", lib_path, ", vfs=", vfs_path, ", overlay=", overlayId);
+
+    if(!mount_allowed){
+        throw std::runtime_error("mount.lib: mounting is currently disabled (use mount.allow)");
+    }
+
+    namespace fs = std::filesystem;
+    if(!fs::exists(lib_path)){
+        throw std::runtime_error("mount.lib: library does not exist: " + lib_path);
+    }
+
+    auto abs_lib = fs::absolute(lib_path).string();
+
+    // Check if already mounted
+    for(const auto& m : mounts){
+        if(m.vfs_path == vfs_path){
+            throw std::runtime_error("mount.lib: path already has a mount: " + vfs_path);
+        }
+    }
+
+    auto lib_node = std::make_shared<LibraryNode>(path_basename(vfs_path), abs_lib);
+    // addNode expects parent directory path, so we need to get the parent
+    auto parent_path = path_dirname(vfs_path);
+    if(parent_path.empty()) parent_path = "/";
+    addNode(parent_path, lib_node, overlayId);
+
+    MountInfo info;
+    info.vfs_path = vfs_path;
+    info.host_path = abs_lib;
+    info.mount_node = lib_node;
+    info.is_library = true;
+    mounts.push_back(info);
+}
+
+void Vfs::unmount(const std::string& vfs_path) {
+    TRACE_FN("vfs=", vfs_path);
+
+    auto it = std::find_if(mounts.begin(), mounts.end(),
+        [&](const MountInfo& m){ return m.vfs_path == vfs_path; });
+
+    if(it == mounts.end()){
+        throw std::runtime_error("unmount: no mount at path: " + vfs_path);
+    }
+
+    // Remove from VFS (base overlay for now)
+    rm(vfs_path, 0);
+
+    mounts.erase(it);
+}
+
+std::vector<Vfs::MountInfo> Vfs::listMounts() const {
+    return mounts;
+}
+
+void Vfs::setMountAllowed(bool allowed) {
+    mount_allowed = allowed;
+}
+
+bool Vfs::isMountAllowed() const {
+    return mount_allowed;
 }
 
 // ====== Parser ======
@@ -3527,6 +3720,13 @@ R"(Commands:
   overlay.policy [manual|oldest|newest]
   overlay.use <name>
   solution.save [file]
+  # Filesystem mounts
+  mount <host-path> <vfs-path>
+  mount.lib <lib-path> <vfs-path>
+  mount.list
+  mount.allow
+  mount.disallow
+  unmount <vfs-path>
   # C++ builder
   cpp.tu <ast-path>
   cpp.include <tu-path> <header> [angled0/1]
@@ -4159,6 +4359,45 @@ int main(int argc, char** argv){
             if(*idOpt == 0) throw std::runtime_error("cannot unmount base overlay");
             vfs.unregisterOverlay(*idOpt);
             adjust_context_after_unmount(vfs, cwd, *idOpt);
+
+        } else if(cmd == "mount"){
+            if(inv.args.size() < 2) throw std::runtime_error("mount <host-path> <vfs-path>");
+            std::string host_path = inv.args[0];
+            std::string vfs_path = normalize_path(cwd.path, inv.args[1]);
+            vfs.mountFilesystem(host_path, vfs_path, cwd.primary_overlay);
+            std::cout << "mounted " << host_path << " -> " << vfs_path << "\n";
+
+        } else if(cmd == "mount.lib"){
+            if(inv.args.size() < 2) throw std::runtime_error("mount.lib <lib-path> <vfs-path>");
+            std::string lib_path = inv.args[0];
+            std::string vfs_path = normalize_path(cwd.path, inv.args[1]);
+            vfs.mountLibrary(lib_path, vfs_path, cwd.primary_overlay);
+            std::cout << "mounted library " << lib_path << " -> " << vfs_path << "\n";
+
+        } else if(cmd == "mount.list"){
+            auto mounts = vfs.listMounts();
+            if(mounts.empty()){
+                std::cout << "no mounts\n";
+            } else {
+                for(const auto& m : mounts){
+                    std::cout << (m.is_library ? "l " : "m ") << m.vfs_path << " <- " << m.host_path << "\n";
+                }
+            }
+            std::cout << "mounting " << (vfs.isMountAllowed() ? "allowed" : "disabled") << "\n";
+
+        } else if(cmd == "mount.allow"){
+            vfs.setMountAllowed(true);
+            std::cout << "mounting enabled\n";
+
+        } else if(cmd == "mount.disallow"){
+            vfs.setMountAllowed(false);
+            std::cout << "mounting disabled (existing mounts remain active)\n";
+
+        } else if(cmd == "unmount"){
+            if(inv.args.empty()) throw std::runtime_error("unmount <vfs-path>");
+            std::string vfs_path = normalize_path(cwd.path, inv.args[0]);
+            vfs.unmount(vfs_path);
+            std::cout << "unmounted " << vfs_path << "\n";
 
         } else if(cmd == "solution.save"){
             std::filesystem::path target = solution.file_path;
