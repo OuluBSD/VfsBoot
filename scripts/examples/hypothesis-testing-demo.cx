@@ -1,0 +1,141 @@
+#!/usr/bin/env codex
+# Hypothesis Testing Demo - All 5 Complexity Levels
+# This script demonstrates the progressive hypothesis testing system
+# from simple queries to architectural pattern evaluation
+
+echo "=== Hypothesis Testing Demonstration ==="
+echo ""
+echo "This demo shows 5 progressive complexity levels:"
+echo "  Level 1: Simple Query - Find patterns in VFS"
+echo "  Level 2: Code Modification - Add error handling"
+echo "  Level 3: Refactoring - Extract duplicate code"
+echo "  Level 4: Feature Addition - Add logging instrumentation"
+echo "  Level 5: Architecture - Evaluate design patterns"
+echo ""
+
+# Create some test content for hypothesis testing
+mkdir /test
+mkdir /test/code
+
+# Create a sample function with error-prone code
+echo /test/code/sample.cpp "
+#include <iostream>
+#include <string>
+
+int processData(const std::string& input) {
+    if (input.empty()) {
+        return -1;
+    }
+    std::cout << \"Processing: \" << input << std::endl;
+    return 0;
+}
+
+int validateInput(const std::string& data) {
+    if (data.length() < 5) {
+        return -1;
+    }
+    return 1;
+}
+
+struct DataNode {
+    std::string value;
+    DataNode* next;
+};
+
+struct ParserNode : public DataNode {
+    int parse() {
+        std::cout << \"Parsing...\" << std::endl;
+        return 0;
+    }
+};
+"
+
+# Create another file with similar code (for duplicate detection)
+echo /test/code/validator.cpp "
+#include <iostream>
+#include <string>
+
+int checkData(const std::string& input) {
+    if (input.empty()) {
+        return -1;
+    }
+    std::cout << \"Checking: \" << input << std::endl;
+    return 0;
+}
+
+int verifyFormat(const std::string& data) {
+    if (data.length() < 5) {
+        return -1;
+    }
+    return 1;
+}
+"
+
+echo ""
+echo "=== Created Test Code ==="
+tree /test
+
+echo ""
+echo "========================================="
+echo "Level 1: Simple Query Hypothesis"
+echo "========================================="
+echo ""
+echo "Searching for 'processData' function..."
+hypothesis.query processData /test
+
+echo ""
+echo "========================================="
+echo "Level 2: Code Modification Hypothesis"
+echo "========================================="
+echo ""
+echo "Testing error handling addition for 'processData'..."
+hypothesis.errorhandling processData try-catch
+
+echo ""
+echo "Alternative error handling style (error-code):"
+hypothesis.errorhandling processData error-code
+
+echo ""
+echo "========================================="
+echo "Level 3: Refactoring Hypothesis"
+echo "========================================="
+echo ""
+echo "Searching for duplicate code blocks..."
+hypothesis.duplicates /test/code 3
+
+echo ""
+echo "========================================="
+echo "Level 4: Feature Addition Hypothesis"
+echo "========================================="
+echo ""
+echo "Planning logging instrumentation for error paths..."
+hypothesis.logging /test/code
+
+echo ""
+echo "========================================="
+echo "Level 5: Architecture Hypothesis"
+echo "========================================="
+echo ""
+echo "Evaluating visitor pattern applicability..."
+hypothesis.pattern visitor /test/code
+
+echo ""
+echo "========================================="
+echo "Complete Test Suite (All 5 Levels)"
+echo "========================================="
+echo ""
+echo "Running standard hypothesis test suite..."
+test.hypothesis
+
+echo ""
+echo "=== Hypothesis Testing Demo Complete ==="
+echo ""
+echo "Summary:"
+echo "  - Level 1: Found target patterns in VFS"
+echo "  - Level 2: Identified error handling insertion points"
+echo "  - Level 3: Detected duplicate code blocks"
+echo "  - Level 4: Planned logging instrumentation"
+echo "  - Level 5: Evaluated architectural patterns"
+echo ""
+echo "All tests execute WITHOUT calling AI - using only"
+echo "VFS analysis, pattern matching, and context building."

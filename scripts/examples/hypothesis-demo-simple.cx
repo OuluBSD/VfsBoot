@@ -1,0 +1,30 @@
+#!/usr/bin/env codex
+# Simple Hypothesis Testing Demo
+# Demonstrates all 5 levels with the existing VFS code
+
+echo "=== Hypothesis Testing Demo - Using Existing Codebase ==="
+echo ""
+
+# Level 1: Find patterns
+echo "Level 1: Simple Query - Find 'VfsNode' in codebase"
+hypothesis.query VfsNode /
+
+echo ""
+echo "Level 2: Error Handling - Analyze 'resolve' function"
+hypothesis.errorhandling resolve try-catch
+
+echo ""
+echo "Level 3: Duplicate Detection - Search for duplicates"
+hypothesis.duplicates / 5
+
+echo ""
+echo "Level 4: Logging Instrumentation - Find error paths"
+hypothesis.logging /
+
+echo ""
+echo "Level 5: Architecture Pattern - Evaluate visitor pattern"
+hypothesis.pattern visitor /
+
+echo ""
+echo "=== Run Complete Test Suite ==="
+test.hypothesis

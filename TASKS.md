@@ -74,27 +74,32 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 			- During planning: only generate consistent plan branches
 			- Post-planning: verify AI-generated plan doesn't violate constraints
 		- Use case: Prevent impossible plans like "build offline but fetch remote dependencies"
-- **[TODO]** Advanced hypothesis testing examples (progressively more complex):
-	1. **Simple query hypothesis**: "Find function `foo` in VFS" → hypothesis: check /astcpp, /cpp, /src with pattern matching
-	2. **Code modification hypothesis**: "Add error handling to function X" → hypotheses:
-		- Where: identify function entry point, critical sections, return paths
-		- What: try-catch blocks vs error codes vs optional returns
-		- Test: verify each hypothesis against existing code style
-	3. **Refactoring hypothesis**: "Extract duplicated code into helper" → hypotheses:
-		- Identify duplicate blocks using AST similarity (not just text matching)
-		- Determine optimal scope (static function, member, free function)
-		- Infer parameter types from usage context
-		- Test: ensure extracted function compiles and preserves semantics
-	4. **Feature addition hypothesis**: "Add logging to error paths" → hypotheses:
-		- Tag all functions/blocks with error returns/throws
-		- Generate logging call templates based on context (function name, error type)
-		- Test: verify log statements compile and provide useful info
-	5. **Architecture hypothesis**: "Implement visitor pattern for AST traversal" → hypotheses tree:
-		- Design: double-dispatch vs std::variant vs CRTP
-		- Integration: how to preserve existing VfsNode hierarchy
-		- Migration: gradual vs complete rewrite
-		- Test: benchmark performance, verify all node types covered
-	Each hypothesis must be testable without calling AI - use action planner's context builder to verify validity
+- **[DONE]** Advanced hypothesis testing examples (progressively more complex):
+	- Implemented comprehensive hypothesis testing system with 5 complexity levels
+	- **Level 1: Simple Query** - `hypothesis.query <target> [path]`
+		- Find functions/patterns in VFS using ContextBuilder
+		- Pattern matching across all VFS nodes
+		- No AI calls required - pure VFS analysis
+	- **Level 2: Code Modification** - `hypothesis.errorhandling <function> [style]`
+		- Identify function definitions and return paths
+		- Propose error handling strategies (try-catch, error-code, optional)
+		- Analyze insertion points for error handling code
+	- **Level 3: Refactoring** - `hypothesis.duplicates [path] [min_lines]`
+		- Detect duplicate code blocks using similarity analysis
+		- 80% similarity threshold with whitespace normalization
+		- Propose extraction to helper functions with parameter inference
+	- **Level 4: Feature Addition** - `hypothesis.logging [path]`
+		- Identify error paths (return nullptr, -1, false, throw, error keywords)
+		- Plan logging infrastructure and instrumentation points
+		- Tag-based tracking for instrumented functions
+	- **Level 5: Architecture** - `hypothesis.pattern <pattern> [path]`
+		- Evaluate design pattern applicability (visitor, factory, singleton)
+		- Analyze node hierarchies for visitor pattern suitability
+		- Consider double-dispatch vs std::variant trade-offs
+	- Shell commands: `test.hypothesis`, `hypothesis.test <level> <goal> [desc]`
+	- Demo scripts: `scripts/examples/hypothesis-testing-demo.cx`, `hypothesis-demo-simple.cx`
+	- All tests executable WITHOUT AI - uses ContextBuilder, filters, pattern matching
+	- Integration with action planner's context builder for hypothesis validation
 - scope store with binary diffs + feature masks, plus deterministic context builder
 - scenario harness binaries (`planner_demo`, `planner_train`) and scripted breakdown loop for validation
 - feedback pipeline for planner rule evolution (metrics capture, rule patch staging, optional AI assistance)
@@ -115,7 +120,12 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 - make
 - parse (libclang): import clang test suite files to vfs
 	- also collect what preprocessor sees
-- gui app, which shows graph-based images of what AI does (static image slideshow), and other info too. it is also used for image related ai work
+- web server app (Wt based) with graph-based visualization of AI operations (plan trees, VFS structure, AST nodes)
+	- HTTP server exposing VFS state and planner context
+	- Interactive graph rendering (D3.js/Cytoscape.js for plan trees and dependency graphs)
+	- Real-time updates via WebSockets for live session monitoring
+	- Image handling for AI vision tasks (upload/display/annotate)
+	- Form-based interfaces for multi-step plan editing and hypothesis refinement
 
 ## Upcoming: less important
 - commandline arguments: --llama, --openai, --version/-v, --help/-h, etc.
@@ -150,6 +160,40 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 ##
 
 ## Completed
+- **Hypothesis Testing System - 5 Progressive Complexity Levels** (2025-10-08):
+  - Implemented comprehensive hypothesis testing framework for code analysis WITHOUT AI calls
+  - **Level 1: Simple Query** (`hypothesis.query <target> [path]`)
+    - VFS-wide pattern search using ContextBuilder and filters
+    - Returns matched nodes with paths for further investigation
+    - Example: Find all occurrences of a function name across codebase
+  - **Level 2: Code Modification** (`hypothesis.errorhandling <function> [style]`)
+    - Function definition detection with regex-based AST analysis
+    - Return path identification for error handling insertion points
+    - Multiple error handling strategies: try-catch, error-code, std::optional
+    - Proposes specific actions for each identified insertion point
+  - **Level 3: Refactoring** (`hypothesis.duplicates [path] [min_lines]`)
+    - Duplicate code block detection using line-by-line similarity analysis
+    - 80% similarity threshold with whitespace normalization
+    - Proposes helper function extraction with parameter signature inference
+    - Identifies all locations requiring refactoring updates
+  - **Level 4: Feature Addition** (`hypothesis.logging [path]`)
+    - Error path detection via pattern matching (return nullptr, -1, false, throw, error/fail keywords)
+    - Logging instrumentation planning with context-aware placement
+    - Proposes logger infrastructure design (class vs macros)
+    - Tag-based tracking for instrumented code
+  - **Level 5: Architecture** (`hypothesis.pattern <pattern> [path]`)
+    - Design pattern applicability evaluation (visitor, factory, singleton)
+    - Node hierarchy analysis for visitor pattern suitability
+    - Implementation strategy proposals (double-dispatch vs std::variant vs CRTP)
+    - Performance and migration considerations
+  - Core components: Hypothesis, HypothesisResult, HypothesisTester, HypothesisTestSuite
+  - Shell commands: test.hypothesis (run all 5), hypothesis.test (custom), hypothesis.{query,errorhandling,duplicates,logging,pattern}
+  - Helper methods: findFunctionDefinitions, findReturnPaths, findDuplicateBlocks, findErrorPaths, contentSimilar
+  - Demo scripts: scripts/examples/hypothesis-testing-demo.cx, hypothesis-demo-simple.cx
+  - Integration with action planner's ContextBuilder for VFS traversal and filtering
+  - All hypothesis testing executes locally - no AI API calls required
+  - Enables hypothesis-driven development: validate code modification strategies before implementation
+  - Foundation for advanced planning: SAT/SMT constraint solving, learned patterns, automated refactoring
 - **Action Planner Test Suite - AI Context Builder** (2025-10-08):
   - Implemented ContextFilter with 9 filter types: TagAny, TagAll, TagNone, PathPrefix, PathPattern, ContentMatch, ContentRegex, NodeKind, Custom
   - Implemented ContextBuilder for building AI context with token budget management (default 4000 tokens)
