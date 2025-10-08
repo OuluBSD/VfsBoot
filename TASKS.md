@@ -90,12 +90,16 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 			- Detect conflicting tags before plan generation
 			- Suggest alternatives: "Remove X" or "Remove Y"
 			- Automatic conflict detection with rule violation explanation
-		- **[TODO]** Knowledge representation in `/plan/rules`:
-			- Tag definitions and logical relationships
-			- Implication rules with confidence scores (partially done in LogicEngine)
-			- Exclusion constraints (mutually exclusive tags)
-			- Learned patterns from user feedback
-			- Persistence and loading from VFS
+		- **[DONE]** Knowledge representation in `/plan/rules`:
+			- Tag definitions and logical relationships stored in VFS
+			- Implication rules with confidence scores persisted to disk
+			- Exclusion constraints (mutually exclusive tags) via implication rules
+			- Learned patterns from user feedback (infrastructure ready)
+			- Persistence and loading from VFS via logic.rules.save/load commands
+			- Organized by source: hardcoded, learned, ai-generated, user
+			- S-expression format for formulas (pipe-delimited serialization)
+			- Summary file with human-readable overview
+			- Demo script: scripts/examples/logic-rules-persistence-demo.cx
 		- **[DONE]** User feedback loop:
 			- Show inferred tags: interactive tag mining session
 			- User confirms/rejects → feedback recorded in mining session
@@ -105,8 +109,8 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 			- During planning: only generate consistent plan branches
 			- Post-planning: verify AI-generated plan doesn't violate constraints
 		- Use case: Prevent impossible plans like "build offline but fetch remote dependencies"
-		- **Commands**: `logic.init`, `logic.infer`, `logic.check`, `logic.explain`, `logic.listrules`, `logic.sat`, `tag.mine.start`, `tag.mine.feedback`, `tag.mine.status`
-		- **Demo script**: `scripts/examples/logic-system-demo.cx`
+		- **Commands**: `logic.init`, `logic.infer`, `logic.check`, `logic.explain`, `logic.listrules`, `logic.rules.save`, `logic.rules.load`, `logic.sat`, `tag.mine.start`, `tag.mine.feedback`, `tag.mine.status`
+		- **Demo scripts**: `scripts/examples/logic-system-demo.cx`, `scripts/examples/logic-rules-persistence-demo.cx`
 - **[DONE]** Advanced hypothesis testing examples (progressively more complex):
 	- Implemented comprehensive hypothesis testing system with 5 complexity levels
 	- **Level 1: Simple Query** - `hypothesis.query <target> [path]`

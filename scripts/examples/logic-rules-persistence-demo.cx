@@ -1,0 +1,62 @@
+#!/usr/bin/env codex
+# Demo: Logic Rules Persistence System
+# Shows how to save and load logic rules to/from VFS
+
+echo "=== Logic Rules Persistence Demo ==="
+echo ""
+
+echo "1. Initialize logic engine with hardcoded rules"
+logic.init
+echo ""
+
+echo "2. List all loaded rules"
+logic.listrules
+echo ""
+
+echo "3. Save rules to VFS at /plan/rules"
+logic.rules.save
+echo ""
+
+echo "4. Show VFS structure under /plan/rules"
+tree /plan/rules
+echo ""
+
+echo "5. View summary of saved rules"
+cat /plan/rules/summary.txt
+echo ""
+
+echo "6. View hardcoded rules file"
+cat /plan/rules/hardcoded/rules.txt
+echo ""
+
+echo "7. View learned rules file"
+cat /plan/rules/learned/rules.txt
+echo ""
+
+echo "8. Test rule inference with saved rules"
+logic.infer fast offline
+echo ""
+
+echo "9. Clear rules and reload from VFS"
+# In a real scenario, you'd restart codex or clear manually
+# For demo, we'll just load again to show it works
+logic.rules.load
+echo ""
+
+echo "10. Verify rules were loaded correctly"
+logic.listrules
+echo ""
+
+echo "11. Test that inference still works after reload"
+logic.infer fast local-only
+echo ""
+
+echo "=== Demo Complete ==="
+echo ""
+echo "Key Points:"
+echo "- Rules are organized by source: hardcoded, learned, ai-generated, user"
+echo "- Each source gets its own directory under /plan/rules"
+echo "- Rules are saved in pipe-delimited format for easy parsing"
+echo "- Summary file provides human-readable overview"
+echo "- Save/load preserves confidence scores and metadata"
+echo "- Can be integrated with VFS overlay persistence"

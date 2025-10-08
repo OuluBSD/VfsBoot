@@ -85,6 +85,11 @@ namespace i18n {
 #define _(msg_id) ::i18n::get(::i18n::MsgId::msg_id)
 
 //
+// Forward declarations
+//
+struct Vfs;
+
+//
 // Tag Registry (enumerated tags for memory efficiency)
 //
 using TagId = uint32_t;
@@ -161,6 +166,12 @@ struct LogicEngine {
 
     // Explain why tags are inferred
     std::vector<std::string> explainInference(TagId tag, const TagSet& initial_tags) const;
+
+    // Rule persistence
+    void saveRulesToVfs(Vfs& vfs, const std::string& base_path = "/plan/rules") const;
+    void loadRulesFromVfs(Vfs& vfs, const std::string& base_path = "/plan/rules");
+    std::string serializeRule(const ImplicationRule& rule) const;
+    ImplicationRule deserializeRule(const std::string& serialized) const;
 };
 
 struct TagMiningSession {

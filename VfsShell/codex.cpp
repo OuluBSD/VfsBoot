@@ -3952,6 +3952,277 @@ std::vector<std::string> LogicEngine::explainInference(TagId tag, const TagSet& 
     return explanation;
 }
 
+// Rule serialization format:
+// name|premise_formula|conclusion_formula|confidence|source
+// Formulas are serialized as S-expressions
+std::string LogicEngine::serializeRule(const ImplicationRule& rule) const {
+    std::ostringstream oss;
+    oss << rule.name << "|"
+        << rule.premise->toString(*tag_registry) << "|"
+        << rule.conclusion->toString(*tag_registry) << "|"
+        << rule.confidence << "|"
+        << rule.source;
+    return oss.str();
+}
+
+// Helper function to parse formula from string (S-expression format)
+static std::shared_ptr<LogicFormula> parseFormulaFromString(const std::string& str, TagRegistry* reg) {
+    // Simple recursive descent parser for logic formulas
+    // Format: (not X), (and X Y...), (or X Y...), (implies X Y), tagname
+
+    auto trim = [](const std::string& s) {
+        size_t start = s.find_first_not_of(" \t\n\r");
+        size_t end = s.find_last_not_of(" \t\n\r");
+        return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);
+    };
+
+    std::string trimmed = trim(str);
+
+    if (trimmed.empty()) return nullptr;
+
+    // Check if it's a compound formula (starts with '(')
+    if (trimmed[0] == '(') {
+        // Find matching closing paren
+        int depth = 0;
+        size_t end = 0;
+        for (size_t i = 0; i < trimmed.length(); ++i) {
+            if (trimmed[i] == '(') depth++;
+            else if (trimmed[i] == ')') {
+                depth--;
+                if (depth == 0) {
+                    end = i;
+                    break;
+                }
+            }
+        }
+
+        // Extract content inside parens
+        std::string content = trim(trimmed.substr(1, end - 1));
+
+        // Split by first space to get operator
+        size_t space_pos = content.find(' ');
+        if (space_pos == std::string::npos) return nullptr;
+
+        std::string op = content.substr(0, space_pos);
+        std::string rest = trim(content.substr(space_pos + 1));
+
+        if (op == "not") {
+            auto child = parseFormulaFromString(rest, reg);
+            return child ? LogicFormula::makeNot(child) : nullptr;
+        } else if (op == "and") {
+            // Parse multiple children
+            std::vector<std::shared_ptr<LogicFormula>> children;
+            size_t pos = 0;
+            while (pos < rest.length()) {
+                // Skip whitespace
+                while (pos < rest.length() && std::isspace(rest[pos])) pos++;
+                if (pos >= rest.length()) break;
+
+                // Find next formula
+                size_t start = pos;
+                if (rest[pos] == '(') {
+                    int d = 0;
+                    while (pos < rest.length()) {
+                        if (rest[pos] == '(') d++;
+                        else if (rest[pos] == ')') {
+                            d--;
+                            if (d == 0) {
+                                pos++;
+                                break;
+                            }
+                        }
+                        pos++;
+                    }
+                } else {
+                    while (pos < rest.length() && !std::isspace(rest[pos]) && rest[pos] != ')') pos++;
+                }
+
+                std::string child_str = trim(rest.substr(start, pos - start));
+                auto child = parseFormulaFromString(child_str, reg);
+                if (child) children.push_back(child);
+            }
+            return children.empty() ? nullptr : LogicFormula::makeAnd(children);
+        } else if (op == "or") {
+            // Similar to 'and', parse multiple children
+            std::vector<std::shared_ptr<LogicFormula>> children;
+            size_t pos = 0;
+            while (pos < rest.length()) {
+                while (pos < rest.length() && std::isspace(rest[pos])) pos++;
+                if (pos >= rest.length()) break;
+
+                size_t start = pos;
+                if (rest[pos] == '(') {
+                    int d = 0;
+                    while (pos < rest.length()) {
+                        if (rest[pos] == '(') d++;
+                        else if (rest[pos] == ')') {
+                            d--;
+                            if (d == 0) {
+                                pos++;
+                                break;
+                            }
+                        }
+                        pos++;
+                    }
+                } else {
+                    while (pos < rest.length() && !std::isspace(rest[pos]) && rest[pos] != ')') pos++;
+                }
+
+                std::string child_str = trim(rest.substr(start, pos - start));
+                auto child = parseFormulaFromString(child_str, reg);
+                if (child) children.push_back(child);
+            }
+            return children.empty() ? nullptr : LogicFormula::makeOr(children);
+        } else if (op == "implies") {
+            // Parse exactly 2 children
+            size_t pos = 0;
+
+            // First child
+            while (pos < rest.length() && std::isspace(rest[pos])) pos++;
+            size_t start1 = pos;
+            if (rest[pos] == '(') {
+                int d = 0;
+                while (pos < rest.length()) {
+                    if (rest[pos] == '(') d++;
+                    else if (rest[pos] == ')') {
+                        d--;
+                        if (d == 0) {
+                            pos++;
+                            break;
+                        }
+                    }
+                    pos++;
+                }
+            } else {
+                while (pos < rest.length() && !std::isspace(rest[pos])) pos++;
+            }
+            std::string child1_str = trim(rest.substr(start1, pos - start1));
+
+            // Second child
+            while (pos < rest.length() && std::isspace(rest[pos])) pos++;
+            std::string child2_str = trim(rest.substr(pos));
+
+            auto lhs = parseFormulaFromString(child1_str, reg);
+            auto rhs = parseFormulaFromString(child2_str, reg);
+            return (lhs && rhs) ? LogicFormula::makeImplies(lhs, rhs) : nullptr;
+        }
+
+        return nullptr;
+    } else {
+        // It's a tag name variable
+        TagId id = reg->registerTag(trimmed);
+        return LogicFormula::makeVar(id);
+    }
+}
+
+ImplicationRule LogicEngine::deserializeRule(const std::string& serialized) const {
+    // Split by '|'
+    std::vector<std::string> parts;
+    size_t start = 0;
+    size_t pos = 0;
+    while ((pos = serialized.find('|', start)) != std::string::npos) {
+        parts.push_back(serialized.substr(start, pos - start));
+        start = pos + 1;
+    }
+    parts.push_back(serialized.substr(start));
+
+    if (parts.size() != 5) {
+        throw std::runtime_error("invalid rule format: expected 5 parts separated by |");
+    }
+
+    std::string name = parts[0];
+    auto premise = parseFormulaFromString(parts[1], tag_registry);
+    auto conclusion = parseFormulaFromString(parts[2], tag_registry);
+    float confidence = std::stof(parts[3]);
+    std::string source = parts[4];
+
+    if (!premise || !conclusion) {
+        throw std::runtime_error("failed to parse formula in rule: " + name);
+    }
+
+    return ImplicationRule(name, premise, conclusion, confidence, source);
+}
+
+void LogicEngine::saveRulesToVfs(Vfs& vfs, const std::string& base_path) const {
+    // Create /plan/rules directory structure
+    // Note: mkdir creates parent directories automatically via ensureDirForOverlay
+    vfs.mkdir(base_path, 0);
+    vfs.mkdir(base_path + "/hardcoded", 0);
+    vfs.mkdir(base_path + "/learned", 0);
+    vfs.mkdir(base_path + "/ai-generated", 0);
+    vfs.mkdir(base_path + "/user", 0);
+
+    // Group rules by source
+    std::map<std::string, std::vector<const ImplicationRule*>> rules_by_source;
+    for (const auto& rule : rules) {
+        rules_by_source[rule.source].push_back(&rule);
+    }
+
+    // Write rules to appropriate files
+    for (const auto& [source, source_rules] : rules_by_source) {
+        std::ostringstream content;
+        content << "# Logic rules - source: " << source << "\n";
+        content << "# Format: name|premise|conclusion|confidence|source\n\n";
+
+        for (const auto* rule_ptr : source_rules) {
+            content << serializeRule(*rule_ptr) << "\n";
+        }
+
+        std::string file_path = base_path + "/" + source + "/rules.txt";
+        vfs.write(file_path, content.str(), 0);
+    }
+
+    // Also create a summary file
+    std::ostringstream summary;
+    summary << "# Logic Rules Summary\n\n";
+    summary << "Total rules: " << rules.size() << "\n\n";
+
+    for (const auto& [source, source_rules] : rules_by_source) {
+        summary << "## " << source << " (" << source_rules.size() << " rules)\n";
+        for (const auto* rule_ptr : source_rules) {
+            summary << "  - " << rule_ptr->name << " (confidence: "
+                    << static_cast<int>(rule_ptr->confidence * 100) << "%)\n";
+        }
+        summary << "\n";
+    }
+
+    vfs.write(base_path + "/summary.txt", summary.str(), 0);
+}
+
+void LogicEngine::loadRulesFromVfs(Vfs& vfs, const std::string& base_path) {
+    // Clear existing rules
+    rules.clear();
+
+    // Load rules from each source directory
+    std::vector<std::string> sources = {"hardcoded", "learned", "ai-generated", "user"};
+
+    for (const auto& source : sources) {
+        std::string file_path = base_path + "/" + source + "/rules.txt";
+        try {
+            std::string content = vfs.read(file_path, std::nullopt);
+
+            // Parse line by line
+            std::istringstream iss(content);
+            std::string line;
+            while (std::getline(iss, line)) {
+                // Skip empty lines and comments
+                if (line.empty() || line[0] == '#') continue;
+
+                try {
+                    ImplicationRule rule = deserializeRule(line);
+                    addRule(rule);
+                } catch (const std::exception& e) {
+                    // Skip invalid rules, continue loading
+                    std::cerr << "Warning: skipping invalid rule in " << file_path
+                              << ": " << e.what() << "\n";
+                }
+            }
+        } catch (const std::exception&) {
+            // File doesn't exist or can't be read - that's OK
+        }
+    }
+}
+
 // TagMiningSession implementation
 void TagMiningSession::addUserTag(TagId tag){
     user_provided_tags.insert(tag);
@@ -7668,6 +7939,22 @@ int main(int argc, char** argv){
                              << " [" << int(rule.confidence * 100) << "%, " << rule.source << "]\n";
                 }
             }
+
+        } else if(cmd == "logic.rules.save"){
+            std::string path = inv.args.empty() ? "/plan/rules" : inv.args[0];
+            vfs.logic_engine.saveRulesToVfs(vfs, path);
+            std::cout << "saved " << vfs.logic_engine.rules.size() << " rules to " << path << "\n";
+
+        } else if(cmd == "logic.rules.load"){
+            std::string path = inv.args.empty() ? "/plan/rules" : inv.args[0];
+            size_t before = vfs.logic_engine.rules.size();
+            vfs.logic_engine.loadRulesFromVfs(vfs, path);
+            size_t after = vfs.logic_engine.rules.size();
+            std::cout << "loaded " << after << " rules from " << path;
+            if (before > 0) {
+                std::cout << " (replaced " << before << " existing rules)";
+            }
+            std::cout << "\n";
 
         } else if(cmd == "logic.sat"){
             if(inv.args.empty()) throw std::runtime_error("logic.sat <tag> [tag...]");
