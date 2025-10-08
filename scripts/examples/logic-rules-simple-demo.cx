@@ -1,0 +1,29 @@
+#!/usr/bin/env codex
+# Demo: Simple Logic Rules Save/Load
+# Minimal example showing basic save and load workflow
+
+echo "=== Simple Logic Rules Demo ==="
+echo ""
+
+echo "Step 1: Load hardcoded rules"
+logic.init
+echo ""
+
+echo "Step 2: See what rules we have"
+logic.listrules
+echo ""
+
+echo "Step 3: Save rules to /plan/rules"
+logic.rules.save
+echo ""
+
+echo "Step 4: Check the saved files"
+tree /plan/rules
+echo ""
+
+echo "Step 5: Load rules back"
+logic.rules.load
+echo ""
+
+echo "Done! Rules are now persisted in VFS."
+echo "They will be available across sessions if saved to overlay."

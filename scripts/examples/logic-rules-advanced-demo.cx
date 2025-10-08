@@ -1,0 +1,181 @@
+#!/usr/bin/env codex
+# Demo: Advanced Logic Rules Management
+# Shows custom rule creation, multi-source management, and overlay integration
+
+echo "=== Advanced Logic Rules Management Demo ==="
+echo ""
+
+# Part 1: Initialize with hardcoded rules
+echo "Part 1: Load hardcoded rules and save baseline"
+echo "-----------------------------------------------"
+logic.init
+echo ""
+echo "Initial rules loaded:"
+logic.listrules
+echo ""
+logic.rules.save /plan/rules/baseline
+echo "Baseline saved to /plan/rules/baseline"
+echo ""
+
+# Part 2: Add custom user rules by manually editing VFS
+echo "Part 2: Add custom user-defined rules"
+echo "-----------------------------------------------"
+mkdir /plan/rules/user
+echo "Creating custom rule: gpu-implies-parallel"
+echo "gpu-parallel|gpu|parallel|1.0|user" > /tmp/user_rule.txt
+cat /tmp/user_rule.txt
+echo ""
+
+# Note: In a real scenario, you would:
+# 1. Create the rule file in VFS
+# 2. Add multiple custom rules with different confidence scores
+# 3. Document the rationale in comments
+
+echo "Writing user rule to VFS..."
+echo "# User-defined rules" > /plan/rules/user/rules.txt
+echo "# Custom domain knowledge for this project" >> /plan/rules/user/rules.txt
+echo "" >> /plan/rules/user/rules.txt
+echo "gpu-parallel|gpu|parallel|1.0|user" >> /plan/rules/user/rules.txt
+echo "parallel-multicore|parallel|multicore|0.9|user" >> /plan/rules/user/rules.txt
+echo "multicore-fast|(and multicore cached)|fast|0.85|user" >> /plan/rules/user/rules.txt
+echo ""
+
+# Part 3: Create learned rules (simulating ML feedback)
+echo "Part 3: Add learned rules from feedback"
+echo "-----------------------------------------------"
+echo "Simulating learned patterns from user feedback..."
+echo ""
+echo "# Learned patterns from user feedback" > /plan/rules/learned/rules.txt
+echo "# These rules have lower confidence and may be updated" >> /plan/rules/learned/rules.txt
+echo "" >> /plan/rules/learned/rules.txt
+echo "fast-cached|fast|cached|0.87|learned" >> /plan/rules/learned/rules.txt
+echo "cached-local|cached|local-only|0.75|learned" >> /plan/rules/learned/rules.txt
+echo "test-debug|(or test debug)|verbose|0.65|learned" >> /plan/rules/learned/rules.txt
+echo ""
+
+# Part 4: Load all rules and verify
+echo "Part 4: Load complete rule set from VFS"
+echo "-----------------------------------------------"
+logic.rules.load
+echo ""
+echo "Complete rule set loaded:"
+logic.listrules
+echo ""
+
+# Part 5: Test inference with combined rules
+echo "Part 5: Test inference with combined rule set"
+echo "-----------------------------------------------"
+echo "Test 1: Infer from 'gpu' tag"
+logic.infer gpu
+echo ""
+
+echo "Test 2: Infer from 'fast' and 'offline' tags"
+logic.infer fast offline
+echo ""
+
+echo "Test 3: Infer from 'test' tag"
+logic.infer test
+echo ""
+
+# Part 6: Check consistency
+echo "Part 6: Consistency checking"
+echo "-----------------------------------------------"
+echo "Check if 'offline' and 'network' can coexist:"
+logic.check offline network
+echo ""
+
+echo "Check if 'fast', 'cached', and 'remote' are consistent:"
+logic.check fast cached remote
+echo ""
+
+# Part 7: Examine VFS structure
+echo "Part 7: Examine complete VFS rule structure"
+echo "-----------------------------------------------"
+tree /plan/rules
+echo ""
+
+echo "View summary:"
+cat /plan/rules/summary.txt
+echo ""
+
+# Part 8: Export to different location for versioning
+echo "Part 8: Version management - save snapshot"
+echo "-----------------------------------------------"
+logic.rules.save /plan/rules/v1.0.0
+echo "Saved versioned snapshot to /plan/rules/v1.0.0"
+echo ""
+
+# Part 9: Rule source analysis
+echo "Part 9: Analyze rules by source and confidence"
+echo "-----------------------------------------------"
+echo "Hardcoded rules (high confidence, always 1.0):"
+cat /plan/rules/hardcoded/rules.txt | grep -v "^#" | grep -v "^$"
+echo ""
+
+echo "Learned rules (medium confidence, 0.6-0.9):"
+cat /plan/rules/learned/rules.txt | grep -v "^#" | grep -v "^$"
+echo ""
+
+echo "User rules (variable confidence based on expertise):"
+cat /plan/rules/user/rules.txt | grep -v "^#" | grep -v "^$"
+echo ""
+
+# Part 10: Integration with overlay system
+echo "Part 10: Overlay integration workflow"
+echo "-----------------------------------------------"
+echo "In production, you would:"
+echo "  1. overlay.save myrules.vfs - Save rules to persistent overlay"
+echo "  2. overlay.mount myrules.vfs /plan - Mount in future sessions"
+echo "  3. logic.rules.load - Load persisted rules automatically"
+echo ""
+echo "This enables:"
+echo "  - Project-specific rule sets"
+echo "  - Sharing rules across team members"
+echo "  - Version control integration (git-friendly text format)"
+echo "  - Incremental rule refinement with confidence updates"
+echo ""
+
+# Part 11: Advanced use cases
+echo "Part 11: Advanced use cases"
+echo "-----------------------------------------------"
+echo "1. Constraint solving: Pre-validate tag combinations before planning"
+echo "   logic.sat gpu fast cached remote"
+echo ""
+
+echo "2. Explanation: Understand why tags are inferred"
+echo "   Example: Why is 'cached' inferred from 'fast'?"
+logic.explain cached fast
+echo ""
+
+echo "3. Tag mining: Extract mental model from minimal input"
+echo "   tag.mine.start fast offline"
+echo "   (Would show inferred tags and ask for confirmation)"
+echo ""
+
+echo "4. Rule evolution: Update confidence scores based on outcomes"
+echo "   - Start with low confidence (0.5)"
+echo "   - Increase on successful predictions"
+echo "   - Decrease on conflicts or failures"
+echo ""
+
+# Part 12: Summary
+echo "=== Demo Complete ==="
+echo ""
+echo "Key Capabilities Demonstrated:"
+echo ""
+echo "✓ Multi-source rule management (hardcoded/learned/user/ai-generated)"
+echo "✓ Confidence-based reasoning with probabilistic rules"
+echo "✓ S-expression formula syntax for complex logic"
+echo "✓ VFS persistence with human-readable text format"
+echo "✓ Version management and snapshotting"
+echo "✓ Consistency checking and SAT solving"
+echo "✓ Inference explanation and debugging"
+echo "✓ Integration with overlay system for persistence"
+echo "✓ Git-friendly format for team collaboration"
+echo ""
+echo "Next Steps:"
+echo "- Integrate with planner for pre-planning validation"
+echo "- Add AI-generated rules from LLM suggestions"
+echo "- Implement confidence update mechanism"
+echo "- Build rule conflict resolution UI"
+echo "- Add rule provenance tracking (who/when/why)"

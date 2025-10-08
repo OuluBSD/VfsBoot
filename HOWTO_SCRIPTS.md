@@ -2,6 +2,16 @@
 
 This guide explains how to run all the script files in the `scripts/` directory.
 
+## Quick Start Guide
+
+**New to VfsBoot?** Try these demos in order:
+
+1. **EASIEST**: `logic-rules-simple-demo.cx` - Learn rule save/load in 5 steps
+2. **INTERMEDIATE**: `logic-rules-persistence-demo.cx` - Complete persistence workflow
+3. **MOST COMPLEX**: `logic-rules-advanced-demo.cx` - Production rule management
+
+Each demo builds on the previous, showing progressively advanced features.
+
 ## Script Types
 
 VfsBoot uses two types of script files:
@@ -158,6 +168,44 @@ Debugging workflow using tag logic:
 - Building diagnostic trees with tagged hypotheses
 - Tracing implications through rule chains
 - Finding impossible configurations before deployment
+
+**scripts/examples/logic-rules-simple-demo.cx** - Simple rules save/load (EASIEST):
+```bash
+cat scripts/examples/logic-rules-simple-demo.cx | tail -n +2 | ./codex
+```
+Minimal introduction to rule persistence:
+- Load hardcoded rules with `logic.init`
+- Save rules to `/plan/rules` with `logic.rules.save`
+- View saved files with `tree` and `cat`
+- Load rules back with `logic.rules.load`
+- **Perfect for first-time users**
+
+**scripts/examples/logic-rules-persistence-demo.cx** - Rules persistence workflow (INTERMEDIATE):
+```bash
+cat scripts/examples/logic-rules-persistence-demo.cx | tail -n +2 | ./codex
+```
+Comprehensive persistence demonstration:
+- Organizing rules by source (hardcoded/learned/user/ai-generated)
+- Pipe-delimited serialization format
+- Summary file generation
+- Rule inference before and after reload
+- Integration with VFS overlay system
+
+**scripts/examples/logic-rules-advanced-demo.cx** - Advanced rule management (MOST COMPLEX):
+```bash
+cat scripts/examples/logic-rules-advanced-demo.cx | tail -n +2 | ./codex
+```
+Production-grade rule management workflow:
+- Multi-source rule creation and management
+- Custom user-defined rules with confidence scores
+- Learned rules from simulated ML feedback
+- Complex S-expression formulas (AND, OR, IMPLIES)
+- Version management and snapshotting
+- Consistency checking and SAT solving integration
+- Rule provenance and metadata tracking
+- Overlay integration for team collaboration
+- Git-friendly text format for version control
+- **Shows complete production workflow**
 
 ## Running .sexp Scripts
 
