@@ -2685,6 +2685,152 @@ LibraryNode::~LibraryNode() {
     }
 }
 
+// RemoteNode implementation
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <netdb.h>
+
+RemoteNode::RemoteNode(std::string n, std::string h, int p, std::string rp)
+    : VfsNode(std::move(n), Kind::Mount), host(std::move(h)), port(p),
+      remote_path(std::move(rp)), sock_fd(-1), cache_valid(false) {}
+
+RemoteNode::~RemoteNode() {
+    disconnect();
+}
+
+void RemoteNode::ensureConnected() const {
+    std::lock_guard<std::mutex> lock(conn_mutex);
+    if(sock_fd >= 0) return;
+
+    sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if(sock_fd < 0){
+        throw std::runtime_error("remote: failed to create socket");
+    }
+
+    struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+
+    // Try to resolve hostname
+    struct hostent* he = gethostbyname(host.c_str());
+    if(he == nullptr){
+        close(sock_fd);
+        sock_fd = -1;
+        throw std::runtime_error("remote: cannot resolve host " + host);
+    }
+
+    memcpy(&server_addr.sin_addr, he->h_addr_list[0], he->h_length);
+
+    if(connect(sock_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
+        close(sock_fd);
+        sock_fd = -1;
+        throw std::runtime_error("remote: failed to connect to " + host + ":" + std::to_string(port));
+    }
+
+    TRACE_MSG("RemoteNode connected to ", host, ":", port);
+}
+
+void RemoteNode::disconnect() const {
+    std::lock_guard<std::mutex> lock(conn_mutex);
+    if(sock_fd >= 0){
+        close(sock_fd);
+        sock_fd = -1;
+    }
+}
+
+std::string RemoteNode::execRemote(const std::string& command) const {
+    ensureConnected();
+
+    std::lock_guard<std::mutex> lock(conn_mutex);
+
+    // Send: EXEC <command>\n
+    std::string request = "EXEC " + command + "\n";
+    ssize_t sent = send(sock_fd, request.c_str(), request.size(), 0);
+    if(sent < 0 || static_cast<size_t>(sent) != request.size()){
+        disconnect();
+        throw std::runtime_error("remote: failed to send command");
+    }
+
+    // Receive response: OK <output>\n or ERR <message>\n
+    std::string response;
+    char buf[4096];
+    while(true){
+        ssize_t n = recv(sock_fd, buf, sizeof(buf)-1, 0);
+        if(n <= 0){
+            disconnect();
+            throw std::runtime_error("remote: connection closed");
+        }
+        buf[n] = '\0';
+        response += buf;
+        if(response.find('\n') != std::string::npos) break;
+    }
+
+    // Parse response
+    if(response.substr(0, 3) == "OK "){
+        return response.substr(3, response.size() - 4); // strip "OK " and trailing \n
+    } else if(response.substr(0, 4) == "ERR "){
+        throw std::runtime_error("remote error: " + response.substr(4, response.size() - 5));
+    } else {
+        throw std::runtime_error("remote: invalid response format");
+    }
+}
+
+bool RemoteNode::isDir() const {
+    try {
+        std::string cmd = "test -d " + remote_path + " && echo yes || echo no";
+        std::string result = execRemote(cmd);
+        return result == "yes";
+    } catch(...) {
+        return false;
+    }
+}
+
+std::string RemoteNode::read() const {
+    std::string cmd = "cat " + remote_path;
+    return execRemote(cmd);
+}
+
+void RemoteNode::write(const std::string& s) {
+    // Escape single quotes in content
+    std::string escaped = s;
+    size_t pos = 0;
+    while((pos = escaped.find('\'', pos)) != std::string::npos){
+        escaped.replace(pos, 1, "'\\''");
+        pos += 4;
+    }
+    std::string cmd = "echo '" + escaped + "' > " + remote_path;
+    execRemote(cmd);
+    cache_valid = false;
+}
+
+void RemoteNode::populateCache() const {
+    cache.clear();
+    std::string cmd = "ls " + remote_path;
+    std::string output = execRemote(cmd);
+
+    std::istringstream iss(output);
+    std::string line;
+    while(std::getline(iss, line)){
+        if(line.empty()) continue;
+        auto child_path = remote_path;
+        if(child_path.back() != '/') child_path += '/';
+        child_path += line;
+        auto child = std::make_shared<RemoteNode>(line, host, port, child_path);
+        cache[line] = child;
+    }
+}
+
+std::map<std::string, std::shared_ptr<VfsNode>>& RemoteNode::children() {
+    if(!cache_valid){
+        populateCache();
+        cache_valid = true;
+    }
+    return cache;
+}
+
 // ====== Mount Management ======
 
 void Vfs::mountFilesystem(const std::string& host_path, const std::string& vfs_path, size_t overlayId) {
@@ -2718,7 +2864,7 @@ void Vfs::mountFilesystem(const std::string& host_path, const std::string& vfs_p
     info.vfs_path = vfs_path;
     info.host_path = abs_host;
     info.mount_node = mount_node;
-    info.is_library = false;
+    info.type = MountType::Filesystem;
     mounts.push_back(info);
 }
 
@@ -2753,7 +2899,34 @@ void Vfs::mountLibrary(const std::string& lib_path, const std::string& vfs_path,
     info.vfs_path = vfs_path;
     info.host_path = abs_lib;
     info.mount_node = lib_node;
-    info.is_library = true;
+    info.type = MountType::Library;
+    mounts.push_back(info);
+}
+
+void Vfs::mountRemote(const std::string& host, int port, const std::string& remote_path, const std::string& vfs_path, size_t overlayId) {
+    TRACE_FN("host=", host, ", port=", port, ", remote=", remote_path, ", vfs=", vfs_path, ", overlay=", overlayId);
+
+    if(!mount_allowed){
+        throw std::runtime_error("mount.remote: mounting is currently disabled (use mount.allow)");
+    }
+
+    // Check if already mounted
+    for(const auto& m : mounts){
+        if(m.vfs_path == vfs_path){
+            throw std::runtime_error("mount.remote: path already has a mount: " + vfs_path);
+        }
+    }
+
+    auto remote_node = std::make_shared<RemoteNode>(path_basename(vfs_path), host, port, remote_path);
+    auto parent_path = path_dirname(vfs_path);
+    if(parent_path.empty()) parent_path = "/";
+    addNode(parent_path, remote_node, overlayId);
+
+    MountInfo info;
+    info.vfs_path = vfs_path;
+    info.host_path = host + ":" + std::to_string(port) + ":" + remote_path;
+    info.mount_node = remote_node;
+    info.type = MountType::Remote;
     mounts.push_back(info);
 }
 
@@ -3723,6 +3896,7 @@ R"(Commands:
   # Filesystem mounts
   mount <host-path> <vfs-path>
   mount.lib <lib-path> <vfs-path>
+  mount.remote <host> <port> <remote-vfs-path> <local-vfs-path>
   mount.list
   mount.allow
   mount.disallow
@@ -3751,6 +3925,117 @@ Notes:
 )"<<std::endl;
 }
 
+// ====== Daemon Server Mode ======
+
+static void run_daemon_server(int port, Vfs&, std::shared_ptr<Env>, WorkingDirectory&) {
+    TRACE_FN("port=", port);
+
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if(server_fd < 0){
+        throw std::runtime_error("daemon: failed to create socket");
+    }
+
+    int opt = 1;
+    if(setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0){
+        close(server_fd);
+        throw std::runtime_error("daemon: setsockopt failed");
+    }
+
+    struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(port);
+
+    if(bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
+        close(server_fd);
+        throw std::runtime_error("daemon: bind failed on port " + std::to_string(port));
+    }
+
+    if(listen(server_fd, 5) < 0){
+        close(server_fd);
+        throw std::runtime_error("daemon: listen failed");
+    }
+
+    std::cout << "daemon: listening on port " << port << "\n";
+    std::cout << "daemon: ready to accept VFS remote mount connections\n";
+
+    while(true){
+        struct sockaddr_in client_addr;
+        socklen_t client_len = sizeof(client_addr);
+        int client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &client_len);
+
+        if(client_fd < 0){
+            std::cerr << "daemon: accept failed\n";
+            continue;
+        }
+
+        char client_ip[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
+        std::cout << "daemon: connection from " << client_ip << ":" << ntohs(client_addr.sin_port) << "\n";
+
+        // Handle client connection in separate thread
+        std::thread([client_fd](){
+            auto handle_request = [](const std::string& request) -> std::string {
+                try {
+                    // Parse: EXEC <command>\n
+                    if(request.substr(0, 5) != "EXEC "){
+                        return "ERR invalid command format\n";
+                    }
+
+                    std::string command = request.substr(5);
+                    if(!command.empty() && command.back() == '\n'){
+                        command.pop_back();
+                    }
+
+                    // Execute command as shell command and capture output
+                    FILE* pipe = popen(command.c_str(), "r");
+                    if(!pipe){
+                        return "ERR failed to execute command\n";
+                    }
+
+                    std::string output;
+                    char buf[4096];
+                    while(fgets(buf, sizeof(buf), pipe) != nullptr){
+                        output += buf;
+                    }
+
+                    int status = pclose(pipe);
+                    if(status != 0){
+                        return "ERR command failed with status " + std::to_string(status) + "\n";
+                    }
+
+                    return "OK " + output + "\n";
+                } catch(const std::exception& e){
+                    return "ERR " + std::string(e.what()) + "\n";
+                } catch(...){
+                    return "ERR internal error\n";
+                }
+            };
+
+            try {
+                while(true){
+                    char buf[4096];
+                    ssize_t n = recv(client_fd, buf, sizeof(buf)-1, 0);
+                    if(n <= 0) break;
+
+                    buf[n] = '\0';
+                    std::string request(buf);
+                    std::string response = handle_request(request);
+
+                    send(client_fd, response.c_str(), response.size(), 0);
+                }
+            } catch(...){
+                // Connection closed or error
+            }
+
+            close(client_fd);
+        }).detach();
+    }
+
+    close(server_fd);
+}
+
 int main(int argc, char** argv){
     TRACE_FN();
     using std::string; using std::shared_ptr;
@@ -3762,11 +4047,12 @@ int main(int argc, char** argv){
         return 1;
     };
 
-    const string usage_text = string("usage: ") + argv[0] + " [--solution <pkg|asm>] [script [-]]";
+    const string usage_text = string("usage: ") + argv[0] + " [--solution <pkg|asm>] [--daemon <port>] [script [-]]";
 
     std::string script_path;
     std::string solution_arg;
     bool fallback_after_script = false;
+    int daemon_port = -1;
 
     auto looks_like_solution_hint = [](const std::string& arg){
         return is_solution_file(std::filesystem::path(arg));
@@ -3777,6 +4063,11 @@ int main(int argc, char** argv){
         if(arg == "--solution" || arg == "-S"){
             if(i + 1 >= argc) return usage("--solution requires a file path");
             solution_arg = argv[++i];
+            continue;
+        }
+        if(arg == "--daemon" || arg == "-d"){
+            if(i + 1 >= argc) return usage("--daemon requires a port number");
+            daemon_port = std::stoi(argv[++i]);
             continue;
         }
         if(arg == "--script"){
@@ -3865,6 +4156,17 @@ int main(int argc, char** argv){
 
     std::cout << "codex-mini 🌲 VFS+AST+AI — 'help' kertoo karun totuuden.\n";
     string line;
+    // Daemon mode: run server and exit
+    if(daemon_port > 0){
+        try {
+            run_daemon_server(daemon_port, vfs, env, cwd);
+        } catch(const std::exception& e){
+            std::cerr << "daemon error: " << e.what() << "\n";
+            return 1;
+        }
+        return 0;
+    }
+
     size_t repl_iter = 0;
     std::vector<std::string> history;
     load_history(history);
@@ -4374,13 +4676,28 @@ int main(int argc, char** argv){
             vfs.mountLibrary(lib_path, vfs_path, cwd.primary_overlay);
             std::cout << "mounted library " << lib_path << " -> " << vfs_path << "\n";
 
+        } else if(cmd == "mount.remote"){
+            if(inv.args.size() < 4) throw std::runtime_error("mount.remote <host> <port> <remote-vfs-path> <local-vfs-path>");
+            std::string host = inv.args[0];
+            int port = std::stoi(inv.args[1]);
+            std::string remote_path = inv.args[2];
+            std::string vfs_path = normalize_path(cwd.path, inv.args[3]);
+            vfs.mountRemote(host, port, remote_path, vfs_path, cwd.primary_overlay);
+            std::cout << "mounted remote " << host << ":" << port << ":" << remote_path << " -> " << vfs_path << "\n";
+
         } else if(cmd == "mount.list"){
             auto mounts = vfs.listMounts();
             if(mounts.empty()){
                 std::cout << "no mounts\n";
             } else {
                 for(const auto& m : mounts){
-                    std::cout << (m.is_library ? "l " : "m ") << m.vfs_path << " <- " << m.host_path << "\n";
+                    std::string type_marker;
+                    switch(m.type){
+                        case Vfs::MountType::Filesystem: type_marker = "m "; break;
+                        case Vfs::MountType::Library: type_marker = "l "; break;
+                        case Vfs::MountType::Remote: type_marker = "r "; break;
+                    }
+                    std::cout << type_marker << m.vfs_path << " <- " << m.host_path << "\n";
                 }
             }
             std::cout << "mounting " << (vfs.isMountAllowed() ? "allowed" : "disabled") << "\n";

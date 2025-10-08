@@ -19,6 +19,11 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+#include <queue>
 
 #ifdef CODEX_TRACE
 #include <mutex>
@@ -118,6 +123,30 @@ struct LibrarySymbolNode : VfsNode {
     std::string signature;
     LibrarySymbolNode(std::string n, void* ptr, std::string sig);
     std::string read() const override { return signature; }
+};
+
+struct RemoteNode : VfsNode {
+    std::string host;
+    int port;
+    std::string remote_path;  // VFS path on remote server
+    mutable int sock_fd;
+    mutable std::map<std::string, std::shared_ptr<VfsNode>> cache;
+    mutable bool cache_valid;
+    mutable std::mutex conn_mutex;
+
+    RemoteNode(std::string n, std::string h, int p, std::string rp);
+    ~RemoteNode() override;
+
+    bool isDir() const override;
+    std::string read() const override;
+    void write(const std::string& s) override;
+    std::map<std::string, std::shared_ptr<VfsNode>>& children() override;
+
+private:
+    void ensureConnected() const;
+    void disconnect() const;
+    std::string execRemote(const std::string& command) const;
+    void populateCache() const;
 };
 
 struct Env; // forward
@@ -263,24 +292,55 @@ struct Vfs {
     void tree(std::shared_ptr<VfsNode> n = nullptr, std::string pref = "");
 
     // Mount management
+    enum class MountType { Filesystem, Library, Remote };
     struct MountInfo {
         std::string vfs_path;
-        std::string host_path;
+        std::string host_path;  // For filesystem/library, or "host:port" for remote
         std::shared_ptr<VfsNode> mount_node;
-        bool is_library;
+        MountType type;
     };
     std::vector<MountInfo> mounts;
     bool mount_allowed = true;
 
     void mountFilesystem(const std::string& host_path, const std::string& vfs_path, size_t overlayId = 0);
     void mountLibrary(const std::string& lib_path, const std::string& vfs_path, size_t overlayId = 0);
+    void mountRemote(const std::string& host, int port, const std::string& remote_path, const std::string& vfs_path, size_t overlayId = 0);
     void unmount(const std::string& vfs_path);
     std::vector<MountInfo> listMounts() const;
     void setMountAllowed(bool allowed);
     bool isMountAllowed() const;
+
+    // Remote filesystem server
+    void serveRemoteFilesystem(int port, const std::string& vfs_root = "/");
+    void stopRemoteServer();
 };
 
 extern Vfs* G_VFS; // glob aputinta varten
+
+//
+// Stateful VFS Visitor
+//
+struct VfsVisitor {
+    Vfs* vfs;
+    std::vector<std::shared_ptr<VfsNode>> results;
+    size_t current_index;
+
+    VfsVisitor(Vfs* v) : vfs(v), current_index(0) {}
+
+    // Commands
+    void find(const std::string& start_path, const std::string& pattern);
+    void findext(const std::string& start_path, const std::string& extension);
+    std::string name() const;
+    bool isend() const;
+    void next();
+    void reset() { current_index = 0; }
+    size_t count() const { return results.size(); }
+
+private:
+    void findRecursive(std::shared_ptr<VfsNode> node, const std::string& path,
+                      const std::string& pattern, bool is_extension);
+    bool matchesPattern(const std::string& name, const std::string& pattern) const;
+};
 
 //
 // Parseri (S-expr)
