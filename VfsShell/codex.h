@@ -172,6 +172,14 @@ struct LogicEngine {
     void loadRulesFromVfs(Vfs& vfs, const std::string& base_path = "/plan/rules");
     std::string serializeRule(const ImplicationRule& rule) const;
     ImplicationRule deserializeRule(const std::string& serialized) const;
+
+    // Dynamic rule creation
+    void addSimpleRule(const std::string& name, const std::string& premise_tag,
+                       const std::string& conclusion_tag, float confidence, const std::string& source);
+    void addExclusionRule(const std::string& name, const std::string& tag1,
+                          const std::string& tag2, const std::string& source = "user");
+    void removeRule(const std::string& name);
+    bool hasRule(const std::string& name) const;
 };
 
 struct TagMiningSession {

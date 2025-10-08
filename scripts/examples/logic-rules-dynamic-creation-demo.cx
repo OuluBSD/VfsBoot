@@ -1,0 +1,194 @@
+#!/usr/bin/env codex
+# Demo: Dynamic Logic Rule Creation
+# Shows how to create rules from different sources beyond hardcoded rules
+
+echo "=== Dynamic Logic Rule Creation Demo ==="
+echo ""
+
+# Part 1: Start with hardcoded baseline
+echo "Part 1: Load hardcoded baseline rules"
+echo "---------------------------------------"
+logic.init
+echo ""
+echo "Starting with hardcoded rules:"
+logic.listrules
+echo ""
+
+# Part 2: Add user-defined rules
+echo "Part 2: Add user-defined domain rules"
+echo "---------------------------------------"
+echo "Adding GPU/parallel computing rules..."
+logic.rule.add gpu-parallel gpu parallel 1.0 user
+logic.rule.add parallel-multicore parallel multicore 0.95 user
+logic.rule.add multicore-threads multicore threads 1.0 user
+echo ""
+
+echo "Adding performance rules..."
+logic.rule.add gpu-fast gpu fast 0.9 user
+logic.rule.add threads-fast threads fast 0.75 user
+echo ""
+
+echo "Adding resource constraint rules..."
+logic.rule.add gpu-memory-intensive gpu memory-intensive 1.0 user
+logic.rule.add memory-intensive-slow-startup memory-intensive slow-startup 0.8 user
+echo ""
+
+# Part 3: Add exclusion rules (mutually exclusive tags)
+echo "Part 3: Add mutual exclusion constraints"
+echo "---------------------------------------"
+echo "Adding environment exclusions..."
+logic.rule.exclude env-test-prod test production user
+logic.rule.exclude env-dev-prod development production user
+echo ""
+
+echo "Adding resource exclusions..."
+logic.rule.exclude resource-cpu-gpu cpu-only gpu user
+logic.rule.exclude resource-single-multi single-threaded multicore user
+echo ""
+
+# Part 4: Add learned rules (simulating ML feedback)
+echo "Part 4: Add learned patterns (from feedback/ML)"
+echo "---------------------------------------"
+echo "Simulating learned patterns with lower confidence..."
+logic.rule.add learned-cache-hit cached fast 0.87 learned
+logic.rule.add learned-cache-memory cached memory-intensive 0.65 learned
+logic.rule.add learned-debug-slow debug slow-startup 0.72 learned
+echo ""
+
+# Part 5: Add AI-generated rules (simulating AI suggestions)
+echo "Part 5: Add AI-generated rules (from LLM)"
+echo "---------------------------------------"
+echo "Simulating AI-suggested optimizations..."
+logic.rule.add ai-suggest-prefetch fast prefetch 0.70 ai-generated
+logic.rule.add ai-suggest-compress network compressed 0.75 ai-generated
+logic.rule.add ai-suggest-batch parallel batch-processing 0.80 ai-generated
+echo ""
+
+# Part 6: Show complete rule set
+echo "Part 6: Review complete rule set"
+echo "---------------------------------------"
+echo "Total rules loaded:"
+logic.listrules
+echo ""
+
+# Part 7: Test inference with combined rules
+echo "Part 7: Test inference with combined rule set"
+echo "---------------------------------------"
+echo "Test 1: What do we get from 'gpu'?"
+logic.infer gpu
+echo ""
+
+echo "Test 2: What about 'parallel' and 'cached'?"
+logic.infer parallel cached
+echo ""
+
+echo "Test 3: Development environment tags?"
+logic.infer development debug
+echo ""
+
+# Part 8: Test exclusions
+echo "Part 8: Test mutual exclusion constraints"
+echo "---------------------------------------"
+echo "Check if 'test' and 'production' can coexist:"
+logic.check test production
+echo ""
+
+echo "Check if 'gpu' and 'cpu-only' are compatible:"
+logic.check gpu cpu-only
+echo ""
+
+# Part 9: Save complete rule set
+echo "Part 9: Save all rules to VFS"
+echo "---------------------------------------"
+logic.rules.save
+echo ""
+
+echo "VFS structure with all rule sources:"
+tree /plan/rules
+echo ""
+
+# Part 10: Show rules by source
+echo "Part 10: Examine rules by source category"
+echo "---------------------------------------"
+echo "Hardcoded rules (domain knowledge):"
+cat /plan/rules/hardcoded/rules.txt | grep -v "^#" | grep -v "^$"
+echo ""
+
+echo "User rules (project-specific):"
+cat /plan/rules/user/rules.txt | grep -v "^#" | grep -v "^$"
+echo ""
+
+echo "Learned rules (from feedback):"
+cat /plan/rules/learned/rules.txt | grep -v "^#" | grep -v "^$"
+echo ""
+
+echo "AI-generated rules (from LLM):"
+cat /plan/rules/ai-generated/rules.txt | grep -v "^#" | grep -v "^$"
+echo ""
+
+# Part 11: View summary
+echo "Part 11: Summary of all rules"
+echo "---------------------------------------"
+cat /plan/rules/summary.txt
+echo ""
+
+# Part 12: Test rule removal
+echo "Part 12: Dynamic rule management"
+echo "---------------------------------------"
+echo "Remove a user rule:"
+logic.rule.remove parallel-multicore
+echo ""
+
+echo "Verify removal:"
+logic.listrules | grep parallel
+echo ""
+
+echo "Re-add with updated confidence:"
+logic.rule.add parallel-multicore parallel multicore 0.98 user
+echo ""
+
+# Part 13: Real-world workflow
+echo "Part 13: Real-world workflow example"
+echo "---------------------------------------"
+echo "Scenario: Building a high-performance ML training pipeline"
+echo ""
+echo "Step 1: Add project requirements as tags"
+echo "  -> gpu, parallel, fast, production"
+echo ""
+echo "Step 2: Infer additional requirements"
+logic.infer gpu parallel fast production
+echo ""
+echo "Step 3: Check for conflicts"
+logic.check gpu parallel fast production multicore memory-intensive
+echo ""
+echo "Step 4: Save configuration to project overlay"
+echo "  -> logic.rules.save /project/config/rules"
+echo "  -> overlay.save project.vfs"
+echo ""
+
+# Part 14: Summary
+echo "=== Demo Complete ==="
+echo ""
+echo "Key Capabilities Demonstrated:"
+echo ""
+echo "✓ Dynamic rule creation with logic.rule.add"
+echo "✓ Exclusion constraints with logic.rule.exclude"
+echo "✓ Multi-source rule management (4 sources)"
+echo "✓ Confidence-based reasoning (0.0-1.0)"
+echo "✓ Rule removal and updates"
+echo "✓ Complex inference chains (gpu → parallel → fast → cached)"
+echo "✓ Consistency checking for conflicts"
+echo "✓ Persistent storage in VFS by source"
+echo "✓ Real-world project workflow integration"
+echo ""
+echo "Rule Sources:"
+echo "  - hardcoded: Built-in domain knowledge (100% confidence)"
+echo "  - user: Project-specific rules (variable confidence)"
+echo "  - learned: ML-derived patterns (60-90% confidence)"
+echo "  - ai-generated: LLM suggestions (70-80% confidence)"
+echo ""
+echo "Next Steps:"
+echo "  - Integrate with planner for pre-planning validation"
+echo "  - Add rule update mechanism based on outcomes"
+echo "  - Implement confidence adjustment over time"
+echo "  - Build rule conflict resolution UI"

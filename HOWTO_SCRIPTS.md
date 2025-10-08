@@ -207,6 +207,21 @@ Production-grade rule management workflow:
 - Git-friendly text format for version control
 - **Shows complete production workflow**
 
+**scripts/examples/logic-rules-dynamic-creation-demo.cx** - Dynamic rule creation:
+```bash
+cat scripts/examples/logic-rules-dynamic-creation-demo.cx | tail -n +2 | ./codex
+```
+Demonstrates creating rules from multiple sources:
+- `logic.rule.add` - Create simple implication rules (A → B)
+- `logic.rule.exclude` - Create mutual exclusion rules (A → ¬B)
+- `logic.rule.remove` - Remove and update existing rules
+- User-defined domain rules with custom confidence
+- Learned patterns from ML feedback (0.6-0.9 confidence)
+- AI-generated suggestions from LLMs (0.7-0.8 confidence)
+- Building complex inference chains
+- Real-world ML training pipeline example
+- **Shows how to go beyond hardcoded rules**
+
 ## Running .sexp Scripts
 
 S-expression scripts are primarily used by the test harness, but can be run manually:

@@ -4223,6 +4223,43 @@ void LogicEngine::loadRulesFromVfs(Vfs& vfs, const std::string& base_path) {
     }
 }
 
+// Dynamic rule creation methods
+void LogicEngine::addSimpleRule(const std::string& name, const std::string& premise_tag,
+                                 const std::string& conclusion_tag, float confidence, const std::string& source) {
+    TagId premise_id = tag_registry->registerTag(premise_tag);
+    TagId conclusion_id = tag_registry->registerTag(conclusion_tag);
+
+    auto premise = LogicFormula::makeVar(premise_id);
+    auto conclusion = LogicFormula::makeVar(conclusion_id);
+
+    ImplicationRule rule(name, premise, conclusion, confidence, source);
+    addRule(rule);
+}
+
+void LogicEngine::addExclusionRule(const std::string& name, const std::string& tag1,
+                                    const std::string& tag2, const std::string& source) {
+    // Exclusion: tag1 implies NOT tag2
+    TagId tag1_id = tag_registry->registerTag(tag1);
+    TagId tag2_id = tag_registry->registerTag(tag2);
+
+    auto premise = LogicFormula::makeVar(tag1_id);
+    auto conclusion = LogicFormula::makeNot(LogicFormula::makeVar(tag2_id));
+
+    ImplicationRule rule(name, premise, conclusion, 1.0f, source);
+    addRule(rule);
+}
+
+void LogicEngine::removeRule(const std::string& name) {
+    auto it = std::remove_if(rules.begin(), rules.end(),
+                             [&name](const ImplicationRule& r) { return r.name == name; });
+    rules.erase(it, rules.end());
+}
+
+bool LogicEngine::hasRule(const std::string& name) const {
+    return std::any_of(rules.begin(), rules.end(),
+                      [&name](const ImplicationRule& r) { return r.name == name; });
+}
+
 // TagMiningSession implementation
 void TagMiningSession::addUserTag(TagId tag){
     user_provided_tags.insert(tag);
@@ -7955,6 +7992,42 @@ int main(int argc, char** argv){
                 std::cout << " (replaced " << before << " existing rules)";
             }
             std::cout << "\n";
+
+        } else if(cmd == "logic.rule.add"){
+            // logic.rule.add <name> <premise-tag> <conclusion-tag> [confidence] [source]
+            if(inv.args.size() < 3) throw std::runtime_error("logic.rule.add <name> <premise-tag> <conclusion-tag> [confidence] [source]");
+            std::string name = inv.args[0];
+            std::string premise = inv.args[1];
+            std::string conclusion = inv.args[2];
+            float confidence = inv.args.size() > 3 ? std::stof(inv.args[3]) : 1.0f;
+            std::string source = inv.args.size() > 4 ? inv.args[4] : "user";
+
+            vfs.logic_engine.addSimpleRule(name, premise, conclusion, confidence, source);
+            std::cout << "added rule: " << name << " (" << premise << " => " << conclusion
+                      << ", confidence=" << int(confidence * 100) << "%, source=" << source << ")\n";
+
+        } else if(cmd == "logic.rule.exclude"){
+            // logic.rule.exclude <name> <tag1> <tag2> [source]
+            if(inv.args.size() < 3) throw std::runtime_error("logic.rule.exclude <name> <tag1> <tag2> [source]");
+            std::string name = inv.args[0];
+            std::string tag1 = inv.args[1];
+            std::string tag2 = inv.args[2];
+            std::string source = inv.args.size() > 3 ? inv.args[3] : "user";
+
+            vfs.logic_engine.addExclusionRule(name, tag1, tag2, source);
+            std::cout << "added exclusion rule: " << name << " (" << tag1 << " excludes " << tag2
+                      << ", source=" << source << ")\n";
+
+        } else if(cmd == "logic.rule.remove"){
+            // logic.rule.remove <name>
+            if(inv.args.empty()) throw std::runtime_error("logic.rule.remove <name>");
+            std::string name = inv.args[0];
+            if(vfs.logic_engine.hasRule(name)){
+                vfs.logic_engine.removeRule(name);
+                std::cout << "removed rule: " << name << "\n";
+            } else {
+                std::cout << "rule not found: " << name << "\n";
+            }
 
         } else if(cmd == "logic.sat"){
             if(inv.args.empty()) throw std::runtime_error("logic.sat <tag> [tag...]");
