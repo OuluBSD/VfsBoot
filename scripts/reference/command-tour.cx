@@ -3,7 +3,7 @@ pwd
 ls
 mkdir src/reference
 cd src/reference
-echo msg.cx (print "Reference pipeline active")
+echo (print "Reference pipeline active") > msg.cx
 parse msg.cx ../../ast/reference-msg
 cd ../../ast
 eval reference-msg

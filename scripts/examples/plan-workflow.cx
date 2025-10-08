@@ -13,19 +13,19 @@ plan.create /plan/webapp root "E-commerce web application"
 
 # Define high-level goals
 plan.create /plan/webapp/goals goals
-echo /plan/webapp/goals goal-1: Allow users to browse products
-echo /plan/webapp/goals goal-2: Enable secure checkout process
-echo /plan/webapp/goals goal-3: Provide admin dashboard
-echo /plan/webapp/goals goal-4: Support mobile devices
+echo goal-1: Allow users to browse products >> /plan/webapp/goals
+echo goal-2: Enable secure checkout process >> /plan/webapp/goals
+echo goal-3: Provide admin dashboard >> /plan/webapp/goals
+echo goal-4: Support mobile devices >> /plan/webapp/goals
 
 # Define initial strategy
 plan.create /plan/webapp/strategy strategy "MVP approach: Start with core shopping features, add admin panel, then optimize for mobile"
 
 # Research needed
 plan.create /plan/webapp/research research
-echo /plan/webapp/research topic-1: Payment gateway integration options
-echo /plan/webapp/research topic-2: Product search algorithms
-echo /plan/webapp/research topic-3: Mobile-first CSS frameworks
+echo topic-1: Payment gateway integration options >> /plan/webapp/research
+echo topic-2: Product search algorithms >> /plan/webapp/research
+echo topic-3: Mobile-first CSS frameworks >> /plan/webapp/research
 
 tree /plan/webapp
 
@@ -56,10 +56,10 @@ echo
 echo "Phase 3: Documenting dependencies..."
 
 plan.create /plan/webapp/deps deps
-echo /plan/webapp/deps dep-1: Node.js v18+
-echo /plan/webapp/deps dep-2: MongoDB or PostgreSQL
-echo /plan/webapp/deps dep-3: Stripe API for payments
-echo /plan/webapp/deps dep-4: AWS S3 for product images
+echo dep-1: Node.js v18+ >> /plan/webapp/deps
+echo dep-2: MongoDB or PostgreSQL >> /plan/webapp/deps
+echo dep-3: Stripe API for payments >> /plan/webapp/deps
+echo dep-4: AWS S3 for product images >> /plan/webapp/deps
 
 cat /plan/webapp/deps
 
@@ -78,8 +78,8 @@ echo
 echo "Phase 5: Tracking implementation progress..."
 
 plan.create /plan/webapp/implemented implemented
-echo /plan/webapp/implemented impl-1: Project scaffolding with Express.js
-echo /plan/webapp/implemented impl-2: Database connection setup
+echo impl-1: Project scaffolding with Express.js >> /plan/webapp/implemented
+echo impl-2: Database connection setup >> /plan/webapp/implemented
 
 cat /plan/webapp/implemented
 

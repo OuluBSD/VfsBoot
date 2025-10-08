@@ -1,7 +1,7 @@
 help
 ls /
 mkdir /src/tutorial
-echo /src/tutorial/welcome.cx (print "Welcome to codex-mini tutorial")
+echo (print "Welcome to codex-mini tutorial") > /src/tutorial/welcome.cx
 parse /src/tutorial/welcome.cx /ast/tutorial-welcome
 eval /ast/tutorial-welcome
 tree

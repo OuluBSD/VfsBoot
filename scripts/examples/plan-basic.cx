@@ -9,9 +9,9 @@ plan.create /plan/myproject root "Build a web application"
 
 # Add goals
 plan.create /plan/myproject/goals goals
-echo /plan/myproject/goals goal-1: Implement user authentication
-echo /plan/myproject/goals goal-2: Create REST API
-echo /plan/myproject/goals goal-3: Build responsive UI
+echo goal-1: Implement user authentication >> /plan/myproject/goals
+echo goal-2: Create REST API >> /plan/myproject/goals
+echo goal-3: Build responsive UI >> /plan/myproject/goals
 
 # Add strategy
 plan.create /plan/myproject/strategy strategy "Start with backend API, then add frontend, finally integrate auth"
@@ -26,14 +26,14 @@ plan.jobs.add /plan/myproject/jobs "Implement login page" 40 agent
 
 # Add dependencies
 plan.create /plan/myproject/deps deps
-echo /plan/myproject/deps dep-1: PostgreSQL database
-echo /plan/myproject/deps dep-2: Express.js framework
-echo /plan/myproject/deps dep-3: React library
+echo dep-1: PostgreSQL database >> /plan/myproject/deps
+echo dep-2: Express.js framework >> /plan/myproject/deps
+echo dep-3: React library >> /plan/myproject/deps
 
 # Add research topics
 plan.create /plan/myproject/research research
-echo /plan/myproject/research topic-1: JWT vs session-based auth
-echo /plan/myproject/research topic-2: Database migration tools
+echo topic-1: JWT vs session-based auth >> /plan/myproject/research
+echo topic-2: Database migration tools >> /plan/myproject/research
 
 # Add notes
 plan.create /plan/myproject/notes notes "Remember to add rate limiting for API endpoints"

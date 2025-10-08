@@ -1,5 +1,5 @@
 help
-echo /src/hello.cx ((lambda x (+ x 1)) 41)
+echo ((lambda x (+ x 1)) 41) > /src/hello.cx
 parse /src/hello.cx /ast/hello
 ls /src
 eval /ast/hello

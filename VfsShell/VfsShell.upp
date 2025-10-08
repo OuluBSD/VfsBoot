@@ -2,7 +2,9 @@ file
 	codex.h,
 	codex.cpp,
 	snippet_catalog.h,
-	snippet_catalog.cpp;
+	snippet_catalog.cpp,
+	utils.h,
+	utils.cpp;
 
 mainconfig
 	"" = "";

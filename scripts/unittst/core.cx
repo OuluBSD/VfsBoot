@@ -1,9 +1,9 @@
-echo /src/unittst-arith.cx (= (+ 1 2 3) 6)
+echo (= (+ 1 2 3) 6) > /src/unittst-arith.cx
 parse /src/unittst-arith.cx /ast/unittst-arith
 eval /ast/unittst-arith
-echo /src/unittst-list.cx (head (list 10 20 30))
+echo (head (list 10 20 30)) > /src/unittst-list.cx
 parse /src/unittst-list.cx /ast/unittst-list
 eval /ast/unittst-list
-echo /src/unittst-str.cx (str.cat "foo" (str.sub "barbaz" 3 3))
+echo (str.cat "foo" (str.sub "barbaz" 3 3)) > /src/unittst-str.cx
 parse /src/unittst-str.cx /ast/unittst-str
 eval /ast/unittst-str

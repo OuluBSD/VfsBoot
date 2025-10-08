@@ -2049,6 +2049,8 @@ struct CommandInvocation {
 
 struct CommandPipeline {
     std::vector<CommandInvocation> commands;
+    std::string output_redirect;  // file path for > or >>
+    bool redirect_append = false; // true for >>, false for >
 };
 
 struct CommandChainEntry {
@@ -2126,6 +2128,16 @@ static std::vector<std::string> tokenize_command_line(const std::string& line){
                 ++i;
                 continue;
             }
+            if(c == '>'){
+                flush();
+                if(i + 1 < line.size() && line[i+1] == '>'){
+                    tokens.emplace_back(">>");
+                    ++i;
+                } else {
+                    tokens.emplace_back(">");
+                }
+                continue;
+            }
         }
         cur.push_back(c);
     }
@@ -2154,7 +2166,8 @@ static std::vector<CommandChainEntry> parse_command_chain(const std::vector<std:
         next_logic.clear();
     };
 
-    for(const auto& tok : tokens){
+    for(size_t idx = 0; idx < tokens.size(); ++idx){
+        const auto& tok = tokens[idx];
         if(tok == "|"){
             flush_command();
             continue;
@@ -2163,6 +2176,14 @@ static std::vector<CommandChainEntry> parse_command_chain(const std::vector<std:
             flush_command();
             flush_pipeline();
             next_logic = tok;
+            continue;
+        }
+        if(tok == ">" || tok == ">>"){
+            flush_command();
+            if(idx + 1 >= tokens.size()) throw std::runtime_error("missing redirect target after " + tok);
+            current_pipe.output_redirect = tokens[idx + 1];
+            current_pipe.redirect_append = (tok == ">>");
+            ++idx;
             continue;
         }
         if(current_cmd.name.empty()){
@@ -2648,7 +2669,8 @@ void Vfs::write(const std::string& path, const std::string& data, size_t overlay
     } else {
         node = it->second;
     }
-    if(node->kind != VfsNode::Kind::File) throw std::runtime_error("write non-file");
+    if(node->kind != VfsNode::Kind::File && node->kind != VfsNode::Kind::Ast)
+        throw std::runtime_error("write non-file");
     node->write(data);
     markOverlayDirty(overlayId);
 }
@@ -5148,10 +5170,9 @@ int main(int argc, char** argv){
             result.output = std::to_string(value) + "\n";
 
         } else if(cmd == "echo"){
-            if(inv.args.empty()) throw std::runtime_error("echo <path> <data>");
-            std::string rest = join_args(inv.args, 1);
-            std::string abs = normalize_path(cwd.path, inv.args[0]);
-            vfs.write(abs, rest, cwd.primary_overlay);
+            // Bourne shell compatible echo - prints to stdout
+            std::string text = join_args(inv.args, 0);
+            result.output = text + "\n";
 
         } else if(cmd == "rm"){
             if(inv.args.empty()) throw std::runtime_error("rm <path>");
@@ -5753,6 +5774,26 @@ int main(int argc, char** argv){
             if(last.exit_requested) return last;
             next_input = last.output;
         }
+
+        // Handle output redirection
+        if(!pipeline.output_redirect.empty()){
+            std::string abs_path = normalize_path(cwd.path, pipeline.output_redirect);
+            if(pipeline.redirect_append){
+                // >> append to file
+                std::string existing;
+                try {
+                    existing = vfs.read(abs_path, std::nullopt);
+                } catch(...) {
+                    // File doesn't exist yet, that's ok
+                }
+                vfs.write(abs_path, existing + last.output, cwd.primary_overlay);
+            } else {
+                // > overwrite file
+                vfs.write(abs_path, last.output, cwd.primary_overlay);
+            }
+            last.output.clear(); // don't print to stdout when redirected
+        }
+
         return last;
     };
 
