@@ -1,0 +1,66 @@
+#!/usr/bin/env -S ../../codex --script
+# Planner navigation and context management example
+# Demonstrates how to navigate through plans and manage AI context
+
+echo Planner Navigation Demo
+echo =====================
+
+# Create a hierarchical plan
+plan.create /plan/project root "Software development project"
+plan.create /plan/project/backend subplan "Backend implementation"
+plan.create /plan/project/frontend subplan "Frontend implementation"
+plan.create /plan/project/backend/api subplan "REST API layer"
+plan.create /plan/project/backend/database subplan "Database layer"
+
+# Add some content
+plan.create /plan/project/backend/api/jobs jobs
+plan.jobs.add /plan/project/backend/api/jobs "Define API routes" 10 agent
+plan.jobs.add /plan/project/backend/api/jobs "Implement controllers" 20 agent
+plan.jobs.add /plan/project/backend/api/jobs "Add validation middleware" 30 agent
+
+# Navigate to different parts of the plan
+echo
+echo "1. Navigating to backend API:"
+plan.goto /plan/project/backend/api
+plan.status
+
+# Switch to forward mode (for adding details)
+echo
+echo "2. Switching to forward mode (add details):"
+plan.forward
+plan.status
+
+# Switch to backward mode (for revising high-level plans)
+echo
+echo "3. Switching to backward mode (revise strategy):"
+plan.backward
+plan.status
+
+# Manage context for AI
+echo
+echo "4. Adding nodes to AI context:"
+plan.context.add /plan/project/backend/api/jobs
+plan.context.add /plan/project/backend/database
+plan.context.list
+
+echo
+echo "5. Removing a node from context:"
+plan.context.remove /plan/project/backend/database
+plan.context.list
+
+# Navigate to root
+echo
+echo "6. Navigating back to root:"
+plan.goto /plan/project
+plan.status
+
+# Clear context
+echo
+echo "7. Clearing all context:"
+plan.context.clear
+plan.status
+
+# Save
+plan.save
+echo
+echo Plan saved!

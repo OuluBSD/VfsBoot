@@ -1,0 +1,58 @@
+#!/usr/bin/env -S ../../codex --script
+# Basic planner usage example
+# This script demonstrates creating a simple project plan
+
+echo Creating a basic project plan...
+
+# Create the main plan root
+plan.create /plan/myproject root "Build a web application"
+
+# Add goals
+plan.create /plan/myproject/goals goals
+echo /plan/myproject/goals goal-1: Implement user authentication
+echo /plan/myproject/goals goal-2: Create REST API
+echo /plan/myproject/goals goal-3: Build responsive UI
+
+# Add strategy
+plan.create /plan/myproject/strategy strategy "Start with backend API, then add frontend, finally integrate auth"
+
+# Add jobs with priorities
+plan.create /plan/myproject/jobs jobs
+plan.jobs.add /plan/myproject/jobs "Setup database schema" 10 agent
+plan.jobs.add /plan/myproject/jobs "Implement user model" 20 agent
+plan.jobs.add /plan/myproject/jobs "Create API endpoints" 30 agent
+plan.jobs.add /plan/myproject/jobs "Design UI mockups" 15 user
+plan.jobs.add /plan/myproject/jobs "Implement login page" 40 agent
+
+# Add dependencies
+plan.create /plan/myproject/deps deps
+echo /plan/myproject/deps dep-1: PostgreSQL database
+echo /plan/myproject/deps dep-2: Express.js framework
+echo /plan/myproject/deps dep-3: React library
+
+# Add research topics
+plan.create /plan/myproject/research research
+echo /plan/myproject/research topic-1: JWT vs session-based auth
+echo /plan/myproject/research topic-2: Database migration tools
+
+# Add notes
+plan.create /plan/myproject/notes notes "Remember to add rate limiting for API endpoints"
+
+# Show the plan
+echo
+echo Plan structure:
+tree /plan/myproject
+
+echo
+echo Jobs to do:
+cat /plan/myproject/jobs
+
+echo
+echo Goals:
+cat /plan/myproject/goals
+
+# Save the plan
+plan.save
+
+echo
+echo Plan saved to plan.vfs

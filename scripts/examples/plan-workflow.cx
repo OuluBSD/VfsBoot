@@ -1,0 +1,105 @@
+#!/usr/bin/env -S ../../codex --script
+# Complete planner workflow example
+# Shows a realistic workflow from planning to completion
+
+echo Software Project Planning Workflow
+echo ==================================
+
+# Phase 1: Initial Planning
+echo
+echo "Phase 1: Creating initial project plan..."
+
+plan.create /plan/webapp root "E-commerce web application"
+
+# Define high-level goals
+plan.create /plan/webapp/goals goals
+echo /plan/webapp/goals goal-1: Allow users to browse products
+echo /plan/webapp/goals goal-2: Enable secure checkout process
+echo /plan/webapp/goals goal-3: Provide admin dashboard
+echo /plan/webapp/goals goal-4: Support mobile devices
+
+# Define initial strategy
+plan.create /plan/webapp/strategy strategy "MVP approach: Start with core shopping features, add admin panel, then optimize for mobile"
+
+# Research needed
+plan.create /plan/webapp/research research
+echo /plan/webapp/research topic-1: Payment gateway integration options
+echo /plan/webapp/research topic-2: Product search algorithms
+echo /plan/webapp/research topic-3: Mobile-first CSS frameworks
+
+tree /plan/webapp
+
+# Phase 2: Break down into subplans
+echo
+echo "Phase 2: Breaking down into subplans..."
+
+plan.create /plan/webapp/mvp subplan "Minimum viable product"
+plan.create /plan/webapp/mvp/jobs jobs
+plan.jobs.add /plan/webapp/mvp/jobs "Setup project structure" 5 agent
+plan.jobs.add /plan/webapp/mvp/jobs "Design database schema" 10 agent
+plan.jobs.add /plan/webapp/mvp/jobs "Implement product listing" 20 agent
+plan.jobs.add /plan/webapp/mvp/jobs "Create shopping cart" 30 agent
+plan.jobs.add /plan/webapp/mvp/jobs "Add checkout flow" 40 agent
+
+plan.create /plan/webapp/admin subplan "Admin dashboard"
+plan.create /plan/webapp/admin/jobs jobs
+plan.jobs.add /plan/webapp/admin/jobs "Create admin login" 50 agent
+plan.jobs.add /plan/webapp/admin/jobs "Build product management UI" 60 agent
+plan.jobs.add /plan/webapp/admin/jobs "Add order tracking" 70 agent
+
+echo
+echo MVP jobs:
+cat /plan/webapp/mvp/jobs
+
+# Phase 3: Track dependencies
+echo
+echo "Phase 3: Documenting dependencies..."
+
+plan.create /plan/webapp/deps deps
+echo /plan/webapp/deps dep-1: Node.js v18+
+echo /plan/webapp/deps dep-2: MongoDB or PostgreSQL
+echo /plan/webapp/deps dep-3: Stripe API for payments
+echo /plan/webapp/deps dep-4: AWS S3 for product images
+
+cat /plan/webapp/deps
+
+# Phase 4: Work on tasks (simulate completing first job)
+echo
+echo "Phase 4: Completing first job..."
+
+plan.jobs.complete /plan/webapp/mvp/jobs 0
+
+echo
+echo Updated jobs list:
+cat /plan/webapp/mvp/jobs
+
+# Phase 5: Track what's been implemented
+echo
+echo "Phase 5: Tracking implementation progress..."
+
+plan.create /plan/webapp/implemented implemented
+echo /plan/webapp/implemented impl-1: Project scaffolding with Express.js
+echo /plan/webapp/implemented impl-2: Database connection setup
+
+cat /plan/webapp/implemented
+
+# Phase 6: Add notes for team
+echo
+echo "Phase 6: Adding team notes..."
+
+plan.create /plan/webapp/notes notes "Remember to set up CI/CD pipeline before launch. Also need to configure environment variables for production."
+
+cat /plan/webapp/notes
+
+# Save everything
+echo
+echo "Saving complete plan to disk..."
+plan.save
+
+echo
+echo =====================================
+echo Workflow complete! Plan saved.
+echo
+echo "To reload this plan later, just run codex"
+echo "and it will auto-load plan.vfs"
+echo =====================================

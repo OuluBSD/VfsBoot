@@ -356,10 +356,110 @@ cat my-script.cx | ./codex
 cat codex_trace.log
 ```
 
+## Planner System Scripts
+
+The planner system provides hierarchical project planning with task tracking, context management, and persistence.
+
+### Running Planner Examples
+
+**scripts/examples/plan-basic.cx** - Basic planner usage:
+```bash
+cat scripts/examples/plan-basic.cx | ./codex
+```
+This script demonstrates:
+- Creating a project plan with goals, strategy, and jobs
+- Adding jobs with priorities and assignees
+- Managing dependencies and research topics
+- Saving plans to plan.vfs
+
+**scripts/examples/plan-navigation.cx** - Navigation and context:
+```bash
+cat scripts/examples/plan-navigation.cx | ./codex
+```
+This script shows:
+- Navigating through hierarchical plans
+- Forward/backward mode switching
+- Managing AI context (visible nodes)
+- Using plan.status to check state
+
+**scripts/examples/plan-workflow.cx** - Complete workflow:
+```bash
+cat scripts/examples/plan-workflow.cx | ./codex
+```
+This script walks through:
+- Planning a realistic project (e-commerce app)
+- Breaking down into subplans
+- Completing tasks and tracking progress
+- Using all plan node types together
+
+**scripts/examples/plan-sexp-demo.sexp** - S-expression example:
+```bash
+# View the structured approach
+cat scripts/examples/plan-sexp-demo.sexp
+```
+This shows how AI can programmatically create and manage plans.
+
+### Planner Documentation
+
+- **scripts/tutorial/planner-tutorial.md** - Complete step-by-step tutorial
+- **scripts/reference/plan-commands.md** - Full command reference with examples
+
+### Quick Planner Workflow
+
+```bash
+# Start with a clean plan
+rm -f plan.vfs
+
+# Create your plan
+printf 'plan.create /plan/myproject root "My project"\n' | ./codex
+printf 'plan.create /plan/myproject/jobs jobs\n' | ./codex
+printf 'plan.jobs.add /plan/myproject/jobs "First task" 10 agent\n' | ./codex
+printf 'plan.save\nexit\n' | ./codex
+
+# Plan is saved - reload it later
+./codex
+> tree /plan
+> exit
+```
+
+### Planner Command Patterns
+
+**Pattern 1: Project Planning**
+```bash
+plan.create /plan/myapp root "Application name"
+plan.create /plan/myapp/goals goals
+plan.create /plan/myapp/strategy strategy "Your approach"
+plan.create /plan/myapp/jobs jobs
+plan.jobs.add /plan/myapp/jobs "Task description" 10 agent
+plan.save
+```
+
+**Pattern 2: Hierarchical Breakdown**
+```bash
+plan.create /plan/project root "Main project"
+plan.create /plan/project/backend subplan "Backend work"
+plan.create /plan/project/frontend subplan "Frontend work"
+plan.create /plan/project/backend/jobs jobs
+plan.create /plan/project/frontend/jobs jobs
+plan.save
+```
+
+**Pattern 3: Context Management for AI**
+```bash
+plan.goto /plan/myapp
+plan.context.add /plan/myapp/goals
+plan.context.add /plan/myapp/jobs
+plan.forward
+plan.status
+# Now ready for AI discussion with focused context
+```
+
 ## See Also
 
 - [README.md](README.md) - Build and setup instructions
 - [VfsShell/AGENTS.md](VfsShell/AGENTS.md) - Implementation architecture
 - [AGENTS.md](AGENTS.md) - High-level architecture
+- [scripts/tutorial/planner-tutorial.md](scripts/tutorial/planner-tutorial.md) - Complete planner tutorial
+- [scripts/reference/plan-commands.md](scripts/reference/plan-commands.md) - Planner command reference
 - `tests/` directory - Test script examples
 - `scripts/examples/` - Working script examples
