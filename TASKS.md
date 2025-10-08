@@ -26,17 +26,44 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 		- `plan.status` - Show current planner state
 		- Auto-load plan.vfs on startup with /plan tree initialization
 		- Full serialization/deserialization support for all PlanNode types
-	- **[TODO]** Planning loop integration:
-		- Interactive AI discussion workflow (plan.discuss)
-		- Forward mode: add details to plans (root → leaves)
-		- Backward mode: revise higher-level plans when stuck
-		- Yes/no/explain questions from human expert
-		- Hypothesis generation and testing
+	- **[IN PROGRESS]** Planning loop integration:
+		- **[DONE]** Core `discuss` command (alias `ai.discuss`) with session management
+		- **[DONE]** Intent classification (simple/planning/execution modes) with keyword heuristics
+		- **[DONE]** Auto-routing: simple queries → direct AI, execution → plan tree, planning → breakdown
+		- **[DONE]** Session tracking: random hex IDs, conversation history, plan path association
+		- **[DONE]** Startup reminder to guide users to `discuss` command
+		- **[TODO]** Interactive AI discussion workflow (plan.discuss integration)
+		- **[TODO]** Forward mode: add details to plans (root → leaves)
+		- **[TODO]** Backward mode: revise higher-level plans when stuck
+		- **[TODO]** Yes/no/explain questions from human expert
+		- **[TODO]** Hypothesis generation and testing
+		- **[TODO]** Advanced tree visualization with live line editing (codex/claude style)
 	- **[TODO]** Context builder for AI calls:
 		- Tag-based filtering for relevant nodes
 		- Visibility tracking for nodes in current context
 		- Smart context sizing (token budgets)
 - action planner test suite: what to add to context list. tag based filtering, "if vfs node contains x" based filtering, etc (huge list, figure it out). this is the AI context offloader. This is used also to figure out the list of statements to be removed before adding new code (==replacing). it must be last resort to dump actual c++ statements in c++ code as text for ai to figure it out. we must have a working "action planner hypothesis" from ai, or multiples (tree-like hypothesis), which we can test before calling AI again. the most difficult tests are "templates for modifying or replacing code" or "commenting code based on tags and context". We can use those comment generators to verify, that action planner works: ask action planner if this comment or attribute-list is valid.
+- **Real-world hypothesis testing examples** (progressively more complex):
+	1. **Simple query hypothesis**: "Find function `foo` in VFS" → hypothesis: check /astcpp, /cpp, /src with pattern matching
+	2. **Code modification hypothesis**: "Add error handling to function X" → hypotheses:
+		- Where: identify function entry point, critical sections, return paths
+		- What: try-catch blocks vs error codes vs optional returns
+		- Test: verify each hypothesis against existing code style
+	3. **Refactoring hypothesis**: "Extract duplicated code into helper" → hypotheses:
+		- Identify duplicate blocks using AST similarity (not just text matching)
+		- Determine optimal scope (static function, member, free function)
+		- Infer parameter types from usage context
+		- Test: ensure extracted function compiles and preserves semantics
+	4. **Feature addition hypothesis**: "Add logging to error paths" → hypotheses:
+		- Tag all functions/blocks with error returns/throws
+		- Generate logging call templates based on context (function name, error type)
+		- Test: verify log statements compile and provide useful info
+	5. **Architecture hypothesis**: "Implement visitor pattern for AST traversal" → hypotheses tree:
+		- Design: double-dispatch vs std::variant vs CRTP
+		- Integration: how to preserve existing VfsNode hierarchy
+		- Migration: gradual vs complete rewrite
+		- Test: benchmark performance, verify all node types covered
+	Each hypothesis must be testable without calling AI - use action planner's context builder to verify validity
 - scope store with binary diffs + feature masks, plus deterministic context builder
 - scenario harness binaries (`planner_demo`, `planner_train`) and scripted breakdown loop for validation
 - feedback pipeline for planner rule evolution (metrics capture, rule patch staging, optional AI assistance)

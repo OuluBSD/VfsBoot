@@ -73,6 +73,7 @@ namespace i18n {
     enum class MsgId {
         WELCOME,
         UNKNOWN_COMMAND,
+        DISCUSS_HINT,
         // Add more message IDs as needed
     };
 
@@ -653,6 +654,27 @@ struct PlannerContext {
     void addToContext(const std::string& vfs_path);
     void removeFromContext(const std::string& vfs_path);
     void clearContext();
+};
+
+//
+// Discuss Session (conversation state management)
+//
+struct DiscussSession {
+    std::string session_id;  // Named or random hex session identifier
+    std::vector<std::string> conversation_history;  // User + AI messages
+    std::string current_plan_path;  // Path to active plan in /plan tree (if any)
+
+    enum class Mode {
+        Simple,      // Direct AI queries without planning
+        Planning,    // Plan-based discussion with breakdown
+        Execution    // Working on pre-planned features
+    };
+    Mode mode = Mode::Simple;
+
+    bool is_active() const { return !session_id.empty(); }
+    void clear();
+    void add_message(const std::string& role, const std::string& content);
+    std::string generate_session_id();
 };
 
 //

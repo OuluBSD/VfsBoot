@@ -95,6 +95,12 @@ namespace i18n {
             , "virhe: tuntematon komento. 'help' kertoo karun totuuden."
 #endif
             },
+            // DISCUSS_HINT
+            { "💡 Tip: Use 'discuss' to work with AI on your code (natural language → plans → implementation)"
+#ifdef CODEX_I18N_ENABLED
+            , "💡 Vinkki: Käytä 'discuss' komentoa työskennelläksesi AI:n kanssa (luonnollinen kieli → suunnitelmat → toteutus)"
+#endif
+            },
         };
 
         Lang detect_language() {
@@ -4148,6 +4154,28 @@ void PlannerContext::clearContext(){
     visible_nodes.clear();
 }
 
+// ====== DiscussSession implementation ======
+void DiscussSession::clear(){
+    session_id.clear();
+    conversation_history.clear();
+    current_plan_path.clear();
+    mode = Mode::Simple;
+}
+
+void DiscussSession::add_message(const std::string& role, const std::string& content){
+    conversation_history.push_back(role + ": " + content);
+}
+
+std::string DiscussSession::generate_session_id(){
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    static std::uniform_int_distribution<uint32_t> dis(0, 0xFFFFFFFF);
+
+    std::ostringstream oss;
+    oss << std::hex << std::setfill('0') << std::setw(8) << dis(gen);
+    return oss.str();
+}
+
 // ====== OpenAI helpers ======
 static std::string system_prompt_text(){
     return std::string("You are a codex-like assistant embedded in a tiny single-binary IDE.\n") +
@@ -4578,6 +4606,8 @@ R"(Commands:
   eval <ast-path>
   putkita komentoja: a | b | c, a && b, a || b
   # AI
+  discuss <message...>     (natural language → plans → implementation)
+  discuss.session new [name] | end
   ai <prompt...>
   ai.brief <key> [extra...]
   tools
@@ -4830,6 +4860,7 @@ int main(int argc, char** argv){
     update_directory_context(vfs, cwd, cwd.path);
     PlannerContext planner;
     planner.current_path = "/";
+    DiscussSession discuss;
 
     // Auto-load .vfs file if present
     try{
@@ -4890,6 +4921,7 @@ int main(int argc, char** argv){
     }
 
     std::cout << _(WELCOME) << "\n";
+    if(interactive) std::cout << _(DISCUSS_HINT) << "\n";
     string line;
     // Daemon mode: run server and exit
     if(daemon_port > 0){
@@ -4907,6 +4939,54 @@ int main(int argc, char** argv){
     load_history(history);
     history.reserve(history.size() + 256);
     bool history_dirty = false;
+
+    // Helper: Classify user intent for discuss command routing
+    auto classify_discuss_intent = [](const std::string& user_input) -> DiscussSession::Mode {
+        // Convert to lowercase for matching
+        std::string lower = user_input;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+        // Keywords that indicate planning/breakdown needed
+        const std::vector<std::string> planning_keywords = {
+            "implement", "add feature", "create", "build", "design",
+            "refactor", "rewrite", "restructure", "architecture"
+        };
+
+        // Keywords that indicate working on existing plans
+        const std::vector<std::string> execution_keywords = {
+            "do", "execute", "run", "complete", "finish", "continue"
+        };
+
+        // Keywords that indicate simple queries
+        const std::vector<std::string> simple_keywords = {
+            "what is", "how does", "explain", "show me", "tell me",
+            "where is", "find", "search"
+        };
+
+        // Check for execution keywords first (highest priority for "do")
+        for(const auto& kw : execution_keywords){
+            if(lower.find(kw) != std::string::npos){
+                return DiscussSession::Mode::Execution;
+            }
+        }
+
+        // Check for planning keywords
+        for(const auto& kw : planning_keywords){
+            if(lower.find(kw) != std::string::npos){
+                return DiscussSession::Mode::Planning;
+            }
+        }
+
+        // Check for simple query keywords
+        for(const auto& kw : simple_keywords){
+            if(lower.find(kw) != std::string::npos){
+                return DiscussSession::Mode::Simple;
+            }
+        }
+
+        // Default: if uncertain, return Simple (will ask AI to classify)
+        return DiscussSession::Mode::Simple;
+    };
 
     auto execute_single = [&](const CommandInvocation& inv, const std::string& stdin_data) -> CommandResult {
         ScopedCoutCapture capture;
@@ -5332,6 +5412,114 @@ int main(int argc, char** argv){
                     }
                 }
                 result.output = call_ai(*prompt);
+            }
+
+        } else if(cmd == "discuss" || cmd == "ai.discuss"){
+            std::string user_input = join_args(inv.args);
+            if(user_input.empty()){
+                if(!discuss.is_active()){
+                    std::cout << "discuss: no active session. Start with: discuss <your message>\n";
+                } else {
+                    std::cout << "session: " << discuss.session_id << " (" <<
+                        (discuss.mode == DiscussSession::Mode::Simple ? "simple" :
+                         discuss.mode == DiscussSession::Mode::Planning ? "planning" : "execution") << ")\n";
+                    std::cout << "messages: " << discuss.conversation_history.size() << "\n";
+                    if(!discuss.current_plan_path.empty()){
+                        std::cout << "plan: " << discuss.current_plan_path << "\n";
+                    }
+                }
+                result.success = false;
+            } else {
+                // Start or continue session
+                if(!discuss.is_active()){
+                    discuss.session_id = discuss.generate_session_id();
+                    std::cout << "📝 Started discussion session: " << discuss.session_id << "\n";
+                }
+
+                // Classify intent
+                auto intent = classify_discuss_intent(user_input);
+                discuss.mode = intent;
+                discuss.add_message("user", user_input);
+
+                // Route based on mode
+                if(intent == DiscussSession::Mode::Simple){
+                    // Simple query - just call AI directly
+                    std::cout << "🤔 Thinking...\n";
+                    result.output = call_ai(user_input);
+                    discuss.add_message("assistant", result.output);
+
+                } else if(intent == DiscussSession::Mode::Execution){
+                    // Check if plan exists
+                    auto plan_exists = vfs.tryResolveForOverlay("/plan", 0) &&
+                                      vfs.tryResolveForOverlay("/plan", 0)->isDir();
+
+                    if(!plan_exists){
+                        // No plan - redirect to plan.discuss
+                        std::cout << "⚠️  No plan found in /plan tree. Let's create one first.\n";
+                        std::cout << "→ Switching to planning mode...\n";
+                        discuss.mode = DiscussSession::Mode::Planning;
+                        // Fall through to planning mode
+                        intent = DiscussSession::Mode::Planning;
+                    } else {
+                        // Execute pre-planned work
+                        std::cout << "⚙️  Executing planned work...\n";
+                        std::string execution_prompt =
+                            "The user wants to execute this task: " + user_input + "\n" +
+                            "Review the plan in /plan tree and execute the appropriate steps.\n" +
+                            "Available commands: " + snippets::tool_list();
+                        result.output = call_ai(execution_prompt);
+                        discuss.add_message("assistant", result.output);
+                    }
+                }
+
+                if(intent == DiscussSession::Mode::Planning){
+                    // Planning mode - create or update plans
+                    std::cout << "📋 Planning mode activated\n";
+                    std::cout << "🔍 Analyzing request and breaking down into steps...\n";
+
+                    std::string planning_prompt =
+                        "User request: " + user_input + "\n\n" +
+                        "Break this down into a structured plan. Create or update plan nodes in /plan tree.\n" +
+                        "Use commands like: plan.create, plan.goto, plan.jobs.add\n" +
+                        "Ask clarifying questions if needed (format: Q: <question>)\n" +
+                        "Available commands: " + snippets::tool_list();
+
+                    result.output = call_ai(planning_prompt);
+                    discuss.add_message("assistant", result.output);
+
+                    // TODO: Parse AI response for questions, plan updates, etc.
+                    // For now, just display the response
+                }
+            }
+
+        } else if(cmd == "discuss.session"){
+            if(inv.args.empty()){
+                std::cout << "discuss.session new [name] | end\n";
+                result.success = false;
+            } else {
+                auto subcmd = inv.args[0];
+                if(subcmd == "new"){
+                    if(discuss.is_active()){
+                        std::cout << "⚠️  Ending previous session: " << discuss.session_id << "\n";
+                    }
+                    discuss.clear();
+                    if(inv.args.size() > 1){
+                        discuss.session_id = inv.args[1];
+                    } else {
+                        discuss.session_id = discuss.generate_session_id();
+                    }
+                    std::cout << "✨ New session: " << discuss.session_id << "\n";
+                } else if(subcmd == "end"){
+                    if(discuss.is_active()){
+                        std::cout << "✅ Ended session: " << discuss.session_id << "\n";
+                        discuss.clear();
+                    } else {
+                        std::cout << "⚠️  No active session\n";
+                    }
+                } else {
+                    std::cout << "unknown subcommand: " << subcmd << "\n";
+                    result.success = false;
+                }
             }
 
         } else if(cmd == "tools"){
