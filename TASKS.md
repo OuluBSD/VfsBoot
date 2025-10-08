@@ -104,10 +104,19 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 			- Show inferred tags: interactive tag mining session
 			- User confirms/rejects → feedback recorded in mining session
 			- Builds tag ontology over time (foundation implemented)
+		- **[DONE]** Include initial tags in inferred tags output (combined tag set for planner context)
+			- logic.infer now shows three outputs:
+				1. `initial tags` - user-provided tags that triggered inference
+				2. `inferred tags (only new)` - tags inferred by rules (excluding initial)
+				3. `complete tag set (initial + inferred)` - combined set for planner use
+			- LogicEngine::inferTags() returns complete tag set (includes initial tags)
+			- Planner can use complete set for constraint checking
+			- Example: `initial: [gpu]` → `complete: [gpu, parallel, fast, cached]`
 		- **[TODO]** Integration with planner:
 			- Pre-planning: verify tag set is satisfiable
 			- During planning: only generate consistent plan branches
 			- Post-planning: verify AI-generated plan doesn't violate constraints
+			- Use complete tag set from logic.infer for all planner operations
 		- Use case: Prevent impossible plans like "build offline but fetch remote dependencies"
 		- **Commands**: `logic.init`, `logic.infer`, `logic.check`, `logic.explain`, `logic.listrules`, `logic.rules.save`, `logic.rules.load`, `logic.rule.add`, `logic.rule.exclude`, `logic.rule.remove`, `logic.sat`, `tag.mine.start`, `tag.mine.feedback`, `tag.mine.status`
 		- **Demo scripts**:
@@ -117,6 +126,7 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 			- `scripts/examples/logic-rules-advanced-demo.cx` - Production management
 			- `scripts/examples/logic-rules-dynamic-creation-demo.cx` - Runtime rule creation
 			- `scripts/examples/logic-rules-from-scratch-demo.cx` - **NO hardcoded rules** (web app deployment, 50+ rules)
+			- `scripts/examples/logic-complete-tagset-demo.cx` - Complete tag set for planner integration
 - **[DONE]** Advanced hypothesis testing examples (progressively more complex):
 	- Implemented comprehensive hypothesis testing system with 5 complexity levels
 	- **Level 1: Simple Query** - `hypothesis.query <target> [path]`

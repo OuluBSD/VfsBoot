@@ -7915,11 +7915,15 @@ int main(int argc, char** argv){
             for(TagId tid : initial_tags){
                 std::cout << vfs.getTagName(tid) << " ";
             }
-            std::cout << "\ninferred tags: ";
+            std::cout << "\ninferred tags (only new): ";
             for(TagId tid : inferred){
                 if(initial_tags.count(tid) == 0){
                     std::cout << vfs.getTagName(tid) << " ";
                 }
+            }
+            std::cout << "\ncomplete tag set (initial + inferred): ";
+            for(TagId tid : inferred){
+                std::cout << vfs.getTagName(tid) << " ";
             }
             std::cout << "\n";
 

@@ -1,0 +1,155 @@
+#!/usr/bin/env codex
+# Demo: Complete Tag Set for Planner Integration
+# Shows how initial tags are included in inferred output for planner use
+
+echo "=== Complete Tag Set Demo ==="
+echo ""
+echo "This demo shows how logic.infer provides a complete tag set"
+echo "that includes both initial and inferred tags for planner integration."
+echo ""
+
+# Part 1: Setup rules
+echo "Part 1: Setup example rules"
+echo "---------------------------------------"
+logic.init
+logic.rule.add gpu-parallel gpu parallel 1.0 user
+logic.rule.add parallel-multicore parallel multicore 0.95 user
+logic.rule.add multicore-fast multicore fast 0.9 user
+echo ""
+
+# Part 2: Show inference with breakdown
+echo "Part 2: Inference with complete breakdown"
+echo "---------------------------------------"
+echo "Starting from: gpu"
+echo ""
+logic.infer gpu
+echo ""
+
+echo "Explanation of output:"
+echo "  1. 'initial tags' - what the user provided (gpu)"
+echo "  2. 'inferred tags (only new)' - what was inferred (parallel, multicore, fast, cached)"
+echo "  3. 'complete tag set' - COMBINED set for planner (gpu, parallel, multicore, fast, cached)"
+echo ""
+
+# Part 3: Another example with multiple initial tags
+echo "Part 3: Multiple initial tags"
+echo "---------------------------------------"
+echo "Starting from: production, database"
+echo ""
+logic.rule.add prod-secure production secure 1.0 user
+logic.rule.add secure-https secure https 1.0 user
+logic.rule.add db-persistent database persistent-storage 1.0 user
+echo ""
+logic.infer production database
+echo ""
+
+echo "Note: Complete tag set includes BOTH initial tags (production, database)"
+echo "      AND all inferred tags (secure, https, persistent-storage, etc.)"
+echo ""
+
+# Part 4: Why this matters for the planner
+echo "Part 4: Planner Integration Use Case"
+echo "---------------------------------------"
+echo ""
+echo "Scenario: User wants to deploy with tags [gpu, production]"
+echo ""
+echo "Step 1: Get complete tag set from inference"
+logic.infer gpu production
+echo ""
+
+echo "Step 2: Planner uses COMPLETE tag set for:"
+echo "  ✓ Constraint checking (logic.check with all tags)"
+echo "  ✓ Resource allocation (knows gpu, parallel, multicore, fast, cached)"
+echo "  ✓ Security requirements (knows production, secure, https)"
+echo "  ✓ Configuration validation (all implications resolved)"
+echo ""
+
+# Part 5: Demonstrate constraint checking with complete set
+echo "Part 5: Constraint checking requires complete set"
+echo "---------------------------------------"
+echo ""
+echo "Without complete set, planner would miss conflicts!"
+echo ""
+
+echo "Add conflicting rule: gpu excludes single-threaded"
+logic.rule.exclude gpu-single gpu single-threaded user
+echo ""
+
+echo "Check complete tag set for conflicts:"
+echo "  (This is what planner should do before proceeding)"
+echo ""
+# Get the complete set and check it
+# In real planner integration, it would extract the complete set
+# For demo, we manually list them based on previous inference
+logic.check gpu parallel multicore fast cached production secure https persistent-storage
+echo ""
+
+# Part 6: API usage for planner
+echo "Part 6: How Planner Should Use This"
+echo "---------------------------------------"
+echo ""
+echo "C++ API in planner code:"
+echo ""
+echo "  // Get complete tag set (includes initial + inferred)"
+echo "  TagSet initial = {gpu_tag, production_tag};"
+echo "  TagSet complete = logic_engine.inferTags(initial);"
+echo ""
+echo "  // Check complete set for consistency"
+echo "  auto conflict = logic_engine.checkConsistency(complete);"
+echo "  if (conflict) {"
+echo "    // Handle conflict before planning"
+echo "    report_error(conflict->description);"
+echo "  }"
+echo ""
+echo "  // Use complete set for plan generation"
+echo "  Plan plan = planner.generate(complete);"
+echo ""
+
+# Part 7: VFS Integration
+echo "Part 7: VFS Node Tagging Integration"
+echo "---------------------------------------"
+echo ""
+echo "When tagging VFS nodes, use complete inference:"
+echo ""
+echo "  1. User tags node: tag.add /project gpu"
+echo "  2. System infers complete set: [gpu, parallel, multicore, fast, cached]"
+echo "  3. All inferred tags attached to node automatically"
+echo "  4. Planner sees complete picture when processing node"
+echo ""
+echo "Example:"
+mkdir /demo
+touch /demo/ml-pipeline
+echo ""
+echo "  tag.add /demo/ml-pipeline gpu"
+echo "  # System should auto-infer: parallel, multicore, fast, cached"
+echo "  # Node gets ALL tags, not just 'gpu'"
+echo ""
+
+# Part 8: Summary
+echo "=== Demo Complete ==="
+echo ""
+echo "Key Takeaways:"
+echo ""
+echo "✓ logic.infer returns THREE outputs:"
+echo "    1. Initial tags (user input)"
+echo "    2. Inferred tags only (new from rules)"
+echo "    3. Complete tag set (initial + inferred) ← USE THIS IN PLANNER"
+echo ""
+echo "✓ LogicEngine::inferTags() already includes initial tags in result"
+echo ""
+echo "✓ Planner MUST use complete tag set for:"
+echo "    - Constraint validation"
+echo "    - Conflict detection"
+echo "    - Resource allocation"
+echo "    - Configuration generation"
+echo ""
+echo "✓ Complete set ensures planner has full context"
+echo "    - No missing requirements"
+echo "    - No hidden conflicts"
+echo "    - Correct resource planning"
+echo ""
+echo "Integration Points:"
+echo "  - Pre-planning: inferTags() + checkConsistency() on complete set"
+echo "  - During planning: use complete set for branch validation"
+echo "  - Post-planning: verify generated plan against complete set"
+echo "  - VFS tagging: auto-apply inferred tags to nodes"
