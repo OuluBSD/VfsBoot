@@ -1,0 +1,54 @@
+#!/usr/bin/env codex
+# Planning Loop Integration Demo
+# Demonstrates: plan.discuss, plan.answer, plan.hypothesis, forward/backward modes
+
+echo "=== Planning Loop Integration Demo ==="
+echo ""
+
+# Initialize plan tree
+echo "1. Creating initial plan structure..."
+plan.create /plan root "Implement logging system"
+plan.create /plan/goals goals "- Add structured logging\n- Support multiple levels\n- File and console output"
+plan.goto /plan
+
+echo ""
+echo "2. Entering forward mode (add details)..."
+plan.forward
+
+echo ""
+echo "3. Current status:"
+plan.status
+
+echo ""
+echo "4. Demonstrating plan.hypothesis (auto-detection)..."
+echo "   Creating a plan about error handling..."
+plan.create /plan/error-strategy strategy "Add error handling with logging for failure cases"
+plan.goto /plan/error-strategy
+plan.hypothesis
+
+echo ""
+echo "5. Testing different hypothesis types..."
+echo "   Creating plan about refactoring..."
+plan.create /plan/refactor-tasks goals "- Find duplicate code\n- Extract common patterns"
+plan.goto /plan/refactor-tasks
+plan.hypothesis
+
+echo ""
+echo "6. Demonstrating backward mode (revise strategy)..."
+plan.goto /plan
+plan.backward
+
+echo ""
+echo "7. Showing plan tree structure..."
+tree /plan
+
+echo ""
+echo "=== Demo Complete ==="
+echo ""
+echo "Interactive commands to try:"
+echo "  plan.discuss         - Start AI discussion about current plan"
+echo "  plan.answer yes      - Answer AI questions"
+echo "  plan.hypothesis      - Generate hypothesis from plan content"
+echo "  plan.forward         - Enter detail-adding mode"
+echo "  plan.backward        - Enter strategy-revision mode"
+echo ""
