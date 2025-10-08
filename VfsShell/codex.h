@@ -692,4 +692,157 @@ std::string call_openai(const std::string& prompt);
 std::string call_llama(const std::string& prompt);
 std::string call_ai(const std::string& prompt);
 
+//
+// Action Planner Context Builder (AI context offloader)
+//
+
+// Filter predicates for selecting VFS nodes
+struct ContextFilter {
+    enum class Type {
+        TagAny,        // Node has any of the specified tags
+        TagAll,        // Node has all of the specified tags
+        TagNone,       // Node has none of the specified tags
+        PathPrefix,    // Node path starts with prefix
+        PathPattern,   // Node path matches glob pattern
+        ContentMatch,  // Node content contains string
+        ContentRegex,  // Node content matches regex
+        NodeKind,      // Node is specific kind (Dir, File, Ast, etc.)
+        Custom         // User-defined lambda predicate
+    };
+
+    Type type;
+    TagSet tags;                              // For tag-based filters
+    std::string pattern;                      // For path/content filters
+    VfsNode::Kind kind;                       // For node kind filter
+    std::function<bool(VfsNode*)> predicate;  // For custom filter
+
+    // Factory methods
+    static ContextFilter tagAny(const TagSet& t);
+    static ContextFilter tagAll(const TagSet& t);
+    static ContextFilter tagNone(const TagSet& t);
+    static ContextFilter pathPrefix(const std::string& prefix);
+    static ContextFilter pathPattern(const std::string& pattern);
+    static ContextFilter contentMatch(const std::string& substr);
+    static ContextFilter contentRegex(const std::string& regex);
+    static ContextFilter nodeKind(VfsNode::Kind k);
+    static ContextFilter custom(std::function<bool(VfsNode*)> pred);
+
+    // Evaluate filter against node
+    bool matches(VfsNode* node, const std::string& path, Vfs& vfs) const;
+};
+
+// Context entry with metadata
+struct ContextEntry {
+    std::string vfs_path;
+    VfsNode* node;
+    std::string content;
+    size_t token_estimate;  // Rough estimate of tokens
+    int priority;           // Higher priority = more important
+    TagSet tags;            // Tags associated with this node
+
+    ContextEntry(std::string path, VfsNode* n, std::string c, int prio = 100)
+        : vfs_path(std::move(path)), node(n), content(std::move(c)),
+          token_estimate(estimate_tokens(content)), priority(prio) {}
+
+    static size_t estimate_tokens(const std::string& text);
+};
+
+// Context builder for AI calls with token budgets and smart selection
+struct ContextBuilder {
+    Vfs& vfs;
+    TagStorage& tag_storage;
+    TagRegistry& tag_registry;
+
+    size_t max_tokens;
+    std::vector<ContextEntry> entries;
+    std::vector<ContextFilter> filters;
+
+    ContextBuilder(Vfs& v, TagStorage& ts, TagRegistry& tr, size_t max_tok = 4000)
+        : vfs(v), tag_storage(ts), tag_registry(tr), max_tokens(max_tok) {}
+
+    // Add filters
+    void addFilter(const ContextFilter& filter);
+    void addFilter(ContextFilter&& filter);
+
+    // Collect nodes matching filters
+    void collect();
+    void collectFromPath(const std::string& root_path);
+
+    // Build final context string within token budget
+    std::string build();
+    std::string buildWithPriority();  // Sort by priority before building
+
+    // Statistics
+    size_t totalTokens() const;
+    size_t entryCount() const { return entries.size(); }
+    void clear();
+
+private:
+    void visitNode(const std::string& path, VfsNode* node);
+    bool matchesAnyFilter(const std::string& path, VfsNode* node) const;
+};
+
+// Code replacement strategy for determining what statements to remove/modify
+struct ReplacementStrategy {
+    enum class Type {
+        ReplaceAll,        // Replace entire node content
+        ReplaceRange,      // Replace specific line range
+        ReplaceFunction,   // Replace specific function definition
+        ReplaceBlock,      // Replace code block (if/for/while)
+        InsertBefore,      // Insert before matching location
+        InsertAfter,       // Insert after matching location
+        DeleteMatching,    // Delete statements matching criteria
+        CommentOut         // Comment out instead of deleting
+    };
+
+    Type type;
+    std::string target_path;    // VFS path of target node
+    std::string identifier;     // Function name, variable name, etc.
+    size_t start_line;          // For range operations
+    size_t end_line;            // For range operations
+    std::string match_pattern;  // Regex or literal for matching
+    std::string replacement;    // New content to insert
+
+    static ReplacementStrategy replaceAll(const std::string& path, const std::string& content);
+    static ReplacementStrategy replaceRange(const std::string& path, size_t start, size_t end, const std::string& content);
+    static ReplacementStrategy replaceFunction(const std::string& path, const std::string& func_name, const std::string& content);
+    static ReplacementStrategy insertBefore(const std::string& path, const std::string& pattern, const std::string& content);
+    static ReplacementStrategy insertAfter(const std::string& path, const std::string& pattern, const std::string& content);
+    static ReplacementStrategy deleteMatching(const std::string& path, const std::string& pattern);
+    static ReplacementStrategy commentOut(const std::string& path, const std::string& pattern);
+
+    // Apply strategy to VFS
+    bool apply(Vfs& vfs) const;
+};
+
+// Test suite for action planner hypothesis validation
+struct ActionPlannerTest {
+    std::string name;
+    std::string description;
+    std::function<bool()> test_fn;
+    bool passed;
+    std::string error_message;
+
+    ActionPlannerTest(std::string n, std::string desc, std::function<bool()> fn)
+        : name(std::move(n)), description(std::move(desc)), test_fn(std::move(fn)), passed(false) {}
+
+    bool run();
+};
+
+struct ActionPlannerTestSuite {
+    std::vector<ActionPlannerTest> tests;
+    Vfs& vfs;
+    TagStorage& tag_storage;
+    TagRegistry& tag_registry;
+
+    ActionPlannerTestSuite(Vfs& v, TagStorage& ts, TagRegistry& tr)
+        : vfs(v), tag_storage(ts), tag_registry(tr) {}
+
+    void addTest(const std::string& name, const std::string& desc, std::function<bool()> fn);
+    void runAll();
+    void printResults() const;
+    size_t passedCount() const;
+    size_t failedCount() const;
+};
+
 #endif

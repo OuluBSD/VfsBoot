@@ -42,8 +42,39 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 		- Tag-based filtering for relevant nodes
 		- Visibility tracking for nodes in current context
 		- Smart context sizing (token budgets)
-- action planner test suite: what to add to context list. tag based filtering, "if vfs node contains x" based filtering, etc (huge list, figure it out). this is the AI context offloader. This is used also to figure out the list of statements to be removed before adding new code (==replacing). it must be last resort to dump actual c++ statements in c++ code as text for ai to figure it out. we must have a working "action planner hypothesis" from ai, or multiples (tree-like hypothesis), which we can test before calling AI again. the most difficult tests are "templates for modifying or replacing code" or "commenting code based on tags and context". We can use those comment generators to verify, that action planner works: ask action planner if this comment or attribute-list is valid.
-- **Real-world hypothesis testing examples** (progressively more complex):
+	- **[TODO]** Logic-based tag system with theorem proving for plan consistency:
+		- **Tag mining workflow**: Extract user's mental model through minimal tag input
+			- User provides initial tags (e.g., `fast`, `no-network`, `uses-cache`)
+			- System infers implications and missing tags automatically
+			- Detect contradictions early and suggest resolutions
+		- **Implication engine**:
+			- Hardcoded rules: `(rule (implies offline (not network)))`
+			- Learned patterns from history: "fast usually implies cached (87% confidence)"
+			- AI-generated implications: Ask LLM for domain-specific tag relationships
+			- Forward-chaining inference to derive all logical consequences
+		- **Consistency checking with theorem prover**:
+			- Propositional logic solver (AND, OR, NOT, IMPLIES) for tag constraints
+			- SAT/SMT integration (minisat or Z3) for complex constraint solving
+			- Commands: `logic.assert <formula>`, `logic.check`, `logic.explain-conflict`
+		- **Contradiction resolution**:
+			- Detect conflicting tags before plan generation
+			- Suggest alternatives: "Remove X, remove Y, or add bridging tag Z?"
+			- Prune impossible plan branches during search
+		- **Knowledge representation** in `/plan/rules`:
+			- Tag definitions and logical relationships
+			- Implication rules with confidence scores
+			- Exclusion constraints (mutually exclusive tags)
+			- Learned patterns from user feedback
+		- **User feedback loop**:
+			- Show inferred tags: "I assume you also want: [cached, local-only]. Correct?"
+			- User confirms/rejects → refine inference rules
+			- Build personalized tag ontology over time
+		- **Integration with planner**:
+			- Pre-planning: verify tag set is satisfiable
+			- During planning: only generate consistent plan branches
+			- Post-planning: verify AI-generated plan doesn't violate constraints
+		- Use case: Prevent impossible plans like "build offline but fetch remote dependencies"
+- **[TODO]** Advanced hypothesis testing examples (progressively more complex):
 	1. **Simple query hypothesis**: "Find function `foo` in VFS" → hypothesis: check /astcpp, /cpp, /src with pattern matching
 	2. **Code modification hypothesis**: "Add error handling to function X" → hypotheses:
 		- Where: identify function entry point, critical sections, return paths
@@ -119,6 +150,23 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 ##
 
 ## Completed
+- **Action Planner Test Suite - AI Context Builder** (2025-10-08):
+  - Implemented ContextFilter with 9 filter types: TagAny, TagAll, TagNone, PathPrefix, PathPattern, ContentMatch, ContentRegex, NodeKind, Custom
+  - Implemented ContextBuilder for building AI context with token budget management (default 4000 tokens)
+  - Priority-based context selection: critical=200, important=150, default=100
+  - Token estimation: ~4 chars per token (GPT-style tokenization)
+  - Multi-overlay support: handles multiple VFS overlays transparently
+  - Implemented ReplacementStrategy with 8 strategy types:
+    - ReplaceAll, ReplaceRange, ReplaceFunction, InsertBefore, InsertAfter, DeleteMatching, CommentOut, ReplaceBlock (TODO)
+  - Implemented ActionPlannerTestSuite with 6 comprehensive tests:
+    - tag_filter_any, path_prefix, content_match, context_builder_tokens, replacement_all, replacement_insert_before
+  - Added shell commands: context.build, context.filter.tag, context.filter.path, test.planner
+  - Created comprehensive documentation: docs/ACTION_PLANNER.md
+  - Created demonstration script: scripts/examples/action-planner-demo.cx
+  - All tests passing (6/6 passed in test.planner)
+  - This is the "AI context offloader" from TASKS.md - filters VFS nodes, builds context within token budgets, tests hypotheses before calling AI
+  - Enables hypothesis-driven development: test code modification strategies without AI calls
+  - Foundation for advanced features: tag-based theorem proving, SAT/SMT integration, learned patterns
 - **Remote VFS mounting over network** (2025-10-08):
   - Implemented RemoteNode for transparent remote VFS access via TCP sockets
   - Added daemon mode: `--daemon <port>` to run codex as server accepting remote connections

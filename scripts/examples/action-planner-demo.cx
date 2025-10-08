@@ -1,0 +1,103 @@
+# Action Planner Demo - Context Building and Filtering
+# Run with: ./codex scripts/examples/action-planner-demo.cx
+#
+# This script demonstrates the action planner test suite capabilities:
+# - Tag-based filtering
+# - Path-based filtering
+# - Content-based filtering
+# - Token budget management
+# - Code replacement strategies
+
+echo "=== Action Planner Demo ==="
+echo ""
+
+# Create test directory structure
+mkdir /demo
+mkdir /demo/src
+mkdir /demo/include
+
+# Create some test files
+echo "Creating test files..."
+touch /demo/src/main.cpp
+echo /demo/src/main.cpp "#include <iostream>
+
+int main() {
+    std::cout << \"Hello World\" << std::endl;
+    return 0;
+}
+"
+
+touch /demo/src/utils.cpp
+echo /demo/src/utils.cpp "#include \"utils.h\"
+
+void log_message(const char* msg) {
+    // TODO: Add timestamp
+    std::cout << msg << std::endl;
+}
+
+int calculate_sum(int a, int b) {
+    // FIXME: Add overflow checking
+    return a + b;
+}
+"
+
+touch /demo/include/utils.h
+echo /demo/include/utils.h "#pragma once
+
+void log_message(const char* msg);
+int calculate_sum(int a, int b);
+"
+
+echo "Files created:"
+tree /demo
+
+echo ""
+echo "=== Tagging Demo ==="
+# Tag files for filtering
+tag.add /demo/src/main.cpp entrypoint important
+tag.add /demo/src/utils.cpp library
+tag.add /demo/src/utils.cpp needs-review
+tag.add /demo/include/utils.h header interface
+
+echo "Tagged files:"
+tag.list /demo/src/main.cpp
+tag.list /demo/src/utils.cpp
+tag.list /demo/include/utils.h
+
+echo ""
+echo "=== Context Building Demo ==="
+echo "Building context from all files (max 2000 tokens)..."
+context.build 2000
+
+echo ""
+echo "=== Filtering Demo ==="
+echo ""
+echo "Example 1: Find all files needing review"
+echo "(In real usage, would filter by 'needs-review' tag)"
+tag.list /demo/src/utils.cpp
+
+echo ""
+echo "Example 2: Find all TODOs and FIXMEs"
+echo "(Content matching for 'TODO' or 'FIXME')"
+cat /demo/src/utils.cpp | grep -E "TODO|FIXME"
+
+echo ""
+echo "Example 3: Find entry points"
+echo "(Files tagged 'entrypoint')"
+tag.list /demo/src/main.cpp
+
+echo ""
+echo "=== Running Action Planner Test Suite ==="
+test.planner
+
+echo ""
+echo "=== Demo Complete ==="
+echo "The action planner test suite provides:"
+echo "  ✓ Tag-based filtering (TagAny, TagAll, TagNone)"
+echo "  ✓ Path-based filtering (prefix, glob patterns)"
+echo "  ✓ Content-based filtering (substring, regex)"
+echo "  ✓ Token budget management"
+echo "  ✓ Priority-based context building"
+echo "  ✓ Code replacement strategies"
+echo ""
+echo "See docs/ACTION_PLANNER.md for detailed documentation."
