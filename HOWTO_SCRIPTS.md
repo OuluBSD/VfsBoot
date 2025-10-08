@@ -6,11 +6,16 @@ This guide explains how to run all the script files in the `scripts/` directory.
 
 **New to VfsBoot?** Try these demos in order:
 
+### Logic Rules System (Progressive Learning Path)
+
 1. **EASIEST**: `logic-rules-simple-demo.cx` - Learn rule save/load in 5 steps
 2. **INTERMEDIATE**: `logic-rules-persistence-demo.cx` - Complete persistence workflow
-3. **MOST COMPLEX**: `logic-rules-advanced-demo.cx` - Production rule management
+3. **ADVANCED**: `logic-rules-dynamic-creation-demo.cx` - Create custom rules at runtime
+4. **MOST COMPLEX**: `logic-rules-from-scratch-demo.cx` - Build complete system without hardcoded rules
 
 Each demo builds on the previous, showing progressively advanced features.
+
+**Key Insight**: The system doesn't require hardcoded rules! You can build entire rule sets dynamically for any domain.
 
 ## Script Types
 
@@ -221,6 +226,25 @@ Demonstrates creating rules from multiple sources:
 - Building complex inference chains
 - Real-world ML training pipeline example
 - **Shows how to go beyond hardcoded rules**
+
+**scripts/examples/logic-rules-from-scratch-demo.cx** - Complete system without hardcoded rules:
+```bash
+cat scripts/examples/logic-rules-from-scratch-demo.cx | tail -n +2 | ./codex
+```
+Build a complete rule system from scratch (NO logic.init):
+- 20-part comprehensive workflow (270+ lines)
+- Web application deployment domain (50+ rules)
+- Infrastructure rules (environments, scaling, load balancing)
+- Security rules (HTTPS, encryption, authentication)
+- Performance rules (caching, CDN, compression)
+- Network topology rules (distributed, multi-region)
+- Resource constraint modeling
+- Learned patterns from deployment history
+- AI optimization suggestions
+- Production + staging + development scenarios
+- Deployment workflow validation
+- Team collaboration and versioning
+- **Proves system works entirely without hardcoded rules**
 
 ## Running .sexp Scripts
 

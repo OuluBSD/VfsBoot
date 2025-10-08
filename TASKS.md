@@ -110,7 +110,13 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 			- Post-planning: verify AI-generated plan doesn't violate constraints
 		- Use case: Prevent impossible plans like "build offline but fetch remote dependencies"
 		- **Commands**: `logic.init`, `logic.infer`, `logic.check`, `logic.explain`, `logic.listrules`, `logic.rules.save`, `logic.rules.load`, `logic.rule.add`, `logic.rule.exclude`, `logic.rule.remove`, `logic.sat`, `tag.mine.start`, `tag.mine.feedback`, `tag.mine.status`
-		- **Demo scripts**: `scripts/examples/logic-system-demo.cx`, `scripts/examples/logic-rules-simple-demo.cx`, `scripts/examples/logic-rules-persistence-demo.cx`, `scripts/examples/logic-rules-advanced-demo.cx`, `scripts/examples/logic-rules-dynamic-creation-demo.cx`
+		- **Demo scripts**:
+			- `scripts/examples/logic-system-demo.cx` - Complete system overview
+			- `scripts/examples/logic-rules-simple-demo.cx` - Basic save/load (EASIEST)
+			- `scripts/examples/logic-rules-persistence-demo.cx` - Full persistence workflow
+			- `scripts/examples/logic-rules-advanced-demo.cx` - Production management
+			- `scripts/examples/logic-rules-dynamic-creation-demo.cx` - Runtime rule creation
+			- `scripts/examples/logic-rules-from-scratch-demo.cx` - **NO hardcoded rules** (web app deployment, 50+ rules)
 - **[DONE]** Advanced hypothesis testing examples (progressively more complex):
 	- Implemented comprehensive hypothesis testing system with 5 complexity levels
 	- **Level 1: Simple Query** - `hypothesis.query <target> [path]`
