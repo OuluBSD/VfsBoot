@@ -3,12 +3,35 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 
 ## Upcoming: important (in order)
-- planner core engine for breakdown/context (action/state model, A* search, cost heuristics)
-	- we need a very hierarchical repository-wide plan with many vertical steps and details, to work even with low quality AI. we need multiple types of AI (generic, pair programming). let's discuss how we create a system to use low quality AI agents
-		- we should take hints from Gentoo's emerge: USE flags and a list of "packages" to emerge. We should estimate the whole program starting from the most coarsest node and then add details
-			- keep track if USE flag is written by user or is it agent's estimate
-		- let's ask yes/no or explain questions from human expert about details of where to put code and features
-	- vfs must have tags (and types etc) for basic filtering (and combining tags hierarchically). sections hidden in plain c++ should have tags (like #include section, sub-statement-list section). We should be able to create code comments (//) from tags. We could even use action planner to make comments using context (and tags)
+- **[IN PROGRESS]** planner core engine for breakdown/context (action/state model, A* search, cost heuristics)
+	- **[DONE]** Tag system implementation:
+		- Enumerated tag registry (TagId = uint32_t) for memory efficiency
+		- Tag storage separate from VfsNode (keeps nodes POD-friendly)
+		- Tag commands: `tag.add`, `tag.remove`, `tag.list`, `tag.clear`, `tag.has`
+		- All registered tags queryable, tags attached to any VFS node
+	- **[DONE]** Hierarchical plan node types:
+		- PlanRoot, PlanSubPlan, PlanGoals, PlanIdeas, PlanStrategy
+		- PlanJobs (with priority, completion status, assignee tracking)
+		- PlanDeps, PlanImplemented, PlanResearch, PlanNotes
+		- All nodes support read/write as formatted text (markdown-style lists)
+		- PlannerContext for navigation (forward/backward modes, history, visible nodes)
+	- **[TODO]** Shell commands for plan management:
+		- `plan.create <path> [type]` - Create new plan node
+		- `plan.add.<type> <path> <content>` - Add items to plan lists
+		- `plan.goto <path>` - Navigate planner context
+		- `plan.forward` / `plan.backward` - Change navigation mode
+		- `plan.context.add/remove/list` - Manage visible nodes for AI
+		- `plan.jobs.complete <path> <index>` - Mark jobs as done
+	- **[TODO]** Planning loop integration:
+		- Interactive AI discussion workflow (plan.discuss)
+		- Forward mode: add details to plans (root → leaves)
+		- Backward mode: revise higher-level plans when stuck
+		- Yes/no/explain questions from human expert
+		- Hypothesis generation and testing
+	- **[TODO]** Context builder for AI calls:
+		- Tag-based filtering for relevant nodes
+		- Visibility tracking for nodes in current context
+		- Smart context sizing (token budgets)
 - action planner test suite: what to add to context list. tag based filtering, "if vfs node contains x" based filtering, etc (huge list, figure it out). this is the AI context offloader. This is used also to figure out the list of statements to be removed before adding new code (==replacing). it must be last resort to dump actual c++ statements in c++ code as text for ai to figure it out. we must have a working "action planner hypothesis" from ai, or multiples (tree-like hypothesis), which we can test before calling AI again. the most difficult tests are "templates for modifying or replacing code" or "commenting code based on tags and context". We can use those comment generators to verify, that action planner works: ask action planner if this comment or attribute-list is valid.
 - scope store with binary diffs + feature masks, plus deterministic context builder
 - scenario harness binaries (`planner_demo`, `planner_train`) and scripted breakdown loop for validation
@@ -129,3 +152,6 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 ## Backlog / Ideas
 - Harden string escaping in the C++ AST dumper before expanding code generation.
+- VfsNode memory optimization: keep VfsNode POD-friendly (trivially copyable), implement fast recycler for construction/destruction (hot code path)
+- GUI support: web-based interface using Wt libraries for forms, multiple questions at once, plan visualization
+- Node metadata storage: separate from VfsNode to maintain POD compatibility (VFS-owned map pattern)

@@ -63,6 +63,25 @@ namespace codex_trace {
 #endif
 
 //
+// Tag Registry (enumerated tags for memory efficiency)
+//
+using TagId = uint32_t;
+constexpr TagId TAG_INVALID = 0;
+using TagSet = std::set<TagId>;
+
+struct TagRegistry {
+    std::map<std::string, TagId> name_to_id;
+    std::map<TagId, std::string> id_to_name;
+    TagId next_id = 1;
+
+    TagId registerTag(const std::string& name);
+    TagId getTagId(const std::string& name) const;
+    std::string getTagName(TagId id) const;
+    bool hasTag(const std::string& name) const;
+    std::vector<std::string> allTags() const;
+};
+
+//
 // VFS perus
 //
 struct VfsNode : std::enable_shared_from_this<VfsNode> {
@@ -228,6 +247,21 @@ struct Env : std::enable_shared_from_this<Env> {
 };
 
 //
+// Tag Storage (must be declared after VfsNode)
+//
+struct TagStorage {
+    std::unordered_map<VfsNode*, TagSet> node_tags;
+
+    void addTag(VfsNode* node, TagId tag);
+    void removeTag(VfsNode* node, TagId tag);
+    bool hasTag(VfsNode* node, TagId tag) const;
+    const TagSet* getTags(VfsNode* node) const;
+    void clearTags(VfsNode* node);
+    std::vector<VfsNode*> findByTag(TagId tag) const;
+    std::vector<VfsNode*> findByTags(const TagSet& tags, bool match_all) const;
+};
+
+//
 // VFS
 //
 struct Vfs {
@@ -252,6 +286,10 @@ struct Vfs {
     std::vector<Overlay> overlay_stack;
     std::vector<bool> overlay_dirty;
     std::vector<std::string> overlay_source;
+
+    // Tag system (separate from VfsNode to keep it POD-friendly)
+    TagRegistry tag_registry;
+    TagStorage tag_storage;
 
     Vfs();
 
@@ -313,6 +351,21 @@ struct Vfs {
     // Remote filesystem server
     void serveRemoteFilesystem(int port, const std::string& vfs_root = "/");
     void stopRemoteServer();
+
+    // Tag management (helpers that delegate to tag_registry and tag_storage)
+    TagId registerTag(const std::string& name);
+    TagId getTagId(const std::string& name) const;
+    std::string getTagName(TagId id) const;
+    bool hasTagRegistered(const std::string& name) const;
+    std::vector<std::string> allRegisteredTags() const;
+
+    void addTag(const std::string& vfs_path, const std::string& tag_name);
+    void removeTag(const std::string& vfs_path, const std::string& tag_name);
+    bool nodeHasTag(const std::string& vfs_path, const std::string& tag_name) const;
+    std::vector<std::string> getNodeTags(const std::string& vfs_path) const;
+    void clearNodeTags(const std::string& vfs_path);
+    std::vector<std::string> findNodesByTag(const std::string& tag_name) const;
+    std::vector<std::string> findNodesByTags(const std::vector<std::string>& tag_names, bool match_all) const;
 };
 
 extern Vfs* G_VFS; // glob aputinta varten
@@ -478,6 +531,109 @@ std::shared_ptr<CppFunction>        expect_fn(std::shared_ptr<VfsNode> n);
 std::shared_ptr<CppCompound>        expect_block(std::shared_ptr<VfsNode> n);
 void vfs_add(Vfs& vfs, const std::string& path, std::shared_ptr<VfsNode> node, size_t overlayId = 0);
 void cpp_dump_to_vfs(Vfs& vfs, size_t overlayId, const std::string& tuPath, const std::string& filePath);
+
+//
+// Planner AST nodes (hierarchical planning system)
+//
+struct PlanNode : AstNode {
+    std::string content;  // Text content for the plan node
+    std::map<std::string, std::shared_ptr<VfsNode>> ch;
+
+    PlanNode(std::string n, std::string c = "") : AstNode(std::move(n)), content(std::move(c)) {}
+    bool isDir() const override { return true; }
+    std::map<std::string, std::shared_ptr<VfsNode>>& children() override { return ch; }
+    Value eval(std::shared_ptr<Env>) override { return Value::S(content); }
+    std::string read() const override { return content; }
+    void write(const std::string& s) override { content = s; }
+};
+
+// Specific plan node types
+struct PlanRoot : PlanNode {
+    PlanRoot(std::string n, std::string c = "") : PlanNode(std::move(n), std::move(c)) {}
+};
+
+struct PlanSubPlan : PlanNode {
+    PlanSubPlan(std::string n, std::string c = "") : PlanNode(std::move(n), std::move(c)) {}
+};
+
+struct PlanGoals : PlanNode {
+    std::vector<std::string> goals;
+    PlanGoals(std::string n) : PlanNode(std::move(n)) {}
+    std::string read() const override;
+    void write(const std::string& s) override;
+};
+
+struct PlanIdeas : PlanNode {
+    std::vector<std::string> ideas;
+    PlanIdeas(std::string n) : PlanNode(std::move(n)) {}
+    std::string read() const override;
+    void write(const std::string& s) override;
+};
+
+struct PlanStrategy : PlanNode {
+    PlanStrategy(std::string n, std::string c = "") : PlanNode(std::move(n), std::move(c)) {}
+};
+
+struct PlanJob {
+    std::string description;
+    int priority;  // Lower number = higher priority
+    bool completed;
+    std::string assignee;  // "user" or "agent" or specific agent name
+};
+
+struct PlanJobs : PlanNode {
+    std::vector<PlanJob> jobs;
+    PlanJobs(std::string n) : PlanNode(std::move(n)) {}
+    std::string read() const override;
+    void write(const std::string& s) override;
+    void addJob(const std::string& desc, int priority = 100, const std::string& assignee = "");
+    void completeJob(size_t index);
+    std::vector<size_t> getSortedJobIndices() const;
+};
+
+struct PlanDeps : PlanNode {
+    std::vector<std::string> dependencies;
+    PlanDeps(std::string n) : PlanNode(std::move(n)) {}
+    std::string read() const override;
+    void write(const std::string& s) override;
+};
+
+struct PlanImplemented : PlanNode {
+    std::vector<std::string> items;
+    PlanImplemented(std::string n) : PlanNode(std::move(n)) {}
+    std::string read() const override;
+    void write(const std::string& s) override;
+};
+
+struct PlanResearch : PlanNode {
+    std::vector<std::string> topics;
+    PlanResearch(std::string n) : PlanNode(std::move(n)) {}
+    std::string read() const override;
+    void write(const std::string& s) override;
+};
+
+struct PlanNotes : PlanNode {
+    PlanNotes(std::string n, std::string c = "") : PlanNode(std::move(n), std::move(c)) {}
+};
+
+//
+// Planner Context (navigator state)
+//
+struct PlannerContext {
+    std::string current_path;  // Current location in /plan tree
+    std::vector<std::string> navigation_history;  // Breadcrumbs for backtracking
+    std::set<std::string> visible_nodes;  // Paths of nodes currently "in view" for AI context
+
+    enum class Mode { Forward, Backward };
+    Mode mode = Mode::Forward;
+
+    void navigateTo(const std::string& path);
+    void forward();   // Move towards leaves (add details)
+    void backward();  // Move towards root (revise higher-level plans)
+    void addToContext(const std::string& vfs_path);
+    void removeFromContext(const std::string& vfs_path);
+    void clearContext();
+};
 
 //
 // Hash utilities (BLAKE3)

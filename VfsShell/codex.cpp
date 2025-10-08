@@ -2958,6 +2958,197 @@ bool Vfs::isMountAllowed() const {
     return mount_allowed;
 }
 
+// ====== Tag Registry & Storage ======
+TagId TagRegistry::registerTag(const std::string& name){
+    auto it = name_to_id.find(name);
+    if(it != name_to_id.end()) return it->second;
+    TagId id = next_id++;
+    name_to_id[name] = id;
+    id_to_name[id] = name;
+    return id;
+}
+
+TagId TagRegistry::getTagId(const std::string& name) const {
+    auto it = name_to_id.find(name);
+    return it != name_to_id.end() ? it->second : TAG_INVALID;
+}
+
+std::string TagRegistry::getTagName(TagId id) const {
+    auto it = id_to_name.find(id);
+    return it != id_to_name.end() ? it->second : "";
+}
+
+bool TagRegistry::hasTag(const std::string& name) const {
+    return name_to_id.find(name) != name_to_id.end();
+}
+
+std::vector<std::string> TagRegistry::allTags() const {
+    std::vector<std::string> tags;
+    tags.reserve(name_to_id.size());
+    for(const auto& pair : name_to_id){
+        tags.push_back(pair.first);
+    }
+    return tags;
+}
+
+void TagStorage::addTag(VfsNode* node, TagId tag){
+    if(!node || tag == TAG_INVALID) return;
+    node_tags[node].insert(tag);
+}
+
+void TagStorage::removeTag(VfsNode* node, TagId tag){
+    if(!node) return;
+    auto it = node_tags.find(node);
+    if(it != node_tags.end()){
+        it->second.erase(tag);
+        if(it->second.empty()) node_tags.erase(it);
+    }
+}
+
+bool TagStorage::hasTag(VfsNode* node, TagId tag) const {
+    if(!node) return false;
+    auto it = node_tags.find(node);
+    if(it == node_tags.end()) return false;
+    return it->second.count(tag) > 0;
+}
+
+const TagSet* TagStorage::getTags(VfsNode* node) const {
+    if(!node) return nullptr;
+    auto it = node_tags.find(node);
+    return it != node_tags.end() ? &it->second : nullptr;
+}
+
+void TagStorage::clearTags(VfsNode* node){
+    if(node) node_tags.erase(node);
+}
+
+std::vector<VfsNode*> TagStorage::findByTag(TagId tag) const {
+    std::vector<VfsNode*> result;
+    for(const auto& pair : node_tags){
+        if(pair.second.count(tag) > 0){
+            result.push_back(pair.first);
+        }
+    }
+    return result;
+}
+
+std::vector<VfsNode*> TagStorage::findByTags(const TagSet& tags, bool match_all) const {
+    std::vector<VfsNode*> result;
+    for(const auto& pair : node_tags){
+        if(match_all){
+            // All tags must be present
+            bool has_all = true;
+            for(TagId tag : tags){
+                if(pair.second.count(tag) == 0){
+                    has_all = false;
+                    break;
+                }
+            }
+            if(has_all) result.push_back(pair.first);
+        } else {
+            // Any tag can be present
+            bool has_any = false;
+            for(TagId tag : tags){
+                if(pair.second.count(tag) > 0){
+                    has_any = true;
+                    break;
+                }
+            }
+            if(has_any) result.push_back(pair.first);
+        }
+    }
+    return result;
+}
+
+// VFS tag helpers
+TagId Vfs::registerTag(const std::string& name){
+    return tag_registry.registerTag(name);
+}
+
+TagId Vfs::getTagId(const std::string& name) const {
+    return tag_registry.getTagId(name);
+}
+
+std::string Vfs::getTagName(TagId id) const {
+    return tag_registry.getTagName(id);
+}
+
+bool Vfs::hasTagRegistered(const std::string& name) const {
+    return tag_registry.hasTag(name);
+}
+
+std::vector<std::string> Vfs::allRegisteredTags() const {
+    return tag_registry.allTags();
+}
+
+void Vfs::addTag(const std::string& vfs_path, const std::string& tag_name){
+    auto node = resolve(vfs_path);
+    if(!node) throw std::runtime_error("tag.add: path not found: " + vfs_path);
+    TagId tag_id = tag_registry.registerTag(tag_name);
+    tag_storage.addTag(node.get(), tag_id);
+}
+
+void Vfs::removeTag(const std::string& vfs_path, const std::string& tag_name){
+    auto node = resolve(vfs_path);
+    if(!node) throw std::runtime_error("tag.remove: path not found: " + vfs_path);
+    TagId tag_id = tag_registry.getTagId(tag_name);
+    if(tag_id == TAG_INVALID) return;  // Tag doesn't exist, nothing to remove
+    tag_storage.removeTag(node.get(), tag_id);
+}
+
+bool Vfs::nodeHasTag(const std::string& vfs_path, const std::string& tag_name) const {
+    auto node = const_cast<Vfs*>(this)->resolve(vfs_path);
+    if(!node) return false;
+    TagId tag_id = tag_registry.getTagId(tag_name);
+    if(tag_id == TAG_INVALID) return false;
+    return tag_storage.hasTag(node.get(), tag_id);
+}
+
+std::vector<std::string> Vfs::getNodeTags(const std::string& vfs_path) const {
+    auto node = const_cast<Vfs*>(this)->resolve(vfs_path);
+    if(!node) return {};
+    const TagSet* tags = tag_storage.getTags(node.get());
+    if(!tags) return {};
+
+    std::vector<std::string> result;
+    result.reserve(tags->size());
+    for(TagId tag_id : *tags){
+        result.push_back(tag_registry.getTagName(tag_id));
+    }
+    return result;
+}
+
+void Vfs::clearNodeTags(const std::string& vfs_path){
+    auto node = resolve(vfs_path);
+    if(!node) throw std::runtime_error("tag.clear: path not found: " + vfs_path);
+    tag_storage.clearTags(node.get());
+}
+
+std::vector<std::string> Vfs::findNodesByTag(const std::string& tag_name) const {
+    TagId tag_id = tag_registry.getTagId(tag_name);
+    if(tag_id == TAG_INVALID) return {};
+
+    auto nodes = tag_storage.findByTag(tag_id);
+    std::vector<std::string> result;
+    // TODO: Need reverse path lookup - this is a known limitation for now
+    // For MVP, we'll need to implement path tracking or traverse the VFS tree
+    return result;
+}
+
+std::vector<std::string> Vfs::findNodesByTags(const std::vector<std::string>& tag_names, bool match_all) const {
+    TagSet tag_ids;
+    for(const auto& name : tag_names){
+        TagId id = tag_registry.getTagId(name);
+        if(id != TAG_INVALID) tag_ids.insert(id);
+    }
+    if(tag_ids.empty()) return {};
+
+    auto nodes = tag_storage.findByTags(tag_ids, match_all);
+    std::vector<std::string> result;
+    // TODO: Need reverse path lookup - this is a known limitation for now
+    return result;
+}
+
 // ====== Parser ======
 static size_t POS;
 static std::shared_ptr<AstNode> parseExpr(const std::vector<Token>& T);
@@ -3453,6 +3644,247 @@ void cpp_dump_to_vfs(Vfs& vfs, size_t overlayId, const std::string& tuPath, cons
     vfs.write(filePath, code, overlayId);
 }
 
+// ====== Planner Nodes ======
+std::string PlanGoals::read() const {
+    std::string result;
+    for(size_t i = 0; i < goals.size(); ++i){
+        result += "- " + goals[i] + "\n";
+    }
+    return result;
+}
+
+void PlanGoals::write(const std::string& s){
+    goals.clear();
+    std::istringstream iss(s);
+    std::string line;
+    while(std::getline(iss, line)){
+        auto trimmed = trim_copy(line);
+        if(trimmed.empty()) continue;
+        if(trimmed.size() >= 2 && trimmed[0] == '-' && std::isspace(static_cast<unsigned char>(trimmed[1]))){
+            goals.push_back(trim_copy(trimmed.substr(2)));
+        } else {
+            goals.push_back(trimmed);
+        }
+    }
+}
+
+std::string PlanIdeas::read() const {
+    std::string result;
+    for(size_t i = 0; i < ideas.size(); ++i){
+        result += "- " + ideas[i] + "\n";
+    }
+    return result;
+}
+
+void PlanIdeas::write(const std::string& s){
+    ideas.clear();
+    std::istringstream iss(s);
+    std::string line;
+    while(std::getline(iss, line)){
+        auto trimmed = trim_copy(line);
+        if(trimmed.empty()) continue;
+        if(trimmed.size() >= 2 && trimmed[0] == '-' && std::isspace(static_cast<unsigned char>(trimmed[1]))){
+            ideas.push_back(trim_copy(trimmed.substr(2)));
+        } else {
+            ideas.push_back(trimmed);
+        }
+    }
+}
+
+std::string PlanJobs::read() const {
+    std::string result;
+    auto sorted = getSortedJobIndices();
+    for(size_t idx : sorted){
+        const auto& job = jobs[idx];
+        result += (job.completed ? "[x] " : "[ ] ");
+        result += "P" + std::to_string(job.priority) + " ";
+        result += job.description;
+        if(!job.assignee.empty()){
+            result += " (@" + job.assignee + ")";
+        }
+        result += "\n";
+    }
+    return result;
+}
+
+void PlanJobs::write(const std::string& s){
+    jobs.clear();
+    std::istringstream iss(s);
+    std::string line;
+    while(std::getline(iss, line)){
+        auto trimmed = trim_copy(line);
+        if(trimmed.empty()) continue;
+
+        PlanJob job;
+        job.completed = false;
+        job.priority = 100;
+        job.assignee = "";
+
+        // Parse [x] or [ ]
+        if(trimmed.size() >= 3 && trimmed[0] == '['){
+            if(trimmed[1] == 'x' || trimmed[1] == 'X'){
+                job.completed = true;
+            }
+            size_t close = trimmed.find(']');
+            if(close != std::string::npos && close < trimmed.size() - 1){
+                trimmed = trim_copy(trimmed.substr(close + 1));
+            }
+        }
+
+        // Parse priority P<num>
+        if(trimmed.size() >= 2 && trimmed[0] == 'P' && std::isdigit(static_cast<unsigned char>(trimmed[1]))){
+            size_t end = 1;
+            while(end < trimmed.size() && std::isdigit(static_cast<unsigned char>(trimmed[end]))){
+                ++end;
+            }
+            job.priority = std::stoi(trimmed.substr(1, end - 1));
+            trimmed = trim_copy(trimmed.substr(end));
+        }
+
+        // Parse assignee (@name)
+        size_t at_pos = trimmed.find(" (@");
+        if(at_pos != std::string::npos){
+            size_t close_paren = trimmed.find(')', at_pos);
+            if(close_paren != std::string::npos){
+                job.assignee = trimmed.substr(at_pos + 3, close_paren - at_pos - 3);
+                trimmed = trim_copy(trimmed.substr(0, at_pos));
+            }
+        }
+
+        job.description = trimmed;
+        if(!job.description.empty()){
+            jobs.push_back(job);
+        }
+    }
+}
+
+void PlanJobs::addJob(const std::string& desc, int priority, const std::string& assignee){
+    PlanJob job;
+    job.description = desc;
+    job.priority = priority;
+    job.completed = false;
+    job.assignee = assignee;
+    jobs.push_back(job);
+}
+
+void PlanJobs::completeJob(size_t index){
+    if(index < jobs.size()){
+        jobs[index].completed = true;
+    }
+}
+
+std::vector<size_t> PlanJobs::getSortedJobIndices() const {
+    std::vector<size_t> indices(jobs.size());
+    for(size_t i = 0; i < jobs.size(); ++i) indices[i] = i;
+    std::sort(indices.begin(), indices.end(), [this](size_t a, size_t b){
+        if(jobs[a].completed != jobs[b].completed) return !jobs[a].completed;  // Incomplete first
+        if(jobs[a].priority != jobs[b].priority) return jobs[a].priority < jobs[b].priority;
+        return a < b;
+    });
+    return indices;
+}
+
+std::string PlanDeps::read() const {
+    std::string result;
+    for(const auto& dep : dependencies){
+        result += "- " + dep + "\n";
+    }
+    return result;
+}
+
+void PlanDeps::write(const std::string& s){
+    dependencies.clear();
+    std::istringstream iss(s);
+    std::string line;
+    while(std::getline(iss, line)){
+        auto trimmed = trim_copy(line);
+        if(trimmed.empty()) continue;
+        if(trimmed.size() >= 2 && trimmed[0] == '-' && std::isspace(static_cast<unsigned char>(trimmed[1]))){
+            dependencies.push_back(trim_copy(trimmed.substr(2)));
+        } else {
+            dependencies.push_back(trimmed);
+        }
+    }
+}
+
+std::string PlanImplemented::read() const {
+    std::string result;
+    for(const auto& item : items){
+        result += "- " + item + "\n";
+    }
+    return result;
+}
+
+void PlanImplemented::write(const std::string& s){
+    items.clear();
+    std::istringstream iss(s);
+    std::string line;
+    while(std::getline(iss, line)){
+        auto trimmed = trim_copy(line);
+        if(trimmed.empty()) continue;
+        if(trimmed.size() >= 2 && trimmed[0] == '-' && std::isspace(static_cast<unsigned char>(trimmed[1]))){
+            items.push_back(trim_copy(trimmed.substr(2)));
+        } else {
+            items.push_back(trimmed);
+        }
+    }
+}
+
+std::string PlanResearch::read() const {
+    std::string result;
+    for(const auto& topic : topics){
+        result += "- " + topic + "\n";
+    }
+    return result;
+}
+
+void PlanResearch::write(const std::string& s){
+    topics.clear();
+    std::istringstream iss(s);
+    std::string line;
+    while(std::getline(iss, line)){
+        auto trimmed = trim_copy(line);
+        if(trimmed.empty()) continue;
+        if(trimmed.size() >= 2 && trimmed[0] == '-' && std::isspace(static_cast<unsigned char>(trimmed[1]))){
+            topics.push_back(trim_copy(trimmed.substr(2)));
+        } else {
+            topics.push_back(trimmed);
+        }
+    }
+}
+
+// Planner Context
+void PlannerContext::navigateTo(const std::string& path){
+    if(!current_path.empty()){
+        navigation_history.push_back(current_path);
+    }
+    current_path = path;
+}
+
+void PlannerContext::forward(){
+    mode = Mode::Forward;
+}
+
+void PlannerContext::backward(){
+    mode = Mode::Backward;
+    if(!navigation_history.empty()){
+        current_path = navigation_history.back();
+        navigation_history.pop_back();
+    }
+}
+
+void PlannerContext::addToContext(const std::string& vfs_path){
+    visible_nodes.insert(vfs_path);
+}
+
+void PlannerContext::removeFromContext(const std::string& vfs_path){
+    visible_nodes.erase(vfs_path);
+}
+
+void PlannerContext::clearContext(){
+    visible_nodes.clear();
+}
+
 // ====== OpenAI helpers ======
 static std::string system_prompt_text(){
     return std::string("You are a codex-like assistant embedded in a tiny single-binary IDE.\n") +
@@ -3901,6 +4333,12 @@ R"(Commands:
   mount.allow
   mount.disallow
   unmount <vfs-path>
+  # Tags (metadata for nodes)
+  tag.add <vfs-path> <tag-name> [tag-name...]
+  tag.remove <vfs-path> <tag-name> [tag-name...]
+  tag.list [vfs-path]
+  tag.clear <vfs-path>
+  tag.has <vfs-path> <tag-name>
   # C++ builder
   cpp.tu <ast-path>
   cpp.include <tu-path> <header> [angled0/1]
@@ -4715,6 +5153,62 @@ int main(int argc, char** argv){
             std::string vfs_path = normalize_path(cwd.path, inv.args[0]);
             vfs.unmount(vfs_path);
             std::cout << "unmounted " << vfs_path << "\n";
+
+        } else if(cmd == "tag.add"){
+            if(inv.args.size() < 2) throw std::runtime_error("tag.add <vfs-path> <tag-name> [tag-name...]");
+            std::string vfs_path = normalize_path(cwd.path, inv.args[0]);
+            for(size_t i = 1; i < inv.args.size(); ++i){
+                vfs.addTag(vfs_path, inv.args[i]);
+            }
+            std::cout << "tagged " << vfs_path << " with " << (inv.args.size() - 1) << " tag(s)\n";
+
+        } else if(cmd == "tag.remove"){
+            if(inv.args.size() < 2) throw std::runtime_error("tag.remove <vfs-path> <tag-name> [tag-name...]");
+            std::string vfs_path = normalize_path(cwd.path, inv.args[0]);
+            for(size_t i = 1; i < inv.args.size(); ++i){
+                vfs.removeTag(vfs_path, inv.args[i]);
+            }
+            std::cout << "removed " << (inv.args.size() - 1) << " tag(s) from " << vfs_path << "\n";
+
+        } else if(cmd == "tag.list"){
+            if(inv.args.empty()){
+                // List all registered tags
+                auto tags = vfs.allRegisteredTags();
+                if(tags.empty()){
+                    std::cout << "no tags registered\n";
+                } else {
+                    std::cout << "registered tags (" << tags.size() << "):\n";
+                    for(const auto& tag : tags){
+                        std::cout << "  " << tag << "\n";
+                    }
+                }
+            } else {
+                // List tags for specific path
+                std::string vfs_path = normalize_path(cwd.path, inv.args[0]);
+                auto tags = vfs.getNodeTags(vfs_path);
+                if(tags.empty()){
+                    std::cout << vfs_path << ": no tags\n";
+                } else {
+                    std::cout << vfs_path << ": ";
+                    for(size_t i = 0; i < tags.size(); ++i){
+                        if(i > 0) std::cout << ", ";
+                        std::cout << tags[i];
+                    }
+                    std::cout << "\n";
+                }
+            }
+
+        } else if(cmd == "tag.clear"){
+            if(inv.args.empty()) throw std::runtime_error("tag.clear <vfs-path>");
+            std::string vfs_path = normalize_path(cwd.path, inv.args[0]);
+            vfs.clearNodeTags(vfs_path);
+            std::cout << "cleared all tags from " << vfs_path << "\n";
+
+        } else if(cmd == "tag.has"){
+            if(inv.args.size() < 2) throw std::runtime_error("tag.has <vfs-path> <tag-name>");
+            std::string vfs_path = normalize_path(cwd.path, inv.args[0]);
+            bool has = vfs.nodeHasTag(vfs_path, inv.args[1]);
+            std::cout << vfs_path << (has ? " has " : " does not have ") << "tag '" << inv.args[1] << "'\n";
 
         } else if(cmd == "solution.save"){
             std::filesystem::path target = solution.file_path;
