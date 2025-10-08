@@ -1858,7 +1858,192 @@ static void redraw_prompt_line(const std::string& prompt, const std::string& buf
     std::cout.flush();
 }
 
-static bool read_line_with_history(const std::string& prompt, std::string& out, const std::vector<std::string>& history){
+// Get all command names for completion
+static std::vector<std::string> get_all_commands(){
+    return {
+        "cd", "ls", "tree", "mkdir", "touch", "cat", "grep", "rg", "count",
+        "history", "true", "false", "tail", "head", "uniq", "random", "echo",
+        "rm", "mv", "link", "export", "parse", "eval", "ai", "ai.brief",
+        "discuss", "ai.discuss", "discuss.session", "tools", "overlay.list",
+        "overlay.use", "overlay.policy", "overlay.mount", "overlay.save",
+        "overlay.unmount", "mount", "mount.lib", "mount.remote", "mount.list",
+        "mount.allow", "mount.disallow", "unmount", "tag.add", "tag.remove",
+        "tag.list", "tag.clear", "tag.has", "plan.create", "plan.goto",
+        "plan.forward", "plan.backward", "plan.context.add", "plan.context.remove",
+        "plan.context.clear", "plan.context.list", "plan.status", "plan.discuss",
+        "plan.answer", "plan.hypothesis", "plan.jobs.add", "plan.jobs.complete",
+        "plan.save", "solution.save", "context.build", "context.filter.tag",
+        "context.filter.path", "test.planner", "test.hypothesis",
+        "hypothesis.test", "hypothesis.query", "hypothesis.errorhandling",
+        "hypothesis.duplicates", "hypothesis.logging", "hypothesis.pattern",
+        "cpp.tu", "cpp.include", "cpp.func", "cpp.param", "cpp.print",
+        "cpp.returni", "cpp.return", "cpp.expr", "cpp.vardecl", "cpp.stmt",
+        "cpp.rangefor", "cpp.dump", "help", "quit", "exit"
+    };
+}
+
+// Get VFS path completions
+static std::vector<std::string> get_path_completions(Vfs& vfs, const std::string& partial, const std::string& cwd_path){
+    std::vector<std::string> results;
+
+    // Determine the directory to search and the prefix to match
+    std::string search_dir = cwd_path;
+    std::string prefix;
+
+    if(partial.empty()){
+        prefix = "";
+    } else if(partial.back() == '/'){
+        // Complete from the specified directory
+        search_dir = normalize_path(cwd_path, partial);
+        prefix = "";
+    } else {
+        // Split into directory and filename parts
+        size_t last_slash = partial.rfind('/');
+        if(last_slash != std::string::npos){
+            std::string dir_part = partial.substr(0, last_slash + 1);
+            prefix = partial.substr(last_slash + 1);
+            search_dir = normalize_path(cwd_path, dir_part);
+        } else {
+            prefix = partial;
+        }
+    }
+
+    // Look up the directory in VFS
+    try {
+        auto hits = vfs.resolveMulti(search_dir);
+        if(hits.empty()) return results;
+
+        // Check if it's a directory
+        bool anyDir = false;
+        std::vector<size_t> listingOverlays;
+        for(const auto& hit : hits){
+            if(hit.node->isDir()){
+                anyDir = true;
+                listingOverlays.push_back(hit.overlay_id);
+            }
+        }
+
+        if(!anyDir) return results;
+
+        // Get directory listing
+        auto listing = vfs.listDir(search_dir, listingOverlays);
+        for(const auto& [name, entry] : listing){
+            if(name.empty() || name[0] == '.') continue; // skip hidden
+            if(prefix.empty() || name.find(prefix) == 0){
+                std::string completion = name;
+                // Check if entry is a directory
+                if(entry.types.count('d') > 0){
+                    completion += '/';
+                }
+                results.push_back(completion);
+            }
+        }
+    } catch(...) {
+        // Path not found or error - return empty
+        return results;
+    }
+
+    std::sort(results.begin(), results.end());
+    return results;
+}
+
+// Perform tab completion on the current buffer
+static std::string complete_input(Vfs& vfs, const std::string& buffer, size_t cursor, const std::string& cwd_path, bool& show_list){
+    show_list = false;
+
+    // Only complete at cursor position (end of word)
+    if(cursor != buffer.size()) return buffer;
+
+    // Parse the input to determine context
+    auto trimmed = trim_copy(buffer);
+    if(trimmed.empty()) return buffer;
+
+    // Simple tokenization
+    std::vector<std::string> tokens;
+    std::string current;
+    bool in_quote = false;
+    for(char ch : buffer){
+        if(ch == '"' || ch == '\''){
+            in_quote = !in_quote;
+            current += ch;
+        } else if(std::isspace(static_cast<unsigned char>(ch)) && !in_quote){
+            if(!current.empty()){
+                tokens.push_back(current);
+                current.clear();
+            }
+        } else {
+            current += ch;
+        }
+    }
+    if(!current.empty()) tokens.push_back(current);
+
+    if(tokens.empty()) return buffer;
+
+    std::vector<std::string> candidates;
+    std::string prefix_to_complete;
+    bool completing_command = (tokens.size() == 1 && !buffer.empty() && !std::isspace(static_cast<unsigned char>(buffer.back())));
+
+    if(completing_command){
+        // Complete command names
+        prefix_to_complete = tokens[0];
+        auto all_cmds = get_all_commands();
+        for(const auto& cmd : all_cmds){
+            if(cmd.find(prefix_to_complete) == 0){
+                candidates.push_back(cmd);
+            }
+        }
+    } else {
+        // Complete file paths
+        prefix_to_complete = tokens.back();
+        candidates = get_path_completions(vfs, prefix_to_complete, cwd_path);
+    }
+
+    if(candidates.empty()){
+        return buffer; // No completions
+    }
+
+    if(candidates.size() == 1){
+        // Single match - complete it
+        std::string completion = candidates[0];
+        std::string result = buffer.substr(0, buffer.size() - prefix_to_complete.size()) + completion;
+        if(completing_command) result += ' '; // Add space after command
+        return result;
+    }
+
+    // Multiple matches - find common prefix
+    std::string common = candidates[0];
+    for(size_t i = 1; i < candidates.size(); ++i){
+        size_t j = 0;
+        while(j < common.size() && j < candidates[i].size() && common[j] == candidates[i][j]){
+            ++j;
+        }
+        common = common.substr(0, j);
+    }
+
+    if(common.size() > prefix_to_complete.size()){
+        // Complete to common prefix
+        return buffer.substr(0, buffer.size() - prefix_to_complete.size()) + common;
+    }
+
+    // Show list of candidates
+    show_list = true;
+    std::cout << '\n';
+    size_t col = 0;
+    const size_t max_width = 80;
+    for(const auto& candidate : candidates){
+        if(col + candidate.size() + 2 > max_width && col > 0){
+            std::cout << '\n';
+            col = 0;
+        }
+        std::cout << candidate << "  ";
+        col += candidate.size() + 2;
+    }
+    std::cout << '\n';
+
+    return buffer;
+}
+
+static bool read_line_with_history(Vfs& vfs, const std::string& prompt, std::string& out, const std::vector<std::string>& history, const std::string& cwd_path = "/"){
     std::cout << prompt;
     std::cout.flush();
 
@@ -1935,6 +2120,24 @@ static bool read_line_with_history(const std::string& prompt, std::string& out, 
                     saved_valid = false;
                 }
             }
+            continue;
+        }
+
+        if(ch == 9){ // Tab - auto-complete
+            bool show_list = false;
+            std::string completed = complete_input(vfs, buffer, cursor, cwd_path, show_list);
+            if(completed != buffer){
+                buffer = completed;
+                cursor = buffer.size();
+                if(history_pos != history.size()){
+                    history_pos = history.size();
+                    saved_valid = false;
+                }
+            }
+            if(show_list){
+                std::cout << prompt;
+            }
+            redraw_current();
             continue;
         }
 
@@ -7652,7 +7855,7 @@ int main(int argc, char** argv){
         ++repl_iter;
         bool have_line = false;
         if(interactive && input == &std::cin){
-            if(!read_line_with_history("> ", line, history)){
+            if(!read_line_with_history(vfs, "> ", line, history, cwd.path)){
                 break;
             }
             have_line = true;
