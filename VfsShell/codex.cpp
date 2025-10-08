@@ -1872,8 +1872,9 @@ static std::vector<std::string> get_all_commands(){
         "plan.forward", "plan.backward", "plan.context.add", "plan.context.remove",
         "plan.context.clear", "plan.context.list", "plan.status", "plan.discuss",
         "plan.answer", "plan.hypothesis", "plan.jobs.add", "plan.jobs.complete",
-        "plan.save", "solution.save", "context.build", "context.filter.tag",
-        "context.filter.path", "test.planner", "test.hypothesis",
+        "plan.save", "solution.save", "context.build", "context.build.adv",
+        "context.build.advanced", "context.filter.tag", "context.filter.path",
+        "tree.adv", "tree.advanced", "test.planner", "test.hypothesis",
         "hypothesis.test", "hypothesis.query", "hypothesis.errorhandling",
         "hypothesis.duplicates", "hypothesis.logging", "hypothesis.pattern",
         "cpp.tu", "cpp.include", "cpp.func", "cpp.param", "cpp.print",
@@ -3072,6 +3073,118 @@ void Vfs::tree(std::shared_ptr<VfsNode> n, std::string pref){
             tree(kv.second, pref + "  ");
         }
     }
+}
+
+// Advanced tree visualization with options
+std::string Vfs::formatTreeNode(VfsNode* node, const std::string& /* path */, const TreeOptions& opts){
+    std::ostringstream oss;
+
+    // Node type/kind indicator
+    if(opts.show_node_kind){
+        oss << type_char(std::shared_ptr<VfsNode>(node, [](VfsNode*){})) << " ";
+    }
+
+    // Node name with optional color
+    if(opts.use_colors){
+        const char* color = "\033[0m";  // Default
+        switch(node->kind){
+            case VfsNode::Kind::Dir:      color = "\033[34m"; break; // Blue
+            case VfsNode::Kind::File:     color = "\033[0m";  break; // Default
+            case VfsNode::Kind::Ast:      color = "\033[35m"; break; // Magenta
+            case VfsNode::Kind::Mount:    color = "\033[36m"; break; // Cyan
+            case VfsNode::Kind::Library:  color = "\033[33m"; break; // Yellow
+            default:                      color = "\033[37m"; break; // White
+        }
+        oss << color << node->name << "\033[0m";
+    } else {
+        oss << node->name;
+    }
+
+    // Show size/token estimate
+    if(opts.show_sizes && !node->isDir()){
+        std::string content = node->read();
+        size_t tokens = ContextEntry::estimate_tokens(content);
+        oss << " (" << tokens << " tok)";
+    }
+
+    // Show tags
+    if(opts.show_tags){
+        const TagSet* tags = tag_storage.getTags(node);
+        if(tags && !tags->empty()){
+            oss << " [";
+            bool first = true;
+            for(TagId tid : *tags){
+                if(!first) oss << ",";
+                oss << tag_registry.getTagName(tid);
+                first = false;
+            }
+            oss << "]";
+        }
+    }
+
+    return oss.str();
+}
+
+void Vfs::treeAdvanced(std::shared_ptr<VfsNode> n, const std::string& path,
+                      const TreeOptions& opts, int depth, bool is_last){
+    TRACE_FN("path=", path, ", depth=", depth);
+
+    if(!n) return;
+    if(opts.max_depth >= 0 && depth > opts.max_depth) return;
+
+    // Apply filter
+    if(!opts.filter_pattern.empty()){
+        if(path.find(opts.filter_pattern) == std::string::npos){
+            return;
+        }
+    }
+
+    // Build prefix with box-drawing characters
+    std::string prefix;
+    if(depth > 0){
+        if(opts.use_box_chars){
+            prefix = (is_last ? "└─ " : "├─ ");
+        } else {
+            prefix = std::string(depth * 2, ' ');
+        }
+    }
+
+    // Print current node
+    std::cout << prefix << formatTreeNode(n.get(), path, opts) << "\n";
+
+    // Recurse into children
+    if(n->isDir()){
+        auto& ch = n->children();
+        std::vector<std::pair<std::string, std::shared_ptr<VfsNode>>> entries(ch.begin(), ch.end());
+
+        // Sort if requested
+        if(opts.sort_entries){
+            std::sort(entries.begin(), entries.end(),
+                [](const auto& a, const auto& b){ return a.first < b.first; });
+        }
+
+        for(size_t i = 0; i < entries.size(); ++i){
+            const auto& [name, child] = entries[i];
+            std::string child_path = path;
+            if(child_path.back() != '/') child_path += '/';
+            child_path += name;
+
+            bool child_is_last = (i == entries.size() - 1);
+
+            // Recurse into child
+            treeAdvanced(child, child_path, opts, depth + 1, child_is_last);
+        }
+    }
+}
+
+void Vfs::treeAdvanced(const std::string& path, const TreeOptions& opts){
+    TRACE_FN("path=", path);
+    auto node = resolve(path);
+    if(!node){
+        std::cout << "error: path not found: " << path << "\n";
+        return;
+    }
+    treeAdvanced(node, path, opts, 0, true);
 }
 
 // ====== Mount Nodes ======
@@ -5032,6 +5145,204 @@ size_t ContextBuilder::totalTokens() const {
 void ContextBuilder::clear(){
     entries.clear();
     filters.clear();
+    seen_content.clear();
+}
+
+// Advanced context builder features
+std::string ContextBuilder::buildWithOptions(const ContextOptions& opts){
+    TRACE_FN("opts.deduplicate=", opts.deduplicate, ", opts.hierarchical=", opts.hierarchical);
+
+    // Deduplication
+    if(opts.deduplicate){
+        deduplicateEntries();
+    }
+
+    // Hierarchical mode
+    if(opts.hierarchical){
+        auto [overview, details] = buildHierarchical();
+        return overview + "\n\n" + details;
+    }
+
+    // Adaptive budget
+    size_t effective_budget = max_tokens;
+    if(opts.adaptive_budget){
+        size_t total = totalTokens();
+        if(total > max_tokens * 2){
+            effective_budget = max_tokens * 2;  // Allow more space for complex contexts
+        }
+    }
+
+    // Include dependencies
+    if(opts.include_dependencies){
+        std::vector<ContextEntry> deps;
+        for(const auto& entry : entries){
+            auto entry_deps = getDependencies(entry);
+            deps.insert(deps.end(), entry_deps.begin(), entry_deps.end());
+        }
+        entries.insert(entries.end(), deps.begin(), deps.end());
+    }
+
+    // Build with summarization
+    std::ostringstream oss;
+    size_t current_tokens = 0;
+    for(auto& entry : entries){
+        // Summarize large entries if threshold is set
+        if(opts.summary_threshold > 0 &&
+           entry.token_estimate > static_cast<size_t>(opts.summary_threshold)){
+            size_t target = opts.summary_threshold / 2;
+            std::string summary = summarizeEntry(entry, target);
+            current_tokens += target;
+            oss << "=== " << entry.vfs_path << " (summarized) ===\n";
+            oss << summary << "\n\n";
+        } else {
+            if(current_tokens + entry.token_estimate > effective_budget) break;
+            oss << "=== " << entry.vfs_path << " ===\n";
+            if(!entry.tags.empty()){
+                oss << "Tags: ";
+                bool first = true;
+                for(TagId tag : entry.tags){
+                    if(!first) oss << ", ";
+                    oss << tag_registry.getTagName(tag);
+                    first = false;
+                }
+                oss << "\n";
+            }
+            oss << entry.content << "\n\n";
+            current_tokens += entry.token_estimate;
+        }
+    }
+
+    return oss.str();
+}
+
+std::vector<ContextEntry> ContextBuilder::getDependencies(const ContextEntry& entry){
+    TRACE_FN("entry.vfs_path=", entry.vfs_path);
+    std::vector<ContextEntry> deps;
+
+    // TODO: Add dependency tracking (imports, includes, link nodes, etc.)
+    // For now, return empty dependencies
+    (void)entry;  // Suppress unused parameter warning
+
+    return deps;
+}
+
+std::string ContextBuilder::summarizeEntry(const ContextEntry& entry, size_t /* target_tokens */){
+    TRACE_FN("entry.vfs_path=", entry.vfs_path);
+
+    // Simple summarization: take first and last portions
+    std::string content = entry.content;
+    std::vector<std::string> lines;
+    std::istringstream iss(content);
+    std::string line;
+    while(std::getline(iss, line)){
+        lines.push_back(line);
+    }
+
+    if(lines.size() <= 20) return content;  // Too small to summarize
+
+    // Take first 10 and last 10 lines
+    std::ostringstream oss;
+    for(size_t i = 0; i < 10 && i < lines.size(); ++i){
+        oss << lines[i] << "\n";
+    }
+    oss << "\n... (" << (lines.size() - 20) << " lines omitted) ...\n\n";
+    for(size_t i = lines.size() - 10; i < lines.size(); ++i){
+        oss << lines[i] << "\n";
+    }
+
+    return oss.str();
+}
+
+void ContextBuilder::deduplicateEntries(){
+    TRACE_FN("entries.size()=", entries.size());
+
+    std::vector<ContextEntry> unique_entries;
+    for(auto& entry : entries){
+        std::string content_hash = compute_string_hash(entry.content);
+        if(seen_content.find(content_hash) == seen_content.end()){
+            seen_content.insert(content_hash);
+            unique_entries.push_back(std::move(entry));
+        }
+    }
+
+    entries = std::move(unique_entries);
+}
+
+std::pair<std::string, std::string> ContextBuilder::buildHierarchical(){
+    TRACE_FN("entries.size()=", entries.size());
+
+    // Overview: just paths and tags
+    std::ostringstream overview_oss;
+    overview_oss << "=== Context Overview ===\n";
+    for(const auto& entry : entries){
+        overview_oss << entry.vfs_path;
+        if(!entry.tags.empty()){
+            overview_oss << " [";
+            bool first = true;
+            for(TagId tag : entry.tags){
+                if(!first) overview_oss << ",";
+                overview_oss << tag_registry.getTagName(tag);
+                first = false;
+            }
+            overview_oss << "]";
+        }
+        overview_oss << "\n";
+    }
+
+    // Details: full content
+    std::ostringstream details_oss;
+    details_oss << "=== Context Details ===\n";
+    size_t current_tokens = 0;
+    for(const auto& entry : entries){
+        if(current_tokens + entry.token_estimate > max_tokens) break;
+        details_oss << "\n--- " << entry.vfs_path << " ---\n";
+        details_oss << entry.content << "\n";
+        current_tokens += entry.token_estimate;
+    }
+
+    return {overview_oss.str(), details_oss.str()};
+}
+
+void ContextBuilder::addCompoundFilter(FilterLogic logic, const std::vector<ContextFilter>& subfilters){
+    TRACE_FN("logic=", static_cast<int>(logic), ", subfilters.size()=", subfilters.size());
+
+    // Create a compound filter using Custom type
+    ContextFilter compound;
+    compound.type = ContextFilter::Type::Custom;
+
+    switch(logic){
+        case FilterLogic::And:
+            compound.predicate = [this, subfilters](VfsNode* node){
+                std::string dummy_path;  // We need path context but don't have it in predicate
+                for(const auto& f : subfilters){
+                    if(!f.matches(node, dummy_path, vfs)) return false;
+                }
+                return true;
+            };
+            break;
+
+        case FilterLogic::Or:
+            compound.predicate = [this, subfilters](VfsNode* node){
+                std::string dummy_path;
+                for(const auto& f : subfilters){
+                    if(f.matches(node, dummy_path, vfs)) return true;
+                }
+                return false;
+            };
+            break;
+
+        case FilterLogic::Not:
+            if(subfilters.size() != 1){
+                throw std::runtime_error("NOT filter requires exactly one subfilter");
+            }
+            compound.predicate = [this, subfilters](VfsNode* node){
+                std::string dummy_path;
+                return !subfilters[0].matches(node, dummy_path, vfs);
+            };
+            break;
+    }
+
+    filters.push_back(compound);
 }
 
 // ReplacementStrategy factory methods
@@ -5865,8 +6176,10 @@ R"(Commands:
   plan.save [file]
   # Action Planner (context building & testing)
   context.build [max_tokens]
+  context.build.adv [max_tokens] [--deps] [--dedup] [--summary=N] [--hierarchical] [--adaptive]
   context.filter.tag <tag-name> [any|all|none]
   context.filter.path <prefix-or-pattern>
+  tree.adv [path] [--no-box] [--sizes] [--tags] [--colors] [--kind] [--sort] [--depth=N] [--filter=pattern]
   test.planner
   # Hypothesis Testing (5 progressive complexity levels)
   test.hypothesis                              (run all 5 levels)
@@ -6311,6 +6624,29 @@ int main(int argc, char** argv){
                 }
                 std::cout << "\n";
             }
+
+        } else if(cmd == "tree.adv" || cmd == "tree.advanced"){
+            // Advanced tree visualization with options
+            std::string abs = inv.args.empty() ? cwd.path : normalize_path(cwd.path, inv.args[0]);
+            Vfs::TreeOptions opts;
+
+            // Parse options from remaining args
+            for(size_t i = 1; i < inv.args.size(); ++i){
+                const std::string& opt = inv.args[i];
+                if(opt == "--no-box") opts.use_box_chars = false;
+                else if(opt == "--sizes") opts.show_sizes = true;
+                else if(opt == "--tags") opts.show_tags = true;
+                else if(opt == "--colors") opts.use_colors = true;
+                else if(opt == "--kind") opts.show_node_kind = true;
+                else if(opt == "--sort") opts.sort_entries = true;
+                else if(opt.rfind("--depth=", 0) == 0){
+                    opts.max_depth = std::stoi(opt.substr(8));
+                } else if(opt.rfind("--filter=", 0) == 0){
+                    opts.filter_pattern = opt.substr(9);
+                }
+            }
+
+            vfs.treeAdvanced(abs, opts);
 
         } else if(cmd == "tree"){
             std::string abs = inv.args.empty() ? cwd.path : normalize_path(cwd.path, inv.args[0]);
@@ -7475,6 +7811,45 @@ int main(int argc, char** argv){
         //
         // Action Planner commands
         //
+        } else if(cmd == "context.build.adv" || cmd == "context.build.advanced"){
+            // Build AI context with advanced options
+            // Usage: context.build.adv [max_tokens] [--deps] [--dedup] [--summary=N] [--hierarchical] [--adaptive]
+            size_t max_tokens = 4000;
+            ContextBuilder::ContextOptions opts;
+
+            for(size_t i = 0; i < inv.args.size(); ++i){
+                const std::string& arg = inv.args[i];
+                if(arg == "--deps"){
+                    opts.include_dependencies = true;
+                } else if(arg == "--dedup"){
+                    opts.deduplicate = true;
+                } else if(arg == "--hierarchical"){
+                    opts.hierarchical = true;
+                } else if(arg == "--adaptive"){
+                    opts.adaptive_budget = true;
+                } else if(arg.rfind("--summary=", 0) == 0){
+                    opts.summary_threshold = std::stoi(arg.substr(10));
+                } else if(i == 0){
+                    max_tokens = std::stoul(arg);
+                }
+            }
+
+            ContextBuilder builder(vfs, vfs.tag_storage, vfs.tag_registry, max_tokens);
+            builder.collect();
+            std::string context = builder.buildWithOptions(opts);
+
+            std::cout << "=== Advanced Context Builder Results ===\n";
+            std::cout << "Entries: " << builder.entryCount() << "\n";
+            std::cout << "Total tokens: " << builder.totalTokens() << "\n";
+            std::cout << "Options: deps=" << opts.include_dependencies
+                     << " dedup=" << opts.deduplicate
+                     << " hierarchical=" << opts.hierarchical
+                     << " adaptive=" << opts.adaptive_budget
+                     << " summary_thresh=" << opts.summary_threshold << "\n";
+            std::cout << "Context (first 500 chars):\n";
+            std::cout << context.substr(0, std::min(size_t(500), context.size())) << "\n";
+            if(context.size() > 500) std::cout << "... (truncated)\n";
+
         } else if(cmd == "context.build"){
             // Build AI context from VFS with filters
             // Usage: context.build [max_tokens]

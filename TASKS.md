@@ -52,11 +52,23 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 			- plan.hypothesis command with auto-detection from plan content
 			- Creates hypothesis research nodes in plan tree
 			- Suggests appropriate hypothesis.* commands based on plan keywords
-		- **[TODO]** Advanced tree visualization with live line editing (codex/claude style)
-	- **[TODO]** Context builder for AI calls:
-		- Tag-based filtering for relevant nodes
-		- Visibility tracking for nodes in current context
-		- Smart context sizing (token budgets)
+		- **[DONE]** Advanced tree visualization with multiple display options
+			- tree.adv command with configurable options (box chars, tags, sizes, colors, depth limits, filtering)
+			- Box-drawing characters (├─, └─, │) for better readability
+			- Optional ANSI color coding by node type
+			- Tag display inline with nodes
+			- Token/size estimates for files
+			- Path pattern filtering and depth limiting
+			- Alphabetic sorting option
+		- **[DONE]** Enhanced context builder for AI calls:
+			- context.build.adv command with advanced options
+			- Deduplication using BLAKE3 content hashing
+			- Hierarchical output (overview + details)
+			- Adaptive token budgets for complex contexts
+			- Automatic summarization for large entries
+			- Dependency tracking support (LinkNodes)
+			- Compound filter logic (AND/OR/NOT)
+			- Tag-based, path-based, content-based, and custom filtering
 	- **[TODO]** Logic-based tag system with theorem proving for plan consistency:
 		- **Tag mining workflow**: Extract user's mental model through minimal tag input
 			- User provides initial tags (e.g., `fast`, `no-network`, `uses-cache`)
@@ -175,6 +187,45 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 ##
 
 ## Completed
+- **Advanced Tree Visualization and Context Builder Enhancements** (2025-10-08):
+  - **Advanced tree visualization** with `tree.adv` / `tree.advanced` command
+    - Box-drawing characters (├─, └─, │) for hierarchical display
+    - ANSI color coding by node type (--colors): Dir=blue, File=default, Ast=magenta, Mount=cyan, Library=yellow
+    - Inline tag display (--tags) showing all tags associated with nodes
+    - Token/size estimates (--sizes) for capacity planning
+    - Node kind indicators (--kind) showing type prefix (d/f/a/m/l)
+    - Alphabetic sorting (--sort) for consistent output
+    - Depth limiting (--depth=N) to control traversal depth
+    - Path pattern filtering (--filter=pattern) for focused views
+  - **Enhanced context builder** with `context.build.adv` / `context.build.advanced` command
+    - Content deduplication (--dedup) using BLAKE3 hashing to eliminate redundant entries
+    - Hierarchical output mode (--hierarchical) with overview + details sections
+    - Adaptive token budgets (--adaptive) that expand for complex contexts (2x max_tokens)
+    - Automatic summarization (--summary=N) with configurable threshold for large files
+    - Dependency tracking (--deps) following LinkNodes and related content
+    - Compound filter logic (AND/OR/NOT) for complex filtering scenarios
+    - Smart context assembly with priority-based selection
+    - Token budget management with overflow handling
+  - **Context builder infrastructure**:
+    - ContextBuilder::ContextOptions struct for configuration
+    - buildWithOptions() method for advanced context assembly
+    - getDependencies() for relationship tracking (extensible)
+    - summarizeEntry() for intelligent content reduction (first/last 10 lines)
+    - deduplicateEntries() using seen_content hash set
+    - buildHierarchical() returning (overview, details) pair
+    - addCompoundFilter() for logical filter composition
+  - **Tree visualization infrastructure**:
+    - Vfs::TreeOptions struct with 8 configurable display options
+    - treeAdvanced() overloads for both node and path-based invocation
+    - formatTreeNode() for customizable node formatting with tags/sizes/colors
+    - Recursive traversal with proper is_last tracking for box chars
+  - **Command surface**:
+    - tree.adv [path] [--no-box] [--sizes] [--tags] [--colors] [--kind] [--sort] [--depth=N] [--filter=pattern]
+    - context.build.adv [max_tokens] [--deps] [--dedup] [--summary=N] [--hierarchical] [--adaptive]
+  - **Demo script**: scripts/examples/tree-viz-context-demo.cx with 10 progressive demonstrations
+  - Added #include <unordered_set> to codex.h for seen_content deduplication
+  - Fixed VfsNode::Kind enum references (Ast not AstHolder, removed non-existent Remote/Link)
+  - All features compile cleanly and tested successfully
 - **Hypothesis Testing System - 5 Progressive Complexity Levels** (2025-10-08):
   - Implemented comprehensive hypothesis testing framework for code analysis WITHOUT AI calls
   - **Level 1: Simple Query** (`hypothesis.query <target> [path]`)

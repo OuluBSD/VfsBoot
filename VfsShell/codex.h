@@ -24,6 +24,7 @@
 #include <condition_variable>
 #include <atomic>
 #include <queue>
+#include <unordered_set>
 
 #ifdef CODEX_TRACE
 #include <mutex>
@@ -349,6 +350,23 @@ struct Vfs {
     DirListing listDir(const std::string& p, const std::vector<size_t>& overlays) const;
     void ls(const std::string& p);
     void tree(std::shared_ptr<VfsNode> n = nullptr, std::string pref = "");
+
+    // Advanced tree visualization options
+    struct TreeOptions {
+        bool use_box_chars = true;      // Use box-drawing characters (├─, └─, │)
+        bool show_sizes = false;         // Show token/size estimates
+        bool show_tags = false;          // Show tags inline
+        bool use_colors = false;         // ANSI color coding by type
+        int max_depth = -1;              // -1 = unlimited
+        std::string filter_pattern;      // Only show matching paths
+        bool sort_entries = false;       // Sort children alphabetically
+        bool show_node_kind = false;     // Show kind indicator (D/F/A/M/etc)
+    };
+
+    void treeAdvanced(std::shared_ptr<VfsNode> n, const std::string& path,
+                     const TreeOptions& opts, int depth = 0, bool is_last = true);
+    void treeAdvanced(const std::string& path, const TreeOptions& opts);
+    std::string formatTreeNode(VfsNode* node, const std::string& path, const TreeOptions& opts);
 
     // Mount management
     enum class MountType { Filesystem, Library, Remote };
@@ -777,9 +795,31 @@ struct ContextBuilder {
     size_t entryCount() const { return entries.size(); }
     void clear();
 
+    // Advanced context building features
+    struct ContextOptions {
+        bool include_dependencies = false;   // Follow links and include related nodes
+        bool semantic_chunking = true;       // Keep related content together
+        bool adaptive_budget = false;        // Adjust token budget based on complexity
+        bool deduplicate = true;             // Remove redundant content
+        int summary_threshold = -1;          // Summarize nodes > N tokens (-1=no summary)
+        bool hierarchical = false;           // Build overview + detail sections
+        std::string cache_key;               // Optional cache key for reuse
+    };
+
+    std::string buildWithOptions(const ContextOptions& opts);
+    std::vector<ContextEntry> getDependencies(const ContextEntry& entry);
+    std::string summarizeEntry(const ContextEntry& entry, size_t target_tokens);
+    void deduplicateEntries();
+    std::pair<std::string, std::string> buildHierarchical();  // Returns (overview, details)
+
+    // Compound filter support
+    enum class FilterLogic { And, Or, Not };
+    void addCompoundFilter(FilterLogic logic, const std::vector<ContextFilter>& subfilters);
+
 private:
     void visitNode(const std::string& path, VfsNode* node);
     bool matchesAnyFilter(const std::string& path, VfsNode* node) const;
+    std::unordered_set<std::string> seen_content;  // For deduplication
 };
 
 // Code replacement strategy for determining what statements to remove/modify

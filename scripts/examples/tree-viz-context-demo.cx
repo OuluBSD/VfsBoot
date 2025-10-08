@@ -1,0 +1,87 @@
+# Demonstration of advanced tree visualization and context builder enhancements
+# Run with: ./codex < scripts/examples/tree-viz-context-demo.cx
+
+echo "=== Advanced Tree Visualization & Context Builder Demo ==="
+echo ""
+
+# Setup: create a sample VFS structure with tags
+echo "Step 1: Creating sample VFS structure..."
+mkdir /demo
+mkdir /demo/src
+mkdir /demo/docs
+mkdir /demo/tests
+
+echo "Sample source file content" > /demo/src/main.cpp
+echo "Header file content" > /demo/src/utils.h
+echo "Documentation content here" > /demo/docs/README.md
+echo "Test suite content" > /demo/tests/test_main.cpp
+
+# Add tags to some files
+tag.add /demo/src/main.cpp important
+tag.add /demo/src/main.cpp source
+tag.add /demo/src/utils.h source
+tag.add /demo/docs/README.md documentation
+tag.add /demo/tests/test_main.cpp test
+tag.add /demo/tests/test_main.cpp important
+
+echo "Sample structure created with tags"
+echo ""
+
+# Demonstration 1: Basic tree
+echo "=== Demo 1: Basic tree (default) ==="
+tree /demo
+echo ""
+
+# Demonstration 2: Tree with box-drawing characters and tags
+echo "=== Demo 2: Advanced tree with box chars and tags ==="
+tree.adv /demo --tags --sort
+echo ""
+
+# Demonstration 3: Tree with sizes and node kind indicators
+echo "=== Demo 3: Tree with sizes and kind indicators ==="
+tree.adv /demo --sizes --kind --sort
+echo ""
+
+# Demonstration 4: Tree with depth limit
+echo "=== Demo 4: Tree with depth limit (depth=1) ==="
+tree.adv /demo --depth=1 --tags
+echo ""
+
+# Demonstration 5: Tree with filtering
+echo "=== Demo 5: Tree with path filtering (filter=src) ==="
+tree.adv /demo --filter=src --tags
+echo ""
+
+# Demonstration 6: Basic context builder
+echo "=== Demo 6: Basic context builder ==="
+context.build 2000
+echo ""
+
+# Demonstration 7: Advanced context builder with deduplication
+echo "=== Demo 7: Advanced context builder with deduplication ==="
+context.build.adv 2000 --dedup
+echo ""
+
+# Demonstration 8: Context builder with hierarchical output
+echo "=== Demo 8: Context builder with hierarchical output ==="
+context.build.adv 2000 --hierarchical
+echo ""
+
+# Demonstration 9: Context builder with adaptive budget
+echo "=== Demo 9: Context builder with adaptive budget and summarization ==="
+context.build.adv 1000 --adaptive --summary=50
+echo ""
+
+# Demonstration 10: Tag-based filtering with context builder
+echo "=== Demo 10: Tag-based context filtering ==="
+echo "Note: context.filter commands configure filters for next context.build call"
+echo "This is a placeholder - filter state is not persisted across invocations"
+echo ""
+
+# Cleanup
+echo "=== Cleanup ==="
+rm /demo/src/main.cpp
+rm /demo/src/utils.h
+rm /demo/docs/README.md
+rm /demo/tests/test_main.cpp
+echo "Demo completed successfully!"
