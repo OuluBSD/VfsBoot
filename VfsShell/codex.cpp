@@ -1392,6 +1392,78 @@ static std::pair<std::string, std::string> serialize_ast_node(const std::shared_
         return {"CppRangeFor", std::move(w.data)};
     }
 
+    // PlanNode serialization
+    if(auto jobs = std::dynamic_pointer_cast<PlanJobs>(node)){
+        BinaryWriter w;
+        w.u32(static_cast<uint32_t>(jobs->jobs.size()));
+        for(const auto& job : jobs->jobs){
+            w.str(job.description);
+            w.u32(static_cast<uint32_t>(job.priority));
+            w.u8(job.completed ? 1 : 0);
+            w.str(job.assignee);
+        }
+        return {"PlanJobs", std::move(w.data)};
+    }
+
+    if(auto goals = std::dynamic_pointer_cast<PlanGoals>(node)){
+        BinaryWriter w;
+        w.u32(static_cast<uint32_t>(goals->goals.size()));
+        for(const auto& g : goals->goals) w.str(g);
+        return {"PlanGoals", std::move(w.data)};
+    }
+
+    if(auto ideas = std::dynamic_pointer_cast<PlanIdeas>(node)){
+        BinaryWriter w;
+        w.u32(static_cast<uint32_t>(ideas->ideas.size()));
+        for(const auto& i : ideas->ideas) w.str(i);
+        return {"PlanIdeas", std::move(w.data)};
+    }
+
+    if(auto deps = std::dynamic_pointer_cast<PlanDeps>(node)){
+        BinaryWriter w;
+        w.u32(static_cast<uint32_t>(deps->dependencies.size()));
+        for(const auto& d : deps->dependencies) w.str(d);
+        return {"PlanDeps", std::move(w.data)};
+    }
+
+    if(auto impl = std::dynamic_pointer_cast<PlanImplemented>(node)){
+        BinaryWriter w;
+        w.u32(static_cast<uint32_t>(impl->items.size()));
+        for(const auto& item : impl->items) w.str(item);
+        return {"PlanImplemented", std::move(w.data)};
+    }
+
+    if(auto research = std::dynamic_pointer_cast<PlanResearch>(node)){
+        BinaryWriter w;
+        w.u32(static_cast<uint32_t>(research->topics.size()));
+        for(const auto& t : research->topics) w.str(t);
+        return {"PlanResearch", std::move(w.data)};
+    }
+
+    if(std::dynamic_pointer_cast<PlanRoot>(node)){
+        BinaryWriter w;
+        w.str(node->read());
+        return {"PlanRoot", std::move(w.data)};
+    }
+
+    if(std::dynamic_pointer_cast<PlanSubPlan>(node)){
+        BinaryWriter w;
+        w.str(node->read());
+        return {"PlanSubPlan", std::move(w.data)};
+    }
+
+    if(std::dynamic_pointer_cast<PlanStrategy>(node)){
+        BinaryWriter w;
+        w.str(node->read());
+        return {"PlanStrategy", std::move(w.data)};
+    }
+
+    if(std::dynamic_pointer_cast<PlanNotes>(node)){
+        BinaryWriter w;
+        w.str(node->read());
+        return {"PlanNotes", std::move(w.data)};
+    }
+
     throw std::runtime_error("serialize_ast_node: unsupported node type");
 }
 
@@ -1518,6 +1590,106 @@ static std::shared_ptr<AstNode> deserialize_ast_node(const std::string& type,
             locked->body = body;
         });
         return loop;
+    }
+
+    // PlanNode deserialization
+    if(type == "PlanJobs"){
+        BinaryReader r(payload);
+        uint32_t count = r.u32();
+        auto jobs = std::make_shared<PlanJobs>(basename);
+        for(uint32_t i = 0; i < count; ++i){
+            PlanJob job;
+            job.description = r.str();
+            job.priority = static_cast<int>(r.u32());
+            job.completed = r.u8() != 0;
+            job.assignee = r.str();
+            jobs->jobs.push_back(std::move(job));
+        }
+        r.expect_eof();
+        return jobs;
+    }
+
+    if(type == "PlanGoals"){
+        BinaryReader r(payload);
+        uint32_t count = r.u32();
+        auto goals = std::make_shared<PlanGoals>(basename);
+        for(uint32_t i = 0; i < count; ++i){
+            goals->goals.push_back(r.str());
+        }
+        r.expect_eof();
+        return goals;
+    }
+
+    if(type == "PlanIdeas"){
+        BinaryReader r(payload);
+        uint32_t count = r.u32();
+        auto ideas = std::make_shared<PlanIdeas>(basename);
+        for(uint32_t i = 0; i < count; ++i){
+            ideas->ideas.push_back(r.str());
+        }
+        r.expect_eof();
+        return ideas;
+    }
+
+    if(type == "PlanDeps"){
+        BinaryReader r(payload);
+        uint32_t count = r.u32();
+        auto deps = std::make_shared<PlanDeps>(basename);
+        for(uint32_t i = 0; i < count; ++i){
+            deps->dependencies.push_back(r.str());
+        }
+        r.expect_eof();
+        return deps;
+    }
+
+    if(type == "PlanImplemented"){
+        BinaryReader r(payload);
+        uint32_t count = r.u32();
+        auto impl = std::make_shared<PlanImplemented>(basename);
+        for(uint32_t i = 0; i < count; ++i){
+            impl->items.push_back(r.str());
+        }
+        r.expect_eof();
+        return impl;
+    }
+
+    if(type == "PlanResearch"){
+        BinaryReader r(payload);
+        uint32_t count = r.u32();
+        auto research = std::make_shared<PlanResearch>(basename);
+        for(uint32_t i = 0; i < count; ++i){
+            research->topics.push_back(r.str());
+        }
+        r.expect_eof();
+        return research;
+    }
+
+    if(type == "PlanRoot"){
+        BinaryReader r(payload);
+        auto content = r.str();
+        r.expect_eof();
+        return std::make_shared<PlanRoot>(basename, content);
+    }
+
+    if(type == "PlanSubPlan"){
+        BinaryReader r(payload);
+        auto content = r.str();
+        r.expect_eof();
+        return std::make_shared<PlanSubPlan>(basename, content);
+    }
+
+    if(type == "PlanStrategy"){
+        BinaryReader r(payload);
+        auto content = r.str();
+        r.expect_eof();
+        return std::make_shared<PlanStrategy>(basename, content);
+    }
+
+    if(type == "PlanNotes"){
+        BinaryReader r(payload);
+        auto content = r.str();
+        r.expect_eof();
+        return std::make_shared<PlanNotes>(basename, content);
     }
 
     throw std::runtime_error("deserialize_ast_node: unsupported node type '" + type + "'");
@@ -4339,6 +4511,19 @@ R"(Commands:
   tag.list [vfs-path]
   tag.clear <vfs-path>
   tag.has <vfs-path> <tag-name>
+  # Planner (hierarchical planning system)
+  plan.create <path> <type> [content]
+  plan.goto <path>
+  plan.forward
+  plan.backward
+  plan.context.add <vfs-path> [vfs-path...]
+  plan.context.remove <vfs-path> [vfs-path...]
+  plan.context.clear
+  plan.context.list
+  plan.status
+  plan.jobs.add <jobs-path> <description> [priority] [assignee]
+  plan.jobs.complete <jobs-path> <index>
+  plan.save [file]
   # C++ builder
   cpp.tu <ast-path>
   cpp.include <tu-path> <header> [angled0/1]
@@ -4548,9 +4733,11 @@ int main(int argc, char** argv){
     }
 
     Vfs vfs; auto env = std::make_shared<Env>(); install_builtins(env);
-    vfs.mkdir("/src"); vfs.mkdir("/ast"); vfs.mkdir("/env"); vfs.mkdir("/astcpp"); vfs.mkdir("/cpp");
+    vfs.mkdir("/src"); vfs.mkdir("/ast"); vfs.mkdir("/env"); vfs.mkdir("/astcpp"); vfs.mkdir("/cpp"); vfs.mkdir("/plan");
     WorkingDirectory cwd;
     update_directory_context(vfs, cwd, cwd.path);
+    PlannerContext planner;
+    planner.current_path = "/";
 
     // Auto-load .vfs file if present
     try{
@@ -4590,6 +4777,24 @@ int main(int argc, char** argv){
     }
     if(!solution_loaded){
         g_on_save_shortcut = nullptr;
+    }
+
+    // Auto-load plan.vfs if present (planner state persistence)
+    try{
+        std::filesystem::path plan_path = "plan.vfs";
+        if(std::filesystem::exists(plan_path)){
+            auto abs_plan_path = std::filesystem::absolute(plan_path);
+            mount_overlay_from_file(vfs, "plan", abs_plan_path.string());
+            std::cout << "auto-loaded plan.vfs into /plan tree\n";
+            // Initialize planner to /plan if it exists
+            if(auto plan_root = vfs.tryResolveForOverlay("/plan", 0)){
+                if(plan_root->isDir()){
+                    planner.current_path = "/plan";
+                }
+            }
+        }
+    } catch(const std::exception& e){
+        std::cout << "note: auto-load plan.vfs failed: " << e.what() << "\n";
     }
 
     std::cout << "codex-mini 🌲 VFS+AST+AI — 'help' kertoo karun totuuden.\n";
@@ -5209,6 +5414,180 @@ int main(int argc, char** argv){
             std::string vfs_path = normalize_path(cwd.path, inv.args[0]);
             bool has = vfs.nodeHasTag(vfs_path, inv.args[1]);
             std::cout << vfs_path << (has ? " has " : " does not have ") << "tag '" << inv.args[1] << "'\n";
+
+        } else if(cmd == "plan.create"){
+            if(inv.args.size() < 2) throw std::runtime_error("plan.create <path> <type> [content]");
+            std::string vfs_path = normalize_path(cwd.path, inv.args[0]);
+            std::string type = inv.args[1];
+            std::string content;
+            if(inv.args.size() > 2){
+                for(size_t i = 2; i < inv.args.size(); ++i){
+                    if(i > 2) content += " ";
+                    content += inv.args[i];
+                }
+            }
+
+            std::shared_ptr<PlanNode> node;
+            if(type == "root"){
+                node = std::make_shared<PlanRoot>(path_basename(vfs_path), content);
+            } else if(type == "subplan"){
+                node = std::make_shared<PlanSubPlan>(path_basename(vfs_path), content);
+            } else if(type == "goals"){
+                node = std::make_shared<PlanGoals>(path_basename(vfs_path));
+            } else if(type == "ideas"){
+                node = std::make_shared<PlanIdeas>(path_basename(vfs_path));
+            } else if(type == "strategy"){
+                node = std::make_shared<PlanStrategy>(path_basename(vfs_path), content);
+            } else if(type == "jobs"){
+                node = std::make_shared<PlanJobs>(path_basename(vfs_path));
+            } else if(type == "deps"){
+                node = std::make_shared<PlanDeps>(path_basename(vfs_path));
+            } else if(type == "implemented"){
+                node = std::make_shared<PlanImplemented>(path_basename(vfs_path));
+            } else if(type == "research"){
+                node = std::make_shared<PlanResearch>(path_basename(vfs_path));
+            } else if(type == "notes"){
+                node = std::make_shared<PlanNotes>(path_basename(vfs_path), content);
+            } else {
+                throw std::runtime_error("plan.create: unknown type '" + type + "' (valid: root, subplan, goals, ideas, strategy, jobs, deps, implemented, research, notes)");
+            }
+
+            vfs_add(vfs, vfs_path, node, cwd.primary_overlay);
+            std::cout << "created plan node (" << type << ") @ " << vfs_path << "\n";
+
+        } else if(cmd == "plan.goto"){
+            if(inv.args.empty()) throw std::runtime_error("plan.goto <path>");
+            std::string vfs_path = normalize_path(cwd.path, inv.args[0]);
+            auto node = vfs.tryResolveForOverlay(vfs_path, cwd.primary_overlay);
+            if(!node) throw std::runtime_error("plan.goto: path not found: " + vfs_path);
+            planner.navigateTo(vfs_path);
+            std::cout << "planner now at: " << planner.current_path << "\n";
+
+        } else if(cmd == "plan.forward"){
+            planner.forward();
+            std::cout << "planner moved forward (towards details)\n";
+            std::cout << "mode: " << (planner.mode == PlannerContext::Mode::Forward ? "forward" : "backward") << "\n";
+
+        } else if(cmd == "plan.backward"){
+            planner.backward();
+            std::cout << "planner moved backward (towards high-level)\n";
+            std::cout << "mode: " << (planner.mode == PlannerContext::Mode::Forward ? "forward" : "backward") << "\n";
+
+        } else if(cmd == "plan.context.add"){
+            if(inv.args.empty()) throw std::runtime_error("plan.context.add <vfs-path> [vfs-path...]");
+            for(const auto& arg : inv.args){
+                std::string vfs_path = normalize_path(cwd.path, arg);
+                planner.addToContext(vfs_path);
+            }
+            std::cout << "added " << inv.args.size() << " path(s) to planner context\n";
+
+        } else if(cmd == "plan.context.remove"){
+            if(inv.args.empty()) throw std::runtime_error("plan.context.remove <vfs-path> [vfs-path...]");
+            for(const auto& arg : inv.args){
+                std::string vfs_path = normalize_path(cwd.path, arg);
+                planner.removeFromContext(vfs_path);
+            }
+            std::cout << "removed " << inv.args.size() << " path(s) from planner context\n";
+
+        } else if(cmd == "plan.context.clear"){
+            planner.clearContext();
+            std::cout << "cleared planner context\n";
+
+        } else if(cmd == "plan.context.list"){
+            if(planner.visible_nodes.empty()){
+                std::cout << "planner context is empty\n";
+            } else {
+                std::cout << "planner context (" << planner.visible_nodes.size() << " paths):\n";
+                for(const auto& path : planner.visible_nodes){
+                    std::cout << "  " << path << "\n";
+                }
+            }
+
+        } else if(cmd == "plan.status"){
+            std::cout << "planner status:\n";
+            std::cout << "  current: " << planner.current_path << "\n";
+            std::cout << "  mode: " << (planner.mode == PlannerContext::Mode::Forward ? "forward" : "backward") << "\n";
+            std::cout << "  context size: " << planner.visible_nodes.size() << "\n";
+            std::cout << "  history depth: " << planner.navigation_history.size() << "\n";
+
+        } else if(cmd == "plan.jobs.add"){
+            if(inv.args.size() < 2) throw std::runtime_error("plan.jobs.add <jobs-path> <description> [priority] [assignee]");
+            std::string vfs_path = normalize_path(cwd.path, inv.args[0]);
+            auto node = vfs.tryResolveForOverlay(vfs_path, cwd.primary_overlay);
+            if(!node) throw std::runtime_error("plan.jobs.add: path not found: " + vfs_path);
+            auto jobs_node = std::dynamic_pointer_cast<PlanJobs>(node);
+            if(!jobs_node) throw std::runtime_error("plan.jobs.add: not a jobs node: " + vfs_path);
+
+            std::string description = inv.args[1];
+            int priority = 100;
+            std::string assignee = "";
+            if(inv.args.size() > 2){
+                priority = std::stoi(inv.args[2]);
+            }
+            if(inv.args.size() > 3){
+                assignee = inv.args[3];
+            }
+
+            jobs_node->addJob(description, priority, assignee);
+            std::cout << "added job to " << vfs_path << "\n";
+
+        } else if(cmd == "plan.jobs.complete"){
+            if(inv.args.size() < 2) throw std::runtime_error("plan.jobs.complete <jobs-path> <index>");
+            std::string vfs_path = normalize_path(cwd.path, inv.args[0]);
+            auto node = vfs.tryResolveForOverlay(vfs_path, cwd.primary_overlay);
+            if(!node) throw std::runtime_error("plan.jobs.complete: path not found: " + vfs_path);
+            auto jobs_node = std::dynamic_pointer_cast<PlanJobs>(node);
+            if(!jobs_node) throw std::runtime_error("plan.jobs.complete: not a jobs node: " + vfs_path);
+
+            size_t index = std::stoul(inv.args[1]);
+            jobs_node->completeJob(index);
+            std::cout << "marked job " << index << " as completed in " << vfs_path << "\n";
+
+        } else if(cmd == "plan.save"){
+            std::filesystem::path plan_file = "plan.vfs";
+            if(!inv.args.empty()) plan_file = inv.args[0];
+
+            try {
+                if(plan_file.is_relative()) plan_file = std::filesystem::absolute(plan_file);
+
+                // Create a temporary overlay to hold the /plan tree
+                auto temp_root = std::make_shared<DirNode>("/");
+                auto temp_overlay_id = vfs.registerOverlay("_plan_temp", temp_root);
+
+                // Copy /plan tree content to the temporary overlay
+                auto hits = vfs.resolveMulti("/plan");
+                if(!hits.empty() && hits[0].node->isDir()){
+                    // Clone the /plan directory structure by directly copying node references
+                    std::function<void(const std::string&, std::shared_ptr<VfsNode>&)> clone_tree;
+                    clone_tree = [&](const std::string& src_path, std::shared_ptr<VfsNode>& dst_parent){
+                        auto listing = vfs.listDir(src_path, vfs.overlaysForPath(src_path));
+                        for(const auto& [name, entry] : listing){
+                            std::string child_path = src_path == "/" ? "/" + name : src_path + "/" + name;
+                            if(!entry.nodes.empty()){
+                                auto src_node = entry.nodes[0];
+                                // Directly reference the source node (preserves type)
+                                dst_parent->children()[name] = src_node;
+                                // If it has children, continue cloning
+                                if(src_node->isDir()){
+                                    clone_tree(child_path, src_node);
+                                }
+                            }
+                        }
+                    };
+
+                    auto plan_dir = std::make_shared<DirNode>("plan");
+                    temp_root->children()["plan"] = plan_dir;
+                    std::shared_ptr<VfsNode> plan_node = plan_dir;
+                    clone_tree("/plan", plan_node);
+                }
+
+                save_overlay_to_file(vfs, temp_overlay_id, plan_file.string());
+                vfs.unregisterOverlay(temp_overlay_id);
+                std::cout << "saved plan tree to " << plan_file.string() << "\n";
+            } catch(const std::exception& e){
+                std::cout << "error saving plan: " << e.what() << "\n";
+                result.success = false;
+            }
 
         } else if(cmd == "solution.save"){
             std::filesystem::path target = solution.file_path;
