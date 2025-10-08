@@ -5654,6 +5654,9 @@ R"(Commands:
   plan.context.clear
   plan.context.list
   plan.status
+  plan.discuss [message...]     (interactive AI discussion about current plan)
+  plan.answer <yes|no|explain> [reason...]  (answer AI questions)
+  plan.hypothesis [type]        (generate hypothesis for current plan)
   plan.jobs.add <jobs-path> <description> [priority] [assignee]
   plan.jobs.complete <jobs-path> <index>
   plan.save [file]
@@ -6769,13 +6772,64 @@ int main(int argc, char** argv){
 
         } else if(cmd == "plan.forward"){
             planner.forward();
-            std::cout << "planner moved forward (towards details)\n";
-            std::cout << "mode: " << (planner.mode == PlannerContext::Mode::Forward ? "forward" : "backward") << "\n";
+            std::cout << "📍 Planner mode: Forward (adding details to plans)\n";
+
+            // Suggest next steps based on current location
+            if(!planner.current_path.empty()){
+                auto node = vfs.tryResolveForOverlay(planner.current_path, cwd.primary_overlay);
+                if(node && node->isDir()){
+                    auto& ch = node->children();
+                    if(ch.empty()){
+                        std::cout << "💡 Current node has no children. Suggestions:\n";
+                        std::cout << "   - Use 'plan.discuss' to break down this plan into steps\n";
+                        std::cout << "   - Use 'plan.create <path> goals' to add goal nodes\n";
+                        std::cout << "   - Use 'plan.create <path> jobs' to add job tracking\n";
+                    } else {
+                        std::cout << "📂 Current node has " << ch.size() << " child(ren). Suggestions:\n";
+                        std::cout << "   - Use 'plan.goto <child-path>' to drill into details\n";
+                        std::cout << "   - Use 'plan.discuss' to add more details\n";
+                        std::cout << "   Children: ";
+                        bool first = true;
+                        for(const auto& [child_name, child_node] : ch){
+                            if(!first) std::cout << ", ";
+                            std::cout << child_name;
+                            first = false;
+                        }
+                        std::cout << "\n";
+                    }
+                }
+            } else {
+                std::cout << "💡 No current location. Use 'plan.goto /plan' to start\n";
+            }
 
         } else if(cmd == "plan.backward"){
             planner.backward();
-            std::cout << "planner moved backward (towards high-level)\n";
-            std::cout << "mode: " << (planner.mode == PlannerContext::Mode::Forward ? "forward" : "backward") << "\n";
+            std::cout << "📍 Planner mode: Backward (revising high-level plans)\n";
+
+            // Show navigation history and parent path
+            if(!planner.current_path.empty()){
+                std::cout << "📍 Current: " << planner.current_path << "\n";
+
+                // Find parent path
+                auto last_slash = planner.current_path.find_last_of('/');
+                if(last_slash != std::string::npos && last_slash > 0){
+                    std::string parent_path = planner.current_path.substr(0, last_slash);
+                    std::cout << "⬆️  Parent: " << parent_path << "\n";
+                    std::cout << "💡 Suggestions:\n";
+                    std::cout << "   - Use 'plan.discuss' to revise the current strategy\n";
+                    std::cout << "   - Use 'plan.goto " << parent_path << "' to move to parent\n";
+                    std::cout << "   - Use 'hypothesis.*' commands to test alternative approaches\n";
+                } else {
+                    std::cout << "ℹ️  At root level\n";
+                    std::cout << "💡 Use 'plan.discuss' to revise overall strategy\n";
+                }
+            } else {
+                std::cout << "⚠️  No current location. Use 'plan.goto <path>' first\n";
+            }
+
+            if(!planner.navigation_history.empty()){
+                std::cout << "📜 History (" << planner.navigation_history.size() << " entries)\n";
+            }
 
         } else if(cmd == "plan.context.add"){
             if(inv.args.empty()) throw std::runtime_error("plan.context.add <vfs-path> [vfs-path...]");
@@ -6813,6 +6867,301 @@ int main(int argc, char** argv){
             std::cout << "  mode: " << (planner.mode == PlannerContext::Mode::Forward ? "forward" : "backward") << "\n";
             std::cout << "  context size: " << planner.visible_nodes.size() << "\n";
             std::cout << "  history depth: " << planner.navigation_history.size() << "\n";
+
+        } else if(cmd == "plan.discuss"){
+            // Interactive AI discussion about current plan node
+            if(planner.current_path.empty()){
+                std::cout << "⚠️  No current plan location. Use plan.goto <path> first.\n";
+                result.success = false;
+            } else {
+                // Get current plan node
+                auto node = vfs.tryResolveForOverlay(planner.current_path, cwd.primary_overlay);
+                if(!node){
+                    std::cout << "⚠️  Current plan path not found: " << planner.current_path << "\n";
+                    result.success = false;
+                } else {
+                    // Build context from visible nodes
+                    std::string context_str = "Current plan location: " + planner.current_path + "\n";
+                    context_str += "Mode: " + std::string(planner.mode == PlannerContext::Mode::Forward ? "Forward (adding details)" : "Backward (revising)") + "\n\n";
+
+                    // Add current node content
+                    context_str += "=== Current Node ===\n";
+                    context_str += node->name + "\n";
+                    if(!node->isDir()){
+                        std::string content = node->read();
+                        if(!content.empty()){
+                            context_str += "Content:\n" + content + "\n";
+                        }
+                    }
+
+                    // Add visible context nodes
+                    if(!planner.visible_nodes.empty()){
+                        context_str += "\n=== Context Nodes ===\n";
+                        for(const auto& vpath : planner.visible_nodes){
+                            auto ctx_node = vfs.tryResolveForOverlay(vpath, cwd.primary_overlay);
+                            if(ctx_node){
+                                context_str += "\n" + vpath + ":\n";
+                                if(!ctx_node->isDir()){
+                                    context_str += ctx_node->read() + "\n";
+                                }
+                            }
+                        }
+                    }
+
+                    // Get user message
+                    std::string user_msg;
+                    if(inv.args.empty()){
+                        // Interactive mode - ask for input
+                        std::cout << "💬 What would you like to discuss? ";
+                        std::getline(std::cin, user_msg);
+                    } else {
+                        // Message provided as arguments
+                        user_msg = inv.args[0];
+                        for(size_t i = 1; i < inv.args.size(); ++i){
+                            user_msg += " " + inv.args[i];
+                        }
+                    }
+
+                    if(user_msg.empty()){
+                        std::cout << "⚠️  No message provided\n";
+                        result.success = false;
+                    } else {
+                        // Build prompt based on mode
+                        std::string prompt;
+                        if(planner.mode == PlannerContext::Mode::Forward){
+                            prompt = context_str + "\n=== Task (Forward Mode) ===\n"
+                                "Help add details to this plan. User says: " + user_msg + "\n\n"
+                                "Guidelines:\n"
+                                "- Break down high-level goals into concrete steps\n"
+                                "- Suggest specific implementation approaches\n"
+                                "- Use plan.create to add subplans, goals, jobs\n"
+                                "- Ask clarifying questions if needed (format: Q: <question>)\n"
+                                "- Use hypothesis.* commands to test assumptions\n\n"
+                                "Available commands: " + snippets::tool_list();
+                        } else {
+                            prompt = context_str + "\n=== Task (Backward Mode) ===\n"
+                                "Review and revise higher-level plan. User says: " + user_msg + "\n\n"
+                                "Guidelines:\n"
+                                "- Identify issues with current strategy\n"
+                                "- Suggest alternative approaches\n"
+                                "- Update goals and strategy nodes if needed\n"
+                                "- Ask clarifying questions (format: Q: <question>)\n"
+                                "- Consider trade-offs and constraints\n\n"
+                                "Available commands: " + snippets::tool_list();
+                        }
+
+                        // Track in discussion session if active
+                        if(discuss.is_active()){
+                            discuss.add_message("user", "plan.discuss @ " + planner.current_path + ": " + user_msg);
+                            discuss.current_plan_path = planner.current_path;
+                        }
+
+                        std::cout << "🤔 Thinking...\n";
+                        result.output = call_ai(prompt);
+
+                        if(discuss.is_active()){
+                            discuss.add_message("assistant", result.output);
+                        }
+
+                        // Parse response for questions
+                        auto lines = split_lines(result.output);
+                        bool has_question = false;
+                        for(const auto& line : lines.lines){
+                            auto trimmed = trim_copy(line);
+                            if(trimmed.size() > 2 && trimmed[0] == 'Q' && trimmed[1] == ':'){
+                                has_question = true;
+                                std::cout << "❓ " << trimmed.substr(2) << "\n";
+                            }
+                        }
+
+                        if(has_question){
+                            std::cout << "\n💡 Tip: Answer with 'yes', 'no', or 'explain <reason>' and call plan.discuss again\n";
+                        }
+                    }
+                }
+            }
+
+        } else if(cmd == "plan.answer"){
+            // Answer AI questions with yes/no/explain
+            if(inv.args.empty()){
+                std::cout << "plan.answer <yes|no|explain> [reason...]\n";
+                result.success = false;
+            } else {
+                std::string answer_type = inv.args[0];
+                std::transform(answer_type.begin(), answer_type.end(), answer_type.begin(), ::tolower);
+
+                if(answer_type != "yes" && answer_type != "no" && answer_type != "explain"){
+                    std::cout << "⚠️  Answer type must be 'yes', 'no', or 'explain'\n";
+                    result.success = false;
+                } else if(!discuss.is_active()){
+                    std::cout << "⚠️  No active discussion session. Start with 'discuss' or 'plan.discuss' first.\n";
+                    result.success = false;
+                } else {
+                    // Build answer message
+                    std::string answer_msg;
+                    if(answer_type == "yes"){
+                        answer_msg = "Yes";
+                        if(inv.args.size() > 1){
+                            answer_msg += " - ";
+                            for(size_t i = 1; i < inv.args.size(); ++i){
+                                if(i > 1) answer_msg += " ";
+                                answer_msg += inv.args[i];
+                            }
+                        }
+                    } else if(answer_type == "no"){
+                        answer_msg = "No";
+                        if(inv.args.size() > 1){
+                            answer_msg += " - ";
+                            for(size_t i = 1; i < inv.args.size(); ++i){
+                                if(i > 1) answer_msg += " ";
+                                answer_msg += inv.args[i];
+                            }
+                        }
+                    } else { // explain
+                        if(inv.args.size() < 2){
+                            std::cout << "⚠️  'explain' requires a reason\n";
+                            result.success = false;
+                        } else {
+                            answer_msg = "Let me explain: ";
+                            for(size_t i = 1; i < inv.args.size(); ++i){
+                                if(i > 1) answer_msg += " ";
+                                answer_msg += inv.args[i];
+                            }
+                        }
+                    }
+
+                    if(result.success){
+                        // Add to conversation and get AI response
+                        discuss.add_message("user", answer_msg);
+
+                        // Build context with recent conversation
+                        std::string context = "Previous conversation:\n";
+                        size_t start_idx = discuss.conversation_history.size() >= 6 ? discuss.conversation_history.size() - 6 : 0;
+                        for(size_t i = start_idx; i < discuss.conversation_history.size(); ++i){
+                            context += discuss.conversation_history[i] + "\n";
+                        }
+
+                        context += "\nUser just answered: " + answer_msg + "\n";
+                        context += "Continue the discussion based on this answer.\n";
+                        if(planner.mode == PlannerContext::Mode::Forward){
+                            context += "Mode: Forward (adding details to plans)\n";
+                        } else {
+                            context += "Mode: Backward (revising high-level plans)\n";
+                        }
+                        context += "Available commands: " + snippets::tool_list();
+
+                        std::cout << "🤔 Processing your answer...\n";
+                        result.output = call_ai(context);
+                        discuss.add_message("assistant", result.output);
+
+                        // Parse for more questions
+                        auto lines = split_lines(result.output);
+                        bool has_question = false;
+                        for(const auto& line : lines.lines){
+                            auto trimmed = trim_copy(line);
+                            if(trimmed.size() > 2 && trimmed[0] == 'Q' && trimmed[1] == ':'){
+                                has_question = true;
+                                std::cout << "❓ " << trimmed.substr(2) << "\n";
+                            }
+                        }
+
+                        if(has_question){
+                            std::cout << "\n💡 Tip: Use 'plan.answer yes|no|explain <reason>' to respond\n";
+                        }
+                    }
+                }
+            }
+
+        } else if(cmd == "plan.hypothesis"){
+            // Generate hypothesis for current plan using existing hypothesis testing
+            if(planner.current_path.empty()){
+                std::cout << "⚠️  No current plan location. Use plan.goto <path> first.\n";
+                result.success = false;
+            } else {
+                auto node = vfs.tryResolveForOverlay(planner.current_path, cwd.primary_overlay);
+                if(!node){
+                    std::cout << "⚠️  Current plan path not found: " + planner.current_path << "\n";
+                    result.success = false;
+                } else {
+                    // Determine hypothesis type from args or plan content
+                    std::string hyp_type = inv.args.empty() ? "" : inv.args[0];
+
+                    // Read plan content to determine what to test
+                    std::string plan_content = node->read();
+
+                    std::cout << "🔬 Generating hypothesis for: " << planner.current_path << "\n";
+
+                    // Auto-detect hypothesis type based on content keywords
+                    if(hyp_type.empty()){
+                        std::string lower_content = plan_content;
+                        std::transform(lower_content.begin(), lower_content.end(), lower_content.begin(), ::tolower);
+
+                        if(lower_content.find("error") != std::string::npos ||
+                           lower_content.find("exception") != std::string::npos ||
+                           lower_content.find("failure") != std::string::npos){
+                            hyp_type = "errorhandling";
+                        } else if(lower_content.find("duplicate") != std::string::npos ||
+                                  lower_content.find("repeat") != std::string::npos ||
+                                  lower_content.find("refactor") != std::string::npos){
+                            hyp_type = "duplicates";
+                        } else if(lower_content.find("log") != std::string::npos ||
+                                  lower_content.find("trace") != std::string::npos ||
+                                  lower_content.find("debug") != std::string::npos){
+                            hyp_type = "logging";
+                        } else if(lower_content.find("pattern") != std::string::npos ||
+                                  lower_content.find("architecture") != std::string::npos ||
+                                  lower_content.find("design") != std::string::npos){
+                            hyp_type = "pattern";
+                        } else {
+                            hyp_type = "query";
+                        }
+                    }
+
+                    std::cout << "📋 Detected type: " << hyp_type << "\n";
+
+                    // Build hypothesis context with plan info
+                    std::string goal;
+                    std::string description = "Hypothesis generated from plan: " + planner.current_path;
+
+                    if(hyp_type == "errorhandling"){
+                        // Extract function names from plan content
+                        goal = "Analyze error handling opportunities in the codebase";
+                        std::cout << "💡 Suggestion: Use 'hypothesis.errorhandling <function>' to test specific functions\n";
+                    } else if(hyp_type == "duplicates"){
+                        goal = "Find duplicate code blocks that could be refactored";
+                        std::cout << "💡 Suggestion: Use 'hypothesis.duplicates [path]' to scan for duplicates\n";
+                    } else if(hyp_type == "logging"){
+                        goal = "Plan logging instrumentation for error tracking";
+                        std::cout << "💡 Suggestion: Use 'hypothesis.logging [path]' to identify logging points\n";
+                    } else if(hyp_type == "pattern"){
+                        goal = "Evaluate architectural patterns for the design";
+                        std::cout << "💡 Suggestion: Use 'hypothesis.pattern <visitor|factory|singleton>' to evaluate patterns\n";
+                    } else {
+                        goal = "Query codebase for relevant patterns";
+                        std::cout << "💡 Suggestion: Use 'hypothesis.query <target>' to search for specific elements\n";
+                    }
+
+                    // Add hypothesis node to plan tree if in planning mode
+                    if(planner.mode == PlannerContext::Mode::Forward){
+                        std::string hyp_name = "hypothesis_" + hyp_type;
+                        auto hyp_node = std::make_shared<PlanResearch>(hyp_name);
+                        hyp_node->content = "Type: " + hyp_type + "\nGoal: " + goal + "\nDescription: " + description;
+
+                        auto parent = vfs.tryResolveForOverlay(planner.current_path, cwd.primary_overlay);
+                        if(parent && parent->isDir()){
+                            parent->children()[hyp_node->name] = hyp_node;
+                            hyp_node->parent = parent;
+                            std::string hyp_path = planner.current_path + "/" + hyp_name;
+                            std::cout << "✅ Created hypothesis node at: " << hyp_path << "\n";
+                            planner.addToContext(hyp_path);
+                        }
+                    }
+
+                    std::cout << "\n📊 Hypothesis Goal: " << goal << "\n";
+                    std::cout << "💡 Use the suggested hypothesis.* command to run the test\n";
+                    std::cout << "💡 Then use 'plan.discuss' to incorporate findings into your plan\n";
+                }
+            }
 
         } else if(cmd == "plan.jobs.add"){
             if(inv.args.size() < 2) throw std::runtime_error("plan.jobs.add <jobs-path> <description> [priority] [assignee]");

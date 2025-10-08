@@ -26,17 +26,32 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 		- `plan.status` - Show current planner state
 		- Auto-load plan.vfs on startup with /plan tree initialization
 		- Full serialization/deserialization support for all PlanNode types
-	- **[IN PROGRESS]** Planning loop integration:
+	- **[DONE]** Planning loop integration:
 		- **[DONE]** Core `discuss` command (alias `ai.discuss`) with session management
 		- **[DONE]** Intent classification (simple/planning/execution modes) with keyword heuristics
 		- **[DONE]** Auto-routing: simple queries → direct AI, execution → plan tree, planning → breakdown
 		- **[DONE]** Session tracking: random hex IDs, conversation history, plan path association
 		- **[DONE]** Startup reminder to guide users to `discuss` command
-		- **[TODO]** Interactive AI discussion workflow (plan.discuss integration)
-		- **[TODO]** Forward mode: add details to plans (root → leaves)
-		- **[TODO]** Backward mode: revise higher-level plans when stuck
-		- **[TODO]** Yes/no/explain questions from human expert
-		- **[TODO]** Hypothesis generation and testing
+		- **[DONE]** Interactive AI discussion workflow (plan.discuss integration)
+			- Context-aware prompts for forward/backward modes
+			- Automatic question parsing with Q: format detection
+			- Integration with discuss session tracking
+		- **[DONE]** Forward mode: add details to plans (root → leaves)
+			- Auto-suggest next steps based on current location
+			- Show child nodes and suggest drill-down paths
+			- Guidance for creating goals/jobs/subplans
+		- **[DONE]** Backward mode: revise higher-level plans when stuck
+			- Navigate up plan tree with history tracking
+			- Show parent paths and navigation suggestions
+			- Focus on strategy revision and alternative approaches
+		- **[DONE]** Yes/no/explain questions from human expert
+			- plan.answer command for structured responses
+			- Conversation history integration (last 6 messages)
+			- Automatic follow-up question detection
+		- **[DONE]** Hypothesis generation and testing integration
+			- plan.hypothesis command with auto-detection from plan content
+			- Creates hypothesis research nodes in plan tree
+			- Suggests appropriate hypothesis.* commands based on plan keywords
 		- **[TODO]** Advanced tree visualization with live line editing (codex/claude style)
 	- **[TODO]** Context builder for AI calls:
 		- Tag-based filtering for relevant nodes
