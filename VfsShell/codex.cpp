@@ -1875,6 +1875,7 @@ static std::vector<std::string> get_all_commands(){
         "plan.forward", "plan.backward", "plan.context.add", "plan.context.remove",
         "plan.context.clear", "plan.context.list", "plan.status", "plan.discuss",
         "plan.answer", "plan.hypothesis", "plan.jobs.add", "plan.jobs.complete",
+        "plan.verify", "plan.tags.infer", "plan.tags.check", "plan.validate",
         "plan.save", "solution.save", "context.build", "context.build.adv",
         "context.build.advanced", "context.filter.tag", "context.filter.path",
         "tree.adv", "tree.advanced", "test.planner", "test.hypothesis",
@@ -6808,6 +6809,10 @@ R"(Commands:
   plan.hypothesis [type]        (generate hypothesis for current plan)
   plan.jobs.add <jobs-path> <description> [priority] [assignee]
   plan.jobs.complete <jobs-path> <index>
+  plan.verify [path]                     (check tag consistency for plan node)
+  plan.tags.infer [path]                 (show complete inferred tag set for plan)
+  plan.tags.check [path]                 (verify no tag conflicts in plan)
+  plan.validate [path]                   (recursively validate entire plan subtree)
   plan.save [file]
   # Action Planner (context building & testing)
   context.build [max_tokens]
@@ -8161,6 +8166,24 @@ int main(int argc, char** argv){
             vfs_add(vfs, vfs_path, node, cwd.primary_overlay);
             std::cout << "created plan node (" << type << ") @ " << vfs_path << "\n";
 
+            // Check if the parent path has any tags - inherit and verify consistency
+            auto parent_path = vfs_path.substr(0, vfs_path.find_last_of('/'));
+            if(parent_path.empty()) parent_path = "/";
+            auto parent_node = vfs.tryResolveForOverlay(parent_path, cwd.primary_overlay);
+            if(parent_node){
+                auto parent_tags_ptr = vfs.tag_storage.getTags(parent_node.get());
+                if(parent_tags_ptr && !parent_tags_ptr->empty()){
+                    // Check for conflicts in parent's tag set (inferred)
+                    auto complete_parent_tags = vfs.logic_engine.inferTags(*parent_tags_ptr, 0.8f);
+                    auto conflict = vfs.logic_engine.checkConsistency(complete_parent_tags);
+                    if(conflict){
+                        std::cout << "⚠️  Warning: Parent plan node has conflicting tags\n";
+                        std::cout << "   " << conflict->description << "\n";
+                        std::cout << "   Use 'plan.verify " << parent_path << "' to see details\n";
+                    }
+                }
+            }
+
         } else if(cmd == "plan.goto"){
             if(inv.args.empty()) throw std::runtime_error("plan.goto <path>");
             std::string vfs_path = normalize_path(cwd.path, inv.args[0]);
@@ -8283,6 +8306,33 @@ int main(int argc, char** argv){
                     std::string context_str = "Current plan location: " + planner.current_path + "\n";
                     context_str += "Mode: " + std::string(planner.mode == PlannerContext::Mode::Forward ? "Forward (adding details)" : "Backward (revising)") + "\n\n";
 
+                    // Add tag constraints if present
+                    auto current_tags_ptr = vfs.tag_storage.getTags(node.get());
+                    if(current_tags_ptr && !current_tags_ptr->empty()){
+                        auto complete_tags = vfs.logic_engine.inferTags(*current_tags_ptr, 0.8f);
+                        std::vector<std::string> tag_names;
+                        for(auto tag_id : complete_tags){
+                            tag_names.push_back(vfs.tag_registry.getTagName(tag_id));
+                        }
+                        context_str += "=== Tag Constraints ===\n";
+                        context_str += "This plan has the following requirements/constraints: ";
+                        for(size_t i = 0; i < tag_names.size(); ++i){
+                            if(i > 0) context_str += ", ";
+                            context_str += tag_names[i];
+                        }
+                        context_str += "\n";
+
+                        // Check for conflicts
+                        auto conflict = vfs.logic_engine.checkConsistency(complete_tags);
+                        if(conflict){
+                            context_str += "⚠️  WARNING: Tag conflict detected - " + conflict->description + "\n";
+                            context_str += "Please help resolve this conflict before proceeding with planning.\n";
+                        } else {
+                            context_str += "✓ Tags are consistent - ensure new plans satisfy these constraints.\n";
+                        }
+                        context_str += "\n";
+                    }
+
                     // Add current node content
                     context_str += "=== Current Node ===\n";
                     context_str += node->name + "\n";
@@ -8335,7 +8385,9 @@ int main(int argc, char** argv){
                                 "- Suggest specific implementation approaches\n"
                                 "- Use plan.create to add subplans, goals, jobs\n"
                                 "- Ask clarifying questions if needed (format: Q: <question>)\n"
-                                "- Use hypothesis.* commands to test assumptions\n\n"
+                                "- Use hypothesis.* commands to test assumptions\n"
+                                "- IMPORTANT: Respect tag constraints - any suggestions must be compatible with listed tags\n"
+                                "- Use plan.tags.check to verify consistency if adding new tags\n\n"
                                 "Available commands: " + snippets::tool_list();
                         } else {
                             prompt = context_str + "\n=== Task (Backward Mode) ===\n"
@@ -8345,7 +8397,9 @@ int main(int argc, char** argv){
                                 "- Suggest alternative approaches\n"
                                 "- Update goals and strategy nodes if needed\n"
                                 "- Ask clarifying questions (format: Q: <question>)\n"
-                                "- Consider trade-offs and constraints\n\n"
+                                "- Consider trade-offs and constraints\n"
+                                "- IMPORTANT: Check if tag conflicts might be causing issues\n"
+                                "- Use plan.verify to check tag consistency of proposed changes\n\n"
                                 "Available commands: " + snippets::tool_list();
                         }
 
@@ -8594,6 +8648,292 @@ int main(int argc, char** argv){
             size_t index = std::stoul(inv.args[1]);
             jobs_node->completeJob(index);
             std::cout << "marked job " << index << " as completed in " << vfs_path << "\n";
+
+        } else if(cmd == "plan.verify"){
+            // Verify tag consistency for a plan node
+            std::string vfs_path = planner.current_path;
+            if(!inv.args.empty()){
+                vfs_path = normalize_path(cwd.path, inv.args[0]);
+            }
+            if(vfs_path.empty()){
+                std::cout << "plan.verify: no path specified and no current plan location\n";
+                result.success = false;
+            } else {
+                auto node = vfs.tryResolveForOverlay(vfs_path, cwd.primary_overlay);
+                if(!node){
+                    std::cout << "plan.verify: path not found: " << vfs_path << "\n";
+                    result.success = false;
+                } else {
+                    // Collect all tags from this node
+                    auto tags_ptr = vfs.tag_storage.getTags(node.get());
+                    if(!tags_ptr || tags_ptr->empty()){
+                        std::cout << "✓ No tags attached to " << vfs_path << "\n";
+                    } else {
+                        // Convert TagIds to names and show them
+                        const TagSet& tags = *tags_ptr;
+                        std::vector<std::string> tag_names;
+                        for(auto tag_id : tags){
+                            tag_names.push_back(vfs.tag_registry.getTagName(tag_id));
+                        }
+                        std::cout << "📋 Tags on " << vfs_path << ": ";
+                        for(size_t i = 0; i < tag_names.size(); ++i){
+                            if(i > 0) std::cout << ", ";
+                            std::cout << tag_names[i];
+                        }
+                        std::cout << "\n";
+
+                        // Check consistency
+                        auto conflict = vfs.logic_engine.checkConsistency(tags);
+                        if(conflict){
+                            std::cout << "❌ Conflict detected: " << conflict->description << "\n";
+                            if(!conflict->conflicting_tags.empty()){
+                                std::cout << "   Conflicting tags: ";
+                                for(size_t i = 0; i < conflict->conflicting_tags.size(); ++i){
+                                    if(i > 0) std::cout << ", ";
+                                    std::cout << conflict->conflicting_tags[i];
+                                }
+                                std::cout << "\n";
+                            }
+                            if(!conflict->suggestions.empty()){
+                                std::cout << "   Suggestions: ";
+                                for(size_t i = 0; i < conflict->suggestions.size(); ++i){
+                                    if(i > 0) std::cout << " OR ";
+                                    std::cout << conflict->suggestions[i];
+                                }
+                                std::cout << "\n";
+                            }
+                            result.success = false;
+                        } else {
+                            std::cout << "✓ Tag set is consistent (no conflicts detected)\n";
+                        }
+                    }
+                }
+            }
+
+        } else if(cmd == "plan.tags.infer"){
+            // Show complete inferred tag set for a plan node
+            std::string vfs_path = planner.current_path;
+            if(!inv.args.empty()){
+                vfs_path = normalize_path(cwd.path, inv.args[0]);
+            }
+            if(vfs_path.empty()){
+                std::cout << "plan.tags.infer: no path specified and no current plan location\n";
+                result.success = false;
+            } else {
+                auto node = vfs.tryResolveForOverlay(vfs_path, cwd.primary_overlay);
+                if(!node){
+                    std::cout << "plan.tags.infer: path not found: " << vfs_path << "\n";
+                    result.success = false;
+                } else {
+                    auto initial_tags_ptr = vfs.tag_storage.getTags(node.get());
+                    if(!initial_tags_ptr || initial_tags_ptr->empty()){
+                        std::cout << "📋 No initial tags on " << vfs_path << "\n";
+                    } else {
+                        const TagSet& initial_tags = *initial_tags_ptr;
+                        // Show initial tags
+                        std::vector<std::string> initial_names;
+                        for(auto tag_id : initial_tags){
+                            initial_names.push_back(vfs.tag_registry.getTagName(tag_id));
+                        }
+                        std::cout << "📋 Initial tags: ";
+                        for(size_t i = 0; i < initial_names.size(); ++i){
+                            if(i > 0) std::cout << ", ";
+                            std::cout << initial_names[i];
+                        }
+                        std::cout << "\n";
+
+                        // Infer complete tag set
+                        auto complete_tags = vfs.logic_engine.inferTags(initial_tags, 0.8f);
+
+                        // Find only the newly inferred tags
+                        TagSet new_tags;
+                        for(auto tag_id : complete_tags){
+                            if(initial_tags.count(tag_id) == 0){
+                                new_tags.insert(tag_id);
+                            }
+                        }
+
+                        if(new_tags.empty()){
+                            std::cout << "🔍 No additional tags inferred\n";
+                        } else {
+                            std::vector<std::string> new_names;
+                            for(auto tag_id : new_tags){
+                                new_names.push_back(vfs.tag_registry.getTagName(tag_id));
+                            }
+                            std::cout << "🔍 Inferred tags (only new): ";
+                            for(size_t i = 0; i < new_names.size(); ++i){
+                                if(i > 0) std::cout << ", ";
+                                std::cout << new_names[i];
+                            }
+                            std::cout << "\n";
+                        }
+
+                        // Show complete tag set for planner use
+                        std::vector<std::string> complete_names;
+                        for(auto tag_id : complete_tags){
+                            complete_names.push_back(vfs.tag_registry.getTagName(tag_id));
+                        }
+                        std::cout << "📦 Complete tag set (initial + inferred): ";
+                        for(size_t i = 0; i < complete_names.size(); ++i){
+                            if(i > 0) std::cout << ", ";
+                            std::cout << complete_names[i];
+                        }
+                        std::cout << "\n";
+                    }
+                }
+            }
+
+        } else if(cmd == "plan.tags.check"){
+            // Verify no conflicts in plan node's tag set (after inference)
+            std::string vfs_path = planner.current_path;
+            if(!inv.args.empty()){
+                vfs_path = normalize_path(cwd.path, inv.args[0]);
+            }
+            if(vfs_path.empty()){
+                std::cout << "plan.tags.check: no path specified and no current plan location\n";
+                result.success = false;
+            } else {
+                auto node = vfs.tryResolveForOverlay(vfs_path, cwd.primary_overlay);
+                if(!node){
+                    std::cout << "plan.tags.check: path not found: " << vfs_path << "\n";
+                    result.success = false;
+                } else {
+                    auto initial_tags_ptr = vfs.tag_storage.getTags(node.get());
+                    if(!initial_tags_ptr || initial_tags_ptr->empty()){
+                        std::cout << "✓ No tags to check on " << vfs_path << "\n";
+                    } else {
+                        const TagSet& initial_tags = *initial_tags_ptr;
+                        // Infer complete tag set
+                        auto complete_tags = vfs.logic_engine.inferTags(initial_tags, 0.8f);
+
+                        // Check consistency of complete tag set
+                        auto conflict = vfs.logic_engine.checkConsistency(complete_tags);
+                        if(conflict){
+                            std::cout << "❌ Conflict detected after tag inference: " << conflict->description << "\n";
+                            if(!conflict->conflicting_tags.empty()){
+                                std::cout << "   Conflicting tags: ";
+                                for(size_t i = 0; i < conflict->conflicting_tags.size(); ++i){
+                                    if(i > 0) std::cout << ", ";
+                                    std::cout << conflict->conflicting_tags[i];
+                                }
+                                std::cout << "\n";
+                            }
+                            if(!conflict->suggestions.empty()){
+                                std::cout << "   Suggestions: ";
+                                for(size_t i = 0; i < conflict->suggestions.size(); ++i){
+                                    if(i > 0) std::cout << " OR ";
+                                    std::cout << conflict->suggestions[i];
+                                }
+                                std::cout << "\n";
+                            }
+                            std::cout << "💡 Use 'plan.tags.infer' to see the complete inferred tag set\n";
+                            result.success = false;
+                        } else {
+                            std::cout << "✓ Complete tag set (after inference) is consistent\n";
+                            // Show how many tags were inferred
+                            size_t inferred_count = complete_tags.size() - initial_tags.size();
+                            if(inferred_count > 0){
+                                std::cout << "   (" << initial_tags.size() << " initial + "
+                                         << inferred_count << " inferred = "
+                                         << complete_tags.size() << " total tags)\n";
+                            }
+                        }
+                    }
+                }
+            }
+
+        } else if(cmd == "plan.validate"){
+            // Recursively validate entire plan subtree for tag consistency
+            std::string vfs_path = planner.current_path;
+            if(!inv.args.empty()){
+                vfs_path = normalize_path(cwd.path, inv.args[0]);
+            }
+            if(vfs_path.empty()){
+                vfs_path = "/plan";  // Default to entire plan tree
+            }
+
+            auto root_node = vfs.tryResolveForOverlay(vfs_path, cwd.primary_overlay);
+            if(!root_node){
+                std::cout << "plan.validate: path not found: " << vfs_path << "\n";
+                result.success = false;
+            } else {
+                std::cout << "🔍 Validating plan tree starting at: " << vfs_path << "\n\n";
+
+                // Recursively check all nodes in the subtree
+                struct ValidationResult {
+                    std::string path;
+                    bool has_conflict;
+                    std::string conflict_desc;
+                };
+                std::vector<ValidationResult> results;
+                int total_checked = 0;
+                int total_with_tags = 0;
+                int total_conflicts = 0;
+
+                std::function<void(const std::string&, std::shared_ptr<VfsNode>)> validate_subtree;
+                validate_subtree = [&](const std::string& path, std::shared_ptr<VfsNode> node){
+                    total_checked++;
+
+                    // Check tags on this node
+                    auto tags_ptr = vfs.tag_storage.getTags(node.get());
+                    if(tags_ptr && !tags_ptr->empty()){
+                        total_with_tags++;
+                        const TagSet& tags = *tags_ptr;
+                        auto complete_tags = vfs.logic_engine.inferTags(tags, 0.8f);
+                        auto conflict = vfs.logic_engine.checkConsistency(complete_tags);
+
+                        ValidationResult vr;
+                        vr.path = path;
+                        vr.has_conflict = (conflict.has_value());
+                        if(conflict){
+                            vr.conflict_desc = conflict->description;
+                            total_conflicts++;
+                        }
+                        results.push_back(vr);
+                    }
+
+                    // Recurse into children
+                    if(node->isDir()){
+                        auto& children = node->children();
+                        for(const auto& [child_name, child_node] : children){
+                            std::string child_path = path;
+                            if(child_path.back() != '/') child_path += "/";
+                            child_path += child_name;
+                            validate_subtree(child_path, child_node);
+                        }
+                    }
+                };
+
+                validate_subtree(vfs_path, root_node);
+
+                // Report results
+                std::cout << "📊 Validation Summary:\n";
+                std::cout << "   Total nodes checked: " << total_checked << "\n";
+                std::cout << "   Nodes with tags: " << total_with_tags << "\n";
+                std::cout << "   Tag conflicts found: " << total_conflicts << "\n\n";
+
+                if(total_conflicts > 0){
+                    std::cout << "❌ CONFLICTS DETECTED:\n\n";
+                    for(const auto& vr : results){
+                        if(vr.has_conflict){
+                            std::cout << "  " << vr.path << "\n";
+                            std::cout << "    ⚠️  " << vr.conflict_desc << "\n";
+                            std::cout << "    💡 Use 'plan.verify " << vr.path << "' for details\n\n";
+                        }
+                    }
+                    result.success = false;
+                } else if(total_with_tags > 0){
+                    std::cout << "✓ All plan nodes with tags are consistent!\n\n";
+                    std::cout << "Nodes with tags:\n";
+                    for(const auto& vr : results){
+                        if(!vr.has_conflict){
+                            std::cout << "  ✓ " << vr.path << "\n";
+                        }
+                    }
+                } else {
+                    std::cout << "ℹ️  No tags found in plan tree (nothing to validate)\n";
+                }
+            }
 
         } else if(cmd == "plan.save"){
             std::filesystem::path plan_file = "plan.vfs";

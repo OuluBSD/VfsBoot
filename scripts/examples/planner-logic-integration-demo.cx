@@ -1,0 +1,81 @@
+#!/usr/bin/env ./codex
+# Planner-Logic Integration Demo
+# This script demonstrates tag-based constraint checking for the planning system
+
+echo "=== Planner-Logic Integration Demo ==="
+echo ""
+echo "This demo shows how the logic engine ensures plan consistency"
+echo "by verifying tag constraints before, during, and after planning."
+echo ""
+
+# 1. Initialize logic rules
+echo "1. Loading logic rules (hardcoded domain knowledge)"
+logic.init
+echo ""
+
+# 2. Create a plan with tags
+echo "2. Creating a plan with tag constraints"
+plan.create /plan/demo root "Build an offline deployment system"
+tag.add /plan/demo offline
+tag.add /plan/demo fast
+echo ""
+
+# 3. Show inferred tags
+echo "3. Inferring complete tag set from initial tags"
+plan.tags.infer /plan/demo
+echo ""
+
+# 4. Verify consistency
+echo "4. Verifying tag consistency"
+plan.tags.check /plan/demo
+echo ""
+
+# 5. Create subplan - this should inherit parent constraints
+echo "5. Creating subplan under constrained parent"
+plan.goto /plan/demo
+plan.create /plan/demo/phase1 subplan "Phase 1: Package preparation"
+echo ""
+
+# 6. Try to add conflicting tag (will trigger warning)
+echo "6. Attempting to add conflicting constraint"
+echo "   (adding 'network' tag when parent has 'offline')"
+tag.add /plan/demo network
+echo ""
+
+# 7. Verify conflict is detected
+echo "7. Detecting conflict"
+plan.verify /plan/demo
+echo ""
+
+# 8. Show how to resolve conflicts
+echo "8. Resolving conflict (remove 'network' tag)"
+tag.remove /plan/demo network
+plan.verify /plan/demo
+echo ""
+
+# 9. Add compatible tags
+echo "9. Adding compatible tags"
+tag.add /plan/demo/phase1 cached
+plan.tags.infer /plan/demo/phase1
+echo ""
+
+# 10. Validate entire plan tree
+echo "10. Validating entire plan tree"
+plan.validate /plan
+echo ""
+
+echo "=== Demo Complete ==="
+echo ""
+echo "Key features demonstrated:"
+echo "  - logic.init: Load inference rules"
+echo "  - plan.tags.infer: Show complete inferred tag set"
+echo "  - plan.tags.check: Verify consistency after inference"
+echo "  - plan.verify: Check single node for conflicts"
+echo "  - plan.validate: Recursively validate entire subtree"
+echo "  - Automatic warnings when creating plans under conflicting parents"
+echo ""
+echo "Integration points:"
+echo "  - Pre-planning: Use plan.verify before creating plans"
+echo "  - During planning: plan.discuss includes tag constraints in AI prompts"
+echo "  - Post-planning: Use plan.validate to check AI-generated plans"
+echo ""

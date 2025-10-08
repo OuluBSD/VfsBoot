@@ -112,13 +112,21 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 			- LogicEngine::inferTags() returns complete tag set (includes initial tags)
 			- Planner can use complete set for constraint checking
 			- Example: `initial: [gpu]` → `complete: [gpu, parallel, fast, cached]`
-		- **[TODO]** Integration with planner:
+		- **[DONE]** Integration with planner:
 			- Pre-planning: verify tag set is satisfiable
+				- `plan.verify [path]` - check tag consistency for plan node
+				- `plan.tags.check [path]` - verify no conflicts after inference
+				- Automatic parent tag conflict warnings in `plan.create`
 			- During planning: only generate consistent plan branches
+				- `plan.discuss` includes tag constraints in AI prompts
+				- AI instructed to respect tag constraints and use verification commands
 			- Post-planning: verify AI-generated plan doesn't violate constraints
+				- `plan.validate [path]` - recursively validate entire plan subtree
 			- Use complete tag set from logic.infer for all planner operations
+				- `plan.tags.infer [path]` - show complete inferred tag set
+				- All plan commands use inferred tags (min_confidence=0.8)
 		- Use case: Prevent impossible plans like "build offline but fetch remote dependencies"
-		- **Commands**: `logic.init`, `logic.infer`, `logic.check`, `logic.explain`, `logic.listrules`, `logic.rules.save`, `logic.rules.load`, `logic.rule.add`, `logic.rule.exclude`, `logic.rule.remove`, `logic.sat`, `tag.mine.start`, `tag.mine.feedback`, `tag.mine.status`
+		- **Commands**: `logic.init`, `logic.infer`, `logic.check`, `logic.explain`, `logic.listrules`, `logic.rules.save`, `logic.rules.load`, `logic.rule.add`, `logic.rule.exclude`, `logic.rule.remove`, `logic.sat`, `tag.mine.start`, `tag.mine.feedback`, `tag.mine.status`, `plan.verify`, `plan.tags.infer`, `plan.tags.check`, `plan.validate`
 		- **Demo scripts**:
 			- `scripts/examples/logic-system-demo.cx` - Complete system overview
 			- `scripts/examples/logic-rules-simple-demo.cx` - Basic save/load (EASIEST)
@@ -127,6 +135,7 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 			- `scripts/examples/logic-rules-dynamic-creation-demo.cx` - Runtime rule creation
 			- `scripts/examples/logic-rules-from-scratch-demo.cx` - **NO hardcoded rules** (web app deployment, 50+ rules)
 			- `scripts/examples/logic-complete-tagset-demo.cx` - Complete tag set for planner integration
+			- `scripts/examples/planner-logic-integration-demo.cx` - **Planner integration** (pre/during/post-planning validation)
 - **[DONE]** Advanced hypothesis testing examples (progressively more complex):
 	- Implemented comprehensive hypothesis testing system with 5 complexity levels
 	- **Level 1: Simple Query** - `hypothesis.query <target> [path]`
