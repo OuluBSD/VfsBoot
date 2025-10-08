@@ -1,0 +1,353 @@
+#!/usr/bin/env ./codex
+# Expert Planner-Logic Integration Demo
+# Complex scenario: Cloud migration with hypothesis testing, context building,
+# and dynamic constraint discovery
+
+echo "=== EXPERT Planner-Logic Integration Demo ==="
+echo "Complex cloud migration project with constraint discovery"
+echo ""
+echo "SCENARIO: Migrate legacy on-premises system to cloud"
+echo "Challenges: Performance, security, cost, compliance requirements"
+echo "=========================================================="
+echo ""
+
+# Phase 1: Initial setup and constraint discovery
+echo "PHASE 1: Project Setup & Constraint Discovery"
+echo "----------------------------------------------"
+echo ""
+
+logic.init
+echo ""
+
+echo "1.1 Create root migration plan"
+plan.create /plan/migration root "Cloud Migration Project - Q1 2025"
+plan.goto /plan/migration
+plan.forward
+echo ""
+
+echo "1.2 Initial requirements gathering (tag mining)"
+echo "Starting with basic requirements from stakeholders..."
+tag.add /plan/migration cloud
+tag.add /plan/migration secure
+tag.add /plan/migration cost-effective
+tag.add /plan/migration compliant
+echo ""
+
+echo "1.3 Infer implied requirements"
+plan.tags.infer /plan/migration
+echo ""
+
+# Phase 2: Build rule base from domain knowledge
+echo "PHASE 2: Build Domain-Specific Rule Base"
+echo "-----------------------------------------"
+echo ""
+
+echo "2.1 Add cloud infrastructure rules"
+logic.rule.add cloud-scalable "cloud" "scalable" 0.9 domain-expert
+logic.rule.add cloud-network "cloud" "network" 0.95 domain-expert
+logic.rule.add secure-encrypted "secure" "encrypted" 0.95 domain-expert
+logic.rule.add compliant-auditable "compliant" "auditable" 0.9 domain-expert
+logic.rule.add cost-effective-cached "cost-effective" "cached" 0.8 domain-expert
+echo ""
+
+echo "2.2 Add architectural constraints"
+logic.rule.add scalable-distributed "scalable" "distributed" 0.85 architect
+logic.rule.add encrypted-secure-transport "encrypted" "secure-transport" 0.9 architect
+logic.rule.add auditable-logged "auditable" "logged" 0.95 architect
+echo ""
+
+echo "2.3 Add performance rules"
+logic.rule.add cached-fast "cached" "fast" 0.87 performance-team
+logic.rule.add distributed-fault-tolerant "distributed" "fault-tolerant" 0.8 performance-team
+echo ""
+
+echo "2.4 Re-infer with expanded rule base"
+plan.tags.infer /plan/migration
+echo ""
+
+echo "2.5 Check for conflicts in requirements"
+plan.tags.check /plan/migration
+echo ""
+
+# Phase 3: Create detailed migration phases
+echo "PHASE 3: Detailed Migration Planning"
+echo "-------------------------------------"
+echo ""
+
+echo "3.1 Assessment Phase - analyze current system"
+plan.create /plan/migration/assessment subplan "Current System Assessment"
+tag.add /plan/migration/assessment analysis
+tag.add /plan/migration/assessment documentation
+tag.add /plan/migration/assessment offline
+plan.tags.infer /plan/migration/assessment
+echo ""
+
+echo "3.2 Check assessment phase constraints"
+echo "   (Assessment is offline, so no network conflicts)"
+plan.tags.check /plan/migration/assessment
+echo ""
+
+echo "3.3 Design Phase - cloud architecture design"
+plan.create /plan/migration/design subplan "Cloud Architecture Design"
+tag.add /plan/migration/design high-availability
+tag.add /plan/migration/design multi-region
+tag.add /plan/migration/design zero-trust
+plan.tags.infer /plan/migration/design
+echo ""
+
+echo "3.4 Implementation Phase - actual migration"
+plan.create /plan/migration/implementation subplan "Migration Implementation"
+tag.add /plan/migration/implementation staged
+tag.add /plan/migration/implementation reversible
+tag.add /plan/migration/implementation monitored
+plan.tags.infer /plan/migration/implementation
+echo ""
+
+echo "3.5 Validation Phase - testing and verification"
+plan.create /plan/migration/validation subplan "Post-Migration Validation"
+tag.add /plan/migration/validation automated-testing
+tag.add /plan/migration/validation load-testing
+tag.add /plan/migration/validation security-scan
+plan.tags.infer /plan/migration/validation
+echo ""
+
+# Phase 4: Hypothesis testing for critical decisions
+echo "PHASE 4: Hypothesis Testing for Critical Decisions"
+echo "---------------------------------------------------"
+echo ""
+
+echo "4.1 Test hypothesis: Can we use spot instances for cost savings?"
+echo ""
+echo "Creating hypothesis test context..."
+mkdir /hypothesis
+echo "Requirement: cost-effective" > /hypothesis/cost-req.txt
+echo "Constraint: high-availability" >> /hypothesis/cost-req.txt
+echo "Question: Are spot instances compatible?" >> /hypothesis/cost-req.txt
+echo ""
+
+echo "4.2 Add conflicting constraint rule"
+logic.rule.add spot-not-ha "spot-instances" "!high-availability" 0.9 cloud-vendor
+echo "   Added rule: spot-instances implies NOT high-availability"
+echo ""
+
+echo "4.3 Test if spot-instances tag would conflict"
+tag.add /plan/migration/design spot-instances
+plan.verify /plan/migration/design
+echo ""
+
+echo "4.4 Resolution: Use reserved instances instead"
+tag.remove /plan/migration/design spot-instances
+tag.add /plan/migration/design reserved-instances
+logic.rule.add reserved-ha "reserved-instances" "high-availability" 0.95 cloud-vendor
+plan.tags.infer /plan/migration/design
+plan.verify /plan/migration/design
+echo ""
+
+# Phase 5: Context building for AI planning assistance
+echo "PHASE 5: Context Building for AI-Assisted Planning"
+echo "---------------------------------------------------"
+echo ""
+
+echo "5.1 Build context for implementation phase planning"
+plan.goto /plan/migration/implementation
+plan.context.add /plan/migration
+plan.context.add /plan/migration/design
+plan.context.add /plan/migration/implementation
+plan.context.list
+echo ""
+
+echo "5.2 Build advanced context with tag filtering"
+context.filter.tag cloud all
+context.filter.tag secure all
+context.build 4000
+echo ""
+
+echo "5.3 Create jobs with automatic constraint checking"
+plan.create /plan/migration/implementation/phase1 jobs "Phase 1: Database Migration"
+plan.jobs.add /plan/migration/implementation/phase1 "Setup RDS with encryption" 1 db-team
+plan.jobs.add /plan/migration/implementation/phase1 "Configure multi-AZ deployment" 1 db-team
+plan.jobs.add /plan/migration/implementation/phase1 "Setup automated backups" 2 db-team
+plan.jobs.add /plan/migration/implementation/phase1 "Test failover procedures" 1 qa-team
+cat /plan/migration/implementation/phase1
+echo ""
+
+echo "5.4 Create jobs for application tier"
+plan.create /plan/migration/implementation/phase2 jobs "Phase 2: Application Migration"
+plan.jobs.add /plan/migration/implementation/phase2 "Containerize applications" 1 dev-team
+plan.jobs.add /plan/migration/implementation/phase2 "Setup ECS/EKS clusters" 1 devops-team
+plan.jobs.add /plan/migration/implementation/phase2 "Configure auto-scaling" 2 devops-team
+plan.jobs.add /plan/migration/implementation/phase2 "Setup load balancers" 1 network-team
+plan.jobs.add /plan/migration/implementation/phase2 "Implement circuit breakers" 2 dev-team
+cat /plan/migration/implementation/phase2
+echo ""
+
+# Phase 6: Complex constraint scenarios
+echo "PHASE 6: Complex Constraint Scenarios"
+echo "--------------------------------------"
+echo ""
+
+echo "6.1 Compliance requirements: GDPR + data residency"
+plan.create /plan/migration/compliance subplan "Compliance & Regulatory"
+tag.add /plan/migration/compliance gdpr
+tag.add /plan/migration/compliance data-residency-eu
+tag.add /plan/migration/compliance right-to-erasure
+echo ""
+
+echo "6.2 Add compliance rules"
+logic.rule.add gdpr-encrypted "gdpr" "encrypted" 1.0 legal-team
+logic.rule.add gdpr-auditable "gdpr" "auditable" 1.0 legal-team
+logic.rule.add gdpr-consent "gdpr" "consent-management" 0.95 legal-team
+logic.rule.add data-residency-regional "data-residency-eu" "eu-region-only" 1.0 legal-team
+echo ""
+
+echo "6.3 Infer compliance requirements"
+plan.tags.infer /plan/migration/compliance
+echo ""
+
+echo "6.4 Check if compliance conflicts with design"
+echo "   Design has: multi-region, high-availability"
+echo "   Compliance needs: eu-region-only"
+echo "   Potential conflict if multi-region spans non-EU regions!"
+echo ""
+
+echo "6.5 Add exclusion rule: eu-only conflicts with global multi-region"
+logic.rule.exclude eu-region-only global-multi-region
+echo ""
+
+# Phase 7: Advanced tree visualization
+echo "PHASE 7: Advanced Visualization & Analysis"
+echo "-------------------------------------------"
+echo ""
+
+echo "7.1 Tree view with tags and structure"
+tree.adv /plan/migration --tags --depth=3 --colors
+echo ""
+
+echo "7.2 Build hierarchical context for entire plan"
+context.build.adv 8000 --hierarchical --adaptive --dedup
+echo ""
+
+# Phase 8: Final validation and reporting
+echo "PHASE 8: Comprehensive Validation & Reporting"
+echo "----------------------------------------------"
+echo ""
+
+echo "8.1 Validate entire migration plan"
+plan.validate /plan/migration
+echo ""
+
+echo "8.2 Check status of all jobs"
+plan.status
+echo ""
+
+echo "8.3 Generate dependency graph"
+plan.create /plan/migration/dependencies deps "Cross-phase dependencies"
+echo "Phase 1 (Assessment) -> Phase 2 (Design)" > /plan/migration/dependencies
+echo "Phase 2 (Design) -> Phase 3 (Implementation)" >> /plan/migration/dependencies
+echo "Phase 3 (Implementation) -> Phase 4 (Validation)" >> /plan/migration/dependencies
+echo "Compliance (Ongoing) -> All Phases" >> /plan/migration/dependencies
+cat /plan/migration/dependencies
+echo ""
+
+# Phase 9: Hypothesis testing with code analysis
+echo "PHASE 9: Code-Level Hypothesis Testing"
+echo "---------------------------------------"
+echo ""
+
+echo "9.1 Create sample code structure for analysis"
+mkdir /src
+mkdir /src/legacy
+echo "class Database { void connect() {} }" > /src/legacy/db.cpp
+echo "class Cache { void set() {} }" > /src/legacy/cache.cpp
+echo "class API { void handle() {} }" > /src/legacy/api.cpp
+echo ""
+
+echo "9.2 Run hypothesis test: Find error handling gaps"
+hypothesis.errorhandling connect
+echo ""
+
+echo "9.3 Run hypothesis test: Find code duplicates"
+hypothesis.duplicates /src 5
+echo ""
+
+echo "9.4 Link hypothesis results to implementation jobs"
+plan.create /plan/migration/implementation/refactoring jobs "Code Refactoring Tasks"
+plan.jobs.add /plan/migration/implementation/refactoring "Add error handling to database layer" 1 dev-team
+plan.jobs.add /plan/migration/implementation/refactoring "Refactor duplicate cache code" 2 dev-team
+plan.jobs.add /plan/migration/implementation/refactoring "Add comprehensive logging" 1 dev-team
+cat /plan/migration/implementation/refactoring
+echo ""
+
+# Phase 10: Persistence and summary
+echo "PHASE 10: Save and Summary"
+echo "--------------------------"
+echo ""
+
+echo "10.1 Save complete plan with all rules"
+plan.save cloud-migration-plan.vfs
+logic.rules.save /plan/rules
+echo ""
+
+echo "10.2 List all registered tags"
+tag.list
+echo ""
+
+echo "10.3 Show rule summary"
+logic.listrules
+echo ""
+
+echo "10.4 Final tree structure"
+tree /plan/migration
+echo ""
+
+echo "=== EXPERT DEMO COMPLETE ==="
+echo ""
+echo "╔════════════════════════════════════════════════════════════╗"
+echo "║           EXPERT FEATURES DEMONSTRATED                     ║"
+echo "╚════════════════════════════════════════════════════════════╝"
+echo ""
+echo "1. CONSTRAINT DISCOVERY (15+ custom rules)"
+echo "   - Domain expert knowledge (cloud, security, compliance)"
+echo "   - Architect decisions (scalability, encryption)"
+echo "   - Performance team inputs (caching, distribution)"
+echo "   - Legal requirements (GDPR, data residency)"
+echo ""
+echo "2. MULTI-LEVEL PLANNING (4 phases, 3 levels deep)"
+echo "   - Assessment → Design → Implementation → Validation"
+echo "   - 10+ subplans with specialized constraints"
+echo "   - 15+ jobs across multiple teams"
+echo ""
+echo "3. HYPOTHESIS TESTING"
+echo "   - Cost vs HA trade-off (spot vs reserved instances)"
+echo "   - Code analysis (error handling, duplicates)"
+echo "   - Constraint conflict resolution"
+echo ""
+echo "4. CONTEXT BUILDING"
+echo "   - Tag-based filtering (cloud, secure)"
+echo "   - Hierarchical context assembly"
+echo "   - Adaptive token budgets (4K-8K tokens)"
+echo "   - Deduplication for AI efficiency"
+echo ""
+echo "5. COMPLIANCE INTEGRATION"
+echo "   - GDPR rules (encryption, audit, consent)"
+echo "   - Data residency (EU-only constraint)"
+echo "   - Regional exclusion rules"
+echo ""
+echo "6. ADVANCED VISUALIZATION"
+echo "   - Tree with tags and colors"
+echo "   - Dependency graphs"
+echo "   - Job status tracking"
+echo ""
+echo "REAL-WORLD APPLICATION:"
+echo "  This demo simulates a 6-month cloud migration project"
+echo "  with 20+ engineers, compliance requirements, and"
+echo "  architectural constraints that must be automatically"
+echo "  verified to prevent costly mistakes."
+echo ""
+echo "KEY INTEGRATION POINTS:"
+echo "  ✓ Pre-planning: plan.verify before creating phases"
+echo "  ✓ During planning: plan.discuss with tag constraints"
+echo "  ✓ Post-planning: plan.validate entire hierarchy"
+echo "  ✓ Hypothesis testing: Code-level validation"
+echo "  ✓ Context building: AI-ready filtered views"
+echo ""

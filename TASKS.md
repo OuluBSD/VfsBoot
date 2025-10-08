@@ -135,7 +135,10 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 			- `scripts/examples/logic-rules-dynamic-creation-demo.cx` - Runtime rule creation
 			- `scripts/examples/logic-rules-from-scratch-demo.cx` - **NO hardcoded rules** (web app deployment, 50+ rules)
 			- `scripts/examples/logic-complete-tagset-demo.cx` - Complete tag set for planner integration
-			- `scripts/examples/planner-logic-integration-demo.cx` - **Planner integration** (pre/during/post-planning validation)
+			- **Planner Integration Demos** (progressively more complex):
+				- `scripts/examples/planner-logic-integration-demo.cx` - **BASIC** (simple conflict detection, single-level plan)
+				- `scripts/examples/planner-logic-advanced-demo.cx` - **ADVANCED** (multi-level hierarchy, 3 levels, microservices architecture)
+				- `scripts/examples/planner-logic-expert-demo.cx` - **EXPERT** (cloud migration, 22 rules, hypothesis testing, compliance, context building)
 - **[DONE]** Advanced hypothesis testing examples (progressively more complex):
 	- Implemented comprehensive hypothesis testing system with 5 complexity levels
 	- **Level 1: Simple Query** - `hypothesis.query <target> [path]`

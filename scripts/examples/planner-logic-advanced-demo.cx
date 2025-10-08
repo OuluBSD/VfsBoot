@@ -1,0 +1,198 @@
+#!/usr/bin/env ./codex
+# Advanced Planner-Logic Integration Demo
+# Multi-level plan hierarchy with tag inheritance and constraint propagation
+
+echo "=== Advanced Planner-Logic Integration Demo ==="
+echo "Multi-level plan hierarchy with cascading constraints"
+echo ""
+
+# Initialize
+logic.init
+echo ""
+
+# Scenario: Build a distributed microservices platform
+echo "SCENARIO: Build a distributed microservices platform"
+echo "=========================================================="
+echo ""
+
+# Level 1: Root plan with architecture constraints
+echo "1. Creating root plan with architecture constraints"
+plan.create /plan/microservices root "Distributed microservices platform"
+tag.add /plan/microservices distributed
+tag.add /plan/microservices scalable
+tag.add /plan/microservices fault-tolerant
+echo ""
+
+echo "Root plan tags (inferred):"
+plan.tags.infer /plan/microservices
+echo ""
+
+# Level 2: Create service categories with specific requirements
+echo "2. Creating service categories with different requirements"
+echo ""
+
+echo "2a. API Gateway - must be fast and handle network traffic"
+plan.create /plan/microservices/api-gateway subplan "API Gateway service"
+tag.add /plan/microservices/api-gateway fast
+tag.add /plan/microservices/api-gateway network
+tag.add /plan/microservices/api-gateway stateless
+plan.tags.infer /plan/microservices/api-gateway
+echo ""
+
+echo "2b. Data Processing Pipeline - GPU-accelerated, batch processing"
+plan.create /plan/microservices/data-pipeline subplan "Data processing pipeline"
+tag.add /plan/microservices/data-pipeline gpu
+tag.add /plan/microservices/data-pipeline batch
+tag.add /plan/microservices/data-pipeline heavy-compute
+plan.tags.infer /plan/microservices/data-pipeline
+echo ""
+
+echo "2c. Offline Analytics - no network, cached data"
+plan.create /plan/microservices/analytics subplan "Offline analytics service"
+tag.add /plan/microservices/analytics offline
+tag.add /plan/microservices/analytics cached
+plan.tags.infer /plan/microservices/analytics
+echo ""
+
+# Level 3: Create implementation jobs under each service
+echo "3. Creating implementation jobs (Level 3)"
+echo ""
+
+echo "3a. API Gateway jobs"
+plan.create /plan/microservices/api-gateway/auth jobs "Authentication jobs"
+plan.jobs.add /plan/microservices/api-gateway/auth "Implement JWT validation" 1 alice
+plan.jobs.add /plan/microservices/api-gateway/auth "Add rate limiting" 2 bob
+plan.jobs.add /plan/microservices/api-gateway/auth "Setup TLS termination" 1 alice
+cat /plan/microservices/api-gateway/auth
+echo ""
+
+echo "3b. Data Pipeline jobs"
+plan.create /plan/microservices/data-pipeline/processing jobs "Processing jobs"
+plan.jobs.add /plan/microservices/data-pipeline/processing "Setup CUDA kernels" 1 charlie
+plan.jobs.add /plan/microservices/data-pipeline/processing "Implement data sharding" 2 dave
+plan.jobs.add /plan/microservices/data-pipeline/processing "Add batch scheduler" 1 charlie
+cat /plan/microservices/data-pipeline/processing
+echo ""
+
+# Demonstrate conflict detection in hierarchy
+echo "4. Demonstrating constraint conflict detection"
+echo ""
+
+echo "4a. Try to make API Gateway offline (conflicts with 'network' tag)"
+tag.add /plan/microservices/api-gateway offline
+plan.verify /plan/microservices/api-gateway
+echo ""
+
+echo "4b. Remove conflicting tag"
+tag.remove /plan/microservices/api-gateway offline
+plan.verify /plan/microservices/api-gateway
+echo ""
+
+# Tag propagation scenario
+echo "5. Tag propagation: Add deployment constraints to entire platform"
+echo ""
+
+echo "5a. Add kubernetes deployment requirement to root"
+tag.add /plan/microservices k8s
+tag.add /plan/microservices containerized
+plan.tags.infer /plan/microservices
+echo ""
+
+echo "5b. Create deployment subplan inheriting parent constraints"
+plan.create /plan/microservices/deployment subplan "Deployment strategy"
+echo "   (Parent has k8s + containerized, so deployment must respect this)"
+echo ""
+
+# Cross-service dependency checking
+echo "6. Cross-service dependency checking"
+echo ""
+
+echo "6a. Create dependencies node"
+plan.create /plan/microservices/deps deps "Service dependencies"
+echo "service:api-gateway -> data-pipeline" > /plan/microservices/deps
+echo "service:data-pipeline -> analytics" >> /plan/microservices/deps
+echo "service:analytics -> (independent)" >> /plan/microservices/deps
+cat /plan/microservices/deps
+echo ""
+
+echo "6b. Check if dependency chain respects tag constraints"
+echo "   API Gateway (network) -> Data Pipeline (gpu, batch)"
+echo "   Data Pipeline (gpu) -> Analytics (offline, cached)"
+echo "   ✓ Analytics is offline, so no back-dependency on network services"
+echo ""
+
+# Validate entire hierarchy
+echo "7. Validate entire microservices plan tree"
+plan.validate /plan/microservices
+echo ""
+
+# Advanced: Dynamic rule creation for domain-specific constraints
+echo "8. Advanced: Add domain-specific rules for microservices"
+echo ""
+
+echo "8a. Add rule: stateless services should use caching"
+logic.rule.add stateless-cached "stateless" "cached" 0.85 user
+echo ""
+
+echo "8b. Add rule: GPU services need parallel execution"
+logic.rule.add gpu-parallel "gpu" "parallel" 0.95 user
+echo ""
+
+echo "8c. Add rule: containerized services are portable"
+logic.rule.add container-portable "containerized" "portable" 0.9 user
+echo ""
+
+echo "8d. Re-infer tags with new rules"
+echo ""
+echo "API Gateway (with stateless-cached rule):"
+plan.tags.infer /plan/microservices/api-gateway
+echo ""
+
+echo "Data Pipeline (with gpu-parallel rule):"
+plan.tags.infer /plan/microservices/data-pipeline
+echo ""
+
+# Tag-based filtering for job assignment
+echo "9. Tag-based planning: Find all services requiring GPU"
+echo ""
+echo "Services with 'gpu' tag:"
+tag.list /plan/microservices/data-pipeline
+echo ""
+
+echo "Services with 'network' tag:"
+tag.list /plan/microservices/api-gateway
+echo ""
+
+echo "Services with 'offline' tag:"
+tag.list /plan/microservices/analytics
+echo ""
+
+# Summary
+echo "10. Final tree structure"
+tree /plan/microservices
+echo ""
+
+# Save the plan with all tags and rules
+echo "11. Saving complete plan with tags"
+plan.save microservices-plan.vfs
+logic.rules.save /plan/rules
+echo ""
+
+echo "=== Advanced Demo Complete ==="
+echo ""
+echo "Key features demonstrated:"
+echo "  ✓ Multi-level plan hierarchy (3 levels deep)"
+echo "  ✓ Tag inheritance and constraint propagation"
+echo "  ✓ Conflict detection across hierarchy levels"
+echo "  ✓ Cross-service dependency checking"
+echo "  ✓ Dynamic rule creation for domain-specific constraints"
+echo "  ✓ Tag-based service categorization"
+echo "  ✓ Job assignment with priority and ownership"
+echo "  ✓ Complete plan validation and persistence"
+echo ""
+echo "Architecture patterns shown:"
+echo "  - API Gateway: fast, network, stateless → cached (inferred)"
+echo "  - Data Pipeline: gpu, batch, heavy-compute → parallel (inferred)"
+echo "  - Analytics: offline, cached (no network conflicts)"
+echo "  - Platform: distributed, scalable, fault-tolerant, k8s, containerized"
+echo ""
