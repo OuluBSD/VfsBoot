@@ -15,13 +15,17 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 		- PlanDeps, PlanImplemented, PlanResearch, PlanNotes
 		- All nodes support read/write as formatted text (markdown-style lists)
 		- PlannerContext for navigation (forward/backward modes, history, visible nodes)
-	- **[TODO]** Shell commands for plan management:
-		- `plan.create <path> [type]` - Create new plan node
-		- `plan.add.<type> <path> <content>` - Add items to plan lists
+	- **[DONE]** Shell commands for plan management:
+		- `plan.create <path> <type> [content]` - Create new plan node (root, subplan, goals, ideas, strategy, jobs, deps, implemented, research, notes)
 		- `plan.goto <path>` - Navigate planner context
 		- `plan.forward` / `plan.backward` - Change navigation mode
-		- `plan.context.add/remove/list` - Manage visible nodes for AI
+		- `plan.context.add/remove/clear/list` - Manage visible nodes for AI
+		- `plan.jobs.add <path> <desc> [priority] [assignee]` - Add job to plan
 		- `plan.jobs.complete <path> <index>` - Mark jobs as done
+		- `plan.save [file]` - Save /plan tree to plan.vfs (default)
+		- `plan.status` - Show current planner state
+		- Auto-load plan.vfs on startup with /plan tree initialization
+		- Full serialization/deserialization support for all PlanNode types
 	- **[TODO]** Planning loop integration:
 		- Interactive AI discussion workflow (plan.discuss)
 		- Forward mode: add details to plans (root → leaves)
