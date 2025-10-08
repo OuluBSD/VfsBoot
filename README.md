@@ -44,15 +44,16 @@ Environment variables:
 
 ## Filesystem Mounting
 
-`codex` supports mounting host filesystems and shared libraries into the VFS:
+`codex` supports mounting host filesystems, shared libraries, and remote VFS instances:
 
 - `mount <host-path> <vfs-path>` — bind a host directory or file into the VFS, enabling transparent read/write access to real files
 - `mount.lib <lib-path> <vfs-path>` — load a shared library (.so/.dll) and expose it as a VFS directory with symbol information
-- `mount.list` — show all active mounts with their host paths and types (m=filesystem, l=library)
+- `mount.remote <host> <port> <remote-vfs-path> <local-vfs-path>` — mount a remote codex instance's VFS over TCP
+- `mount.list` — show all active mounts with their host paths and types (m=filesystem, l=library, r=remote)
 - `mount.allow` / `mount.disallow` — enable/disable mounting capability (existing mounts remain active)
 - `unmount <vfs-path>` — remove a mount point
 
-Example:
+### Local Filesystem Example
 ```sh
 mkdir /mnt
 mount tests /mnt/tests          # mount host directory
@@ -61,7 +62,19 @@ mount.lib tests/libtest.so /dev/testlib  # mount shared library
 cat /dev/testlib/_info          # view library metadata
 ```
 
-Mount nodes (`m`) and library nodes (`l`) appear in directory listings with their special type markers. Mounted filesystems provide full read/write access to host files, while library nodes expose loaded symbols for inspection.
+### Remote VFS Example
+```sh
+# On server machine (192.168.1.100)
+./codex --daemon 9999
+mount /path/to/data /vfs/data
+
+# On client machine
+mount.remote 192.168.1.100 9999 /vfs/data /remote
+ls /remote                      # browse remote server's VFS
+cat /remote/file.txt            # read remote file
+```
+
+Mount nodes appear with type markers: `m` (filesystem), `l` (library), `r` (remote). See [docs/REMOTE_VFS.md](docs/REMOTE_VFS.md) for detailed remote mounting documentation.
 
 ## Overlays
 

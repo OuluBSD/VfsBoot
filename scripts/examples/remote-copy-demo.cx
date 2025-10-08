@@ -1,0 +1,58 @@
+# Remote File Copy Demonstration
+# Shows copying files between two actual filesystems via VFS
+
+# Setup scenario:
+# Host A: mounts /tmp/source-dir to /vfs/source, runs daemon on port 9999
+# Host B: mounts /tmp/dest-dir to /vfs/dest, mounts remote A:/vfs/source to /remote/source
+
+echo "=== Remote File Copy Demo ==="
+echo ""
+echo "This demo shows copying between real filesystems on different hosts"
+echo "via VFS remote mounts"
+echo ""
+
+# Create local test directory and mount it
+echo "Setting up local destination..."
+mkdir /vfs/local-dest
+echo "test content from remote" > /tmp/test-file.txt
+echo ""
+
+# Mount local filesystem for destination
+echo "Mounting local /tmp to /vfs/tmpfs..."
+mount /tmp /vfs/tmpfs
+echo ""
+
+# Mount remote VFS (assumes server has /tmp mounted at /vfs/tmpfs)
+echo "Mounting remote server's /vfs/tmpfs to /remote/tmpfs..."
+mount.remote localhost 9999 /vfs/tmpfs /remote/tmpfs
+echo ""
+
+# Show what's available remotely
+echo "Files available on remote server's /vfs/tmpfs:"
+ls /remote/tmpfs 2>&1 | head -10
+echo ""
+
+# Try copying a file
+echo "Attempting to read remote file..."
+cat /remote/tmpfs/test-file.txt 2>&1 || echo "Note: test-file.txt may not exist on remote"
+echo ""
+
+# Show mount status
+echo "Current mounts:"
+mount.list
+echo ""
+
+# Cleanup
+echo "Cleaning up mounts..."
+unmount /remote/tmpfs
+unmount /vfs/tmpfs
+echo ""
+echo "Demo complete!"
+echo ""
+echo "For real usage between two hosts:"
+echo "  Host A: ./codex --daemon 9999"
+echo "          mount /real/path/A /vfs/data"
+echo ""
+echo "  Host B: mount /real/path/B /vfs/local"
+echo "          mount.remote hostA 9999 /vfs/data /remote/data"
+echo "          # Now copy: cat /remote/data/file.txt > /vfs/local/file.txt"

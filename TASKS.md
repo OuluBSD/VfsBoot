@@ -3,11 +3,6 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 
 ## Upcoming: important (in order)
-- remote filesystem mounting over network (requires netcat-like implementation or library like libssh/libfuse)
-	- enable mounting of network filesystems using protocol over socket
-	- consider using existing libraries (libssh for SFTP, libfuse for custom protocols)
-	- may require background thread for network I/O
-	- should integrate with existing mount system architecture
 - planner core engine for breakdown/context (action/state model, A* search, cost heuristics)
 	- we need a very hierarchical repository-wide plan with many vertical steps and details, to work even with low quality AI. we need multiple types of AI (generic, pair programming). let's discuss how we create a system to use low quality AI agents
 		- we should take hints from Gentoo's emerge: USE flags and a list of "packages" to emerge. We should estimate the whole program starting from the most coarsest node and then add details
@@ -70,6 +65,20 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 ##
 
 ## Completed
+- **Remote VFS mounting over network** (2025-10-08):
+  - Implemented RemoteNode for transparent remote VFS access via TCP sockets
+  - Added daemon mode: `--daemon <port>` to run codex as server accepting remote connections
+  - EXEC protocol: line-based command execution (EXEC <cmd> → OK <output> | ERR <msg>)
+  - mount.remote command: `mount.remote <host> <port> <remote-vfs-path> <local-vfs-path>`
+  - Thread-safe socket communication with connection pooling and lazy connection
+  - Integration with mount system: MountType::Remote, 'r' type marker in mount.list
+  - Remote commands executed via shell (popen) allowing VFS and system command access
+  - Use case: copy files between real filesystems on different hosts via VFS layer
+  - Created demonstration scripts: remote-mount-demo.cx, remote-copy-demo.cx
+  - Comprehensive documentation in docs/REMOTE_VFS.md
+  - Updated README.md, AGENTS.md, HOWTO_SCRIPTS.md with remote mount examples
+  - Note: libssh available but TCP-only implementation prioritized for simplicity
+  - Future enhancements: SSH/SFTP transport, authentication, background I/O threads
 - **Filesystem and library mounting** (2025-10-08):
   - Implemented MountNode for transparent host filesystem access (read/write to real files and directories)
   - Implemented LibraryNode for .so/.dll shared library loading via dlopen/dlsym

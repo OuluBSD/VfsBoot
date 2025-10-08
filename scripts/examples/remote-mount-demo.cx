@@ -1,0 +1,44 @@
+# Remote VFS Mount Demonstration
+# This script demonstrates mounting a remote codex instance's VFS
+
+# Note: This demo requires two codex instances running:
+# 1. Server instance: ./codex --daemon 9999
+# 2. Client instance: ./codex scripts/examples/remote-mount-demo.cx -
+
+echo "=== Remote VFS Mount Demo ==="
+echo ""
+
+# Check if we can connect (assumes daemon running on localhost:9999)
+echo "Attempting to mount remote VFS from localhost:9999..."
+echo "Make sure server is running: ./codex --daemon 9999"
+echo ""
+
+# Mount root VFS from remote server
+mount.remote localhost 9999 / /remote
+echo "Remote VFS mounted at /remote"
+echo ""
+
+# List remote VFS contents
+echo "Listing remote VFS root:"
+ls /remote
+echo ""
+
+# Try to read a file from remote
+echo "Trying to cat /remote/env (if it exists):"
+cat /remote/env 2>&1 || echo "Note: /remote/env may not exist on remote server"
+echo ""
+
+# Demonstrate directory traversal
+echo "Listing /remote/src:"
+ls /remote/src 2>&1 || echo "Note: /remote/src may not exist"
+echo ""
+
+# Show mount info
+echo "Current mounts:"
+mount.list
+echo ""
+
+# Cleanup
+echo "Unmounting remote VFS:"
+unmount /remote
+echo "Demo complete!"

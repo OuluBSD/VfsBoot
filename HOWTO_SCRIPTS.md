@@ -57,6 +57,35 @@ This script demonstrates:
 - Tree visualization of VFS
 - Output: Generated C++ file with hello world
 
+**scripts/examples/mount-demo.cx** - Filesystem and library mounting:
+```bash
+cat scripts/examples/mount-demo.cx | ./codex
+```
+This script demonstrates:
+- Mounting real filesystems into VFS
+- Loading shared libraries
+- Viewing mount points
+
+**scripts/examples/remote-mount-demo.cx** - Remote VFS mounting:
+```bash
+# Start server first: ./codex --daemon 9999
+cat scripts/examples/remote-mount-demo.cx | ./codex
+```
+This script demonstrates:
+- Connecting to remote codex daemon
+- Mounting remote VFS paths
+- Accessing remote files over network
+
+**scripts/examples/remote-copy-demo.cx** - Remote file copying:
+```bash
+# Start server first: ./codex --daemon 9999
+cat scripts/examples/remote-copy-demo.cx | ./codex
+```
+This script demonstrates:
+- Copying files between hosts via VFS
+- Mounting local and remote filesystems
+- Cross-network file operations
+
 **scripts/examples/overlay-demo.cx** - Overlay system demo:
 ```bash
 cat scripts/examples/overlay-demo.cx | ./codex
@@ -125,7 +154,10 @@ scripts/
 ├── examples/          # Example scripts showing features
 │   ├── hello-world.cx        # Basic S-expression demo
 │   ├── ai-hello-world.sexp   # AI bridge with C++ AST
-│   └── overlay-demo.cx       # Overlay system demo
+│   ├── mount-demo.cx         # Filesystem/library mounting demo
+│   ├── overlay-demo.cx       # Overlay system demo
+│   ├── remote-mount-demo.cx  # Remote VFS mounting demo
+│   └── remote-copy-demo.cx   # Remote file copy demo
 ├── reference/         # Reference examples of commands
 │   └── command-tour.cx       # Tour of all shell commands
 ├── tutorial/          # Learning progression

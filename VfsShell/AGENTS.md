@@ -119,11 +119,23 @@ Interactive REPL with:
 - S-expression: parse, eval
 - C++ AST: cpp.tu, cpp.include, cpp.func, cpp.param, cpp.vardecl, cpp.expr, cpp.stmt, cpp.print, cpp.return, cpp.returni, cpp.rangefor, cpp.dump
 - Overlay: overlay.mount, overlay.save, overlay.list, overlay.unmount, overlay.use, overlay.policy
+- Mounts: mount, mount.lib, mount.remote, mount.list, mount.allow, mount.disallow, unmount
 - Solution: solution.save
 - AI: ai, tools
 - Utility: help, export, exit
 
 Commands can be piped through stdin for automation.
+
+### Remote VFS Mounting
+
+Enables network-based VFS access between codex instances:
+- **RemoteNode** - Client-side VFS node communicating via TCP sockets
+- **Daemon Mode** - Server mode accepting remote mount connections (`--daemon <port>`)
+- **EXEC Protocol** - Line-based protocol executing commands on remote server
+- Commands: `mount.remote <host> <port> <remote-path> <local-path>`
+
+Use case: Copy files between real filesystems on different hosts through VFS layer.
+See [docs/REMOTE_VFS.md](../docs/REMOTE_VFS.md) for architecture and usage details.
 
 ### Terminal Handling
 
