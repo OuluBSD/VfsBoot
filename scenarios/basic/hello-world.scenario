@@ -1,0 +1,41 @@
+# hello-world.scenario - Basic C++ hello world program
+VERSION: 1
+DESCRIPTION: Create and compile a simple C++ hello world program
+
+[SETUP]
+vfs.clear
+scope.create "Initial state"
+
+[USER_INTENT]
+Create a C++ hello world program
+
+[EXPECTED_PLAN]
+plan.create "hello_world"
+plan.goto /hello_world
+plan.jobs.add "Create translation unit"
+plan.jobs.add "Add main function"
+plan.jobs.add "Add hello world output"
+plan.jobs.add "Return success code"
+
+[ACTIONS]
+cpp.tu /astcpp/hello
+cpp.include /astcpp/hello iostream 1
+cpp.func /astcpp/hello main int
+cpp.print /astcpp/hello/main "Hello, World!"
+cpp.returni /astcpp/hello/main 0
+cpp.dump /astcpp/hello /cpp/hello.cpp
+
+[VERIFICATION]
+vfs.exists /cpp/hello.cpp
+content.contains /cpp/hello.cpp "Hello, World!"
+content.contains /cpp/hello.cpp "int main()"
+content.contains /cpp/hello.cpp "return 0"
+
+[SNAPSHOTS]
+snapshot_1: Initial state
+snapshot_2: After hello world
+
+[EXPECTED_DIFF]
+added_paths: [/cpp/hello.cpp, /astcpp/hello, /astcpp/hello/main]
+modified_paths: []
+removed_paths: []
