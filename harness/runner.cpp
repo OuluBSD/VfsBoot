@@ -177,15 +177,38 @@ bool ScenarioRunner::executePlanGeneration(const Scenario& scenario, std::string
         std::cout << "User Intent: " << scenario.user_intent << "\n";
     }
 
-    // For now, we'll simulate plan generation
-    // In a full implementation, this would call the AI planner
-    plan_out = scenario.expected_plan;
+    // Build AI planning prompt (similar to discuss command planning mode)
+    std::string planning_prompt =
+        "User request: " + scenario.user_intent + "\n\n"
+        "Break this down into a structured plan. Create or update plan nodes in /plan tree.\n"
+        "Use commands like: plan.create, plan.goto, plan.jobs.add\n"
+        "Provide a concise text plan describing the steps needed.\n"
+        "Focus on the high-level approach and key actions required.\n";
 
     if (verbose_) {
-        std::cout << "Generated Plan:\n" << plan_out << "\n";
+        std::cout << "Calling AI planner...\n";
     }
 
-    return true;
+    try {
+        // Call the actual AI planner
+        plan_out = call_ai(planning_prompt);
+
+        if (verbose_) {
+            std::cout << "Generated Plan:\n" << plan_out << "\n";
+        }
+
+        // Check if we got a valid response
+        if (plan_out.empty()) {
+            std::cerr << "Error: AI returned empty plan\n";
+            return false;
+        }
+
+        return true;
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error calling AI planner: " << e.what() << "\n";
+        return false;
+    }
 }
 
 bool ScenarioRunner::verifyPlan(const Scenario& scenario, const std::string& actual_plan) {

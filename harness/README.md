@@ -26,7 +26,7 @@ Represents a reproducible test case with:
 #### ScenarioRunner
 Executes scenarios through five phases:
 1. **Setup**: Initialize VFS state
-2. **Plan Generation**: Process user intent (currently stubbed)
+2. **Plan Generation**: Process user intent through AI planner (✓ integrated)
 3. **Plan Verification**: Compare actual vs expected plan
 4. **Action Execution**: Execute planned commands (currently stubbed)
 5. **Verification**: Assert final VFS state
@@ -116,27 +116,35 @@ Output format (JSON):
 
 ## Build Status
 
-**Status**: 95% complete, pending build system refactoring
+**Status**: ✓ COMPLETE - Both binaries build and run successfully
 
-**Issue**: Both `VfsShell/codex.cpp` and `harness/demo.cpp` define `main()`, causing link-time conflict.
+**Solution**: Main function wrapped with `#ifndef CODEX_NO_MAIN / #endif` in VfsShell/codex.cpp
 
-**Solution options**:
-1. Wrap `main()` in codex.cpp with `#ifndef CODEX_LIB_ONLY`
-2. Move `main()` from codex.cpp to separate `VfsShell/main.cpp`
-3. Create static library from VFS/Scope/Planner code
-
-**Build targets** (defined but not working):
+**Build targets**:
 ```bash
-make planner-demo    # Currently fails at link
-make planner-train   # Currently fails at link
+# Build library object
+x86_64-pc-linux-gnu-g++ -DCODEX_NO_MAIN -c VfsShell/codex.cpp -o build/codex_lib.o
+
+# Build planner_demo (908K)
+x86_64-pc-linux-gnu-g++ harness/demo.cpp build/codex_lib.o build/scenario.o build/runner.o \
+    VfsShell/snippet_catalog.cpp VfsShell/utils.cpp -o planner_demo \
+    -lblake3 -lsvn_delta-1 -lsvn_subr-1 -lexpat -lz -lmagic -llz4 -lutf8proc -laprutil-1 -lapr-1
+
+# Build planner_train (934K)
+x86_64-pc-linux-gnu-g++ harness/train.cpp build/codex_lib.o build/scenario.o build/runner.o \
+    VfsShell/snippet_catalog.cpp VfsShell/utils.cpp -o planner_train \
+    -lblake3 -lsvn_delta-1 -lsvn_subr-1 -lexpat -lz -lmagic -llz4 -lutf8proc -laprutil-1 -lapr-1
 ```
 
 ## Implementation Notes
 
 ### Current Limitations
 
-1. **Plan Generation**: Currently returns expected_plan verbatim
-   - TODO: Integrate with actual AI planner
+1. **Plan Generation**: ✓ COMPLETE - Integrated with actual AI planner
+   - Calls `call_ai()` with planning prompts
+   - Supports both OpenAI and Llama providers
+   - Language configurable via `CODEX_ENGLISH_ONLY` environment variable
+   - Known issue: Plan verification uses exact text matching (too strict for AI-generated plans)
 
 2. **Action Execution**: Currently stubbed out
    - TODO: Execute cpp.* commands through shell dispatcher
@@ -164,8 +172,49 @@ The harness is designed to integrate with:
 
 ## Next Steps
 
-1. Fix build system (resolve main() conflict)
-2. Integrate actual AI planner for plan generation
-3. Execute actions through shell command dispatcher
-4. Create comprehensive scenario library
-5. Implement feedback loop for planner training
+1. ~~Fix build system (resolve main() conflict)~~ ✓ COMPLETE
+2. ~~Integrate actual AI planner for plan generation~~ ✓ COMPLETE
+3. Improve plan verification: Use semantic matching instead of exact text comparison
+4. Execute actions through shell command dispatcher
+5. Create comprehensive scenario library
+6. Implement feedback loop for planner training
+
+## AI Planner Integration (2025-10-09)
+
+The scenario harness now calls the actual AI planner instead of returning stubbed plans.
+
+**Implementation**: `harness/runner.cpp:executePlanGeneration()`
+- Constructs planning prompt with user intent
+- Calls `call_ai()` to generate plan
+- Handles errors and validates non-empty response
+
+**Language Support**: `VfsShell/codex.cpp:system_prompt_text()`
+- Auto-detects language from `LANG` environment variable
+- Supports `CODEX_ENGLISH_ONLY=1` to force English responses
+- Defaults to Finnish if `fi_FI` locale detected
+
+**Testing**:
+```bash
+# Test with English mode
+CODEX_ENGLISH_ONLY=1 ./planner_demo scenarios/basic/simple-file-creation.scenario --verbose
+
+# Test with default (auto-detect from LANG)
+./planner_demo scenarios/basic/simple-file-creation.scenario --verbose
+```
+
+**Example Output**:
+```
+User Intent: Create a text file with hello world content
+Calling AI planner...
+Generated Plan:
+AI: ### Plan to Create a Text File with "Hello World" Content
+
+1. **Create Plan Directory**:
+   - Create a directory to store the plan.
+
+2. **Create Plan Nodes**:
+   - Node for the overall task.
+   - Node for creating the text file.
+   - Node for writing "Hello World" to the file.
+...
+```

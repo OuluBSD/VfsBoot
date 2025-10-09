@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>
+#include <apr_general.h>
 
 void print_usage(const char* prog) {
     std::cout << "Usage: " << prog << " [options] <scenario-file>\n";
@@ -16,6 +17,17 @@ void print_usage(const char* prog) {
 }
 
 int main(int argc, char* argv[]) {
+    // Initialize APR (required for BinaryDiff/ScopeStore)
+    apr_status_t status = apr_initialize();
+    if (status != APR_SUCCESS) {
+        char errbuf[256];
+        apr_strerror(status, errbuf, sizeof(errbuf));
+        std::cerr << "Error: Failed to initialize APR: " << errbuf << "\n";
+        return 1;
+    }
+    // Register cleanup
+    atexit(apr_terminate);
+
     bool verbose = false;
     size_t max_iterations = 10;
     std::string scenario_file;

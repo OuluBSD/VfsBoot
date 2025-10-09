@@ -6,6 +6,7 @@
 #include <vector>
 #include <filesystem>
 #include <cstring>
+#include <apr_general.h>
 
 namespace fs = std::filesystem;
 
@@ -56,6 +57,17 @@ std::vector<std::string> find_scenario_files(const std::string& dir) {
 }
 
 int main(int argc, char* argv[]) {
+    // Initialize APR (required for BinaryDiff/ScopeStore)
+    apr_status_t status = apr_initialize();
+    if (status != APR_SUCCESS) {
+        char errbuf[256];
+        apr_strerror(status, errbuf, sizeof(errbuf));
+        std::cerr << "Error: Failed to initialize APR: " << errbuf << "\n";
+        return 1;
+    }
+    // Register cleanup
+    atexit(apr_terminate);
+
     bool verbose = false;
     size_t max_iterations = 10;
     std::string output_file = "training_data.json";

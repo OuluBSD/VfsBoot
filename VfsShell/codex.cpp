@@ -5042,8 +5042,30 @@ std::string DiscussSession::generate_session_id(){
 
 // ====== OpenAI helpers ======
 static std::string system_prompt_text(){
+    // Check if English-only mode is requested
+    const char* english_only = std::getenv("CODEX_ENGLISH_ONLY");
+    bool use_english = (english_only && std::string(english_only) == "1");
+
+    // Detect language from environment if not forced to English
+    std::string lang_instruction;
+    if (use_english) {
+        lang_instruction = "\nRespond concisely in English.";
+    } else {
+        // Detect language from LANG environment variable
+        const char* lang_env = std::getenv("LANG");
+        bool is_finnish = false;
+        if (lang_env) {
+            std::string lang_str(lang_env);
+            is_finnish = (lang_str.find("fi_") == 0 || lang_str.find("fi.") == 0 ||
+                         lang_str.find("finnish") != std::string::npos ||
+                         lang_str.find("Finnish") != std::string::npos);
+        }
+        lang_instruction = is_finnish ? "\nRespond concisely in Finnish."
+                                      : "\nRespond concisely in English.";
+    }
+
     return std::string("You are a codex-like assistant embedded in a tiny single-binary IDE.\n") +
-           snippets::tool_list() + "\nRespond concisely in Finnish.";
+           snippets::tool_list() + lang_instruction;
 }
 std::string build_responses_payload(const std::string& model, const std::string& user_prompt){
     std::string sys = system_prompt_text();
