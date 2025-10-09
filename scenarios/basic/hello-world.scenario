@@ -1,6 +1,5 @@
-# hello-world.scenario - Basic C++ hello world program
-VERSION: 1
-DESCRIPTION: Create and compile a simple C++ hello world program
+name: hello-world
+description: Create and compile a simple C++ hello world program
 
 [SETUP]
 vfs.clear
