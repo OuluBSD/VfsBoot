@@ -474,10 +474,21 @@ bool ClangParser::parseFile(const std::string& filepath, const std::string& vfs_
     // Get root cursor
     CXCursor cursor = clang_getTranslationUnitCursor(tu);
 
+    // Extract node name from target path
+    size_t last_slash = vfs_target_path.rfind('/');
+    std::string node_name = (last_slash != std::string::npos)
+        ? vfs_target_path.substr(last_slash + 1)
+        : vfs_target_path;
+
+    // If no node name provided, use "translation_unit" as default
+    if (node_name.empty()) {
+        node_name = "translation_unit";
+    }
+
     // Convert to AST node
     SourceLocation loc = getLocation(cursor);
     auto root = std::make_shared<ClangTranslationUnitDecl>(
-        "translation_unit",
+        node_name,
         loc,
         filepath
     );
@@ -486,7 +497,6 @@ bool ClangParser::parseFile(const std::string& filepath, const std::string& vfs_
     visitChildren(cursor, root);
 
     // Create target directory in VFS and add the node
-    size_t last_slash = vfs_target_path.rfind('/');
     if (last_slash != std::string::npos) {
         std::string parent_path = vfs_target_path.substr(0, last_slash);
         vfs.mkdir(parent_path, true);
@@ -540,10 +550,21 @@ bool ClangParser::parseString(const std::string& source, const std::string& file
     // Get root cursor
     CXCursor cursor = clang_getTranslationUnitCursor(tu);
 
+    // Extract node name from target path
+    size_t last_slash = vfs_target_path.rfind('/');
+    std::string node_name = (last_slash != std::string::npos)
+        ? vfs_target_path.substr(last_slash + 1)
+        : vfs_target_path;
+
+    // If no node name provided, use "translation_unit" as default
+    if (node_name.empty()) {
+        node_name = "translation_unit";
+    }
+
     // Convert to AST node
     SourceLocation loc = getLocation(cursor);
     auto root = std::make_shared<ClangTranslationUnitDecl>(
-        "translation_unit",
+        node_name,
         loc,
         filename
     );
@@ -552,7 +573,6 @@ bool ClangParser::parseString(const std::string& source, const std::string& file
     visitChildren(cursor, root);
 
     // Create target directory in VFS and add the node
-    size_t last_slash = vfs_target_path.rfind('/');
     if (last_slash != std::string::npos) {
         std::string parent_path = vfs_target_path.substr(0, last_slash);
         vfs.mkdir(parent_path, true);
