@@ -3,7 +3,11 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 
 ## Upcoming: important (in order)
-- scenario harness binaries (`planner_demo`, `planner_train`) and scripted breakdown loop for validation
+- **[IN PROGRESS]** scenario harness binaries (`planner_demo`, `planner_train`) - 95% complete, needs build refactoring
+  - Status: All harness code implemented (harness/scenario.{h,cpp}, harness/runner.{h,cpp}, harness/demo.cpp, harness/train.cpp)
+  - Remaining: Resolve multiple main() conflict (codex.cpp and demo.cpp both have main())
+  - Solution: Either wrap codex.cpp main() with #ifndef CODEX_LIB_ONLY, or split main() to separate file
+  - Build targets added to Makefile and CMakeLists.txt but currently fail at link time
 - feedback pipeline for planner rule evolution (metrics capture, rule patch staging, optional AI assistance)
 - integrate planner/context system into CLI once core pieces are stable
 - add in-binary sample runner command `sample.run`

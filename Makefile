@@ -6,15 +6,30 @@ VFSSHELL_SRC := VfsShell/codex.cpp VfsShell/snippet_catalog.cpp VfsShell/utils.c
 VFSSHELL_HDR := VfsShell/codex.h VfsShell/snippet_catalog.h VfsShell/utils.h
 VFSSHELL_BIN := codex
 
-.PHONY: all clean debug release sample test-lib
+HARNESS_SRC := harness/scenario.cpp harness/runner.cpp
+HARNESS_HDR := harness/scenario.h harness/runner.h
+PLANNER_DEMO_BIN := planner_demo
+PLANNER_TRAIN_BIN := planner_train
+
+.PHONY: all clean debug release sample test-lib planner-demo planner-train
 
 all: $(VFSSHELL_BIN)
+
+planner-demo: $(PLANNER_DEMO_BIN)
+
+planner-train: $(PLANNER_TRAIN_BIN)
 
 $(VFSSHELL_BIN): $(VFSSHELL_SRC) $(VFSSHELL_HDR)
 	$(CXX) $(CXXFLAGS) $(VFSSHELL_SRC) -o $@ $(LDFLAGS)
 
+$(PLANNER_DEMO_BIN): harness/demo.cpp $(HARNESS_SRC) $(HARNESS_HDR) $(VFSSHELL_SRC) $(VFSSHELL_HDR)
+	$(CXX) $(CXXFLAGS) harness/demo.cpp $(HARNESS_SRC) $(VFSSHELL_SRC) -o $@ $(LDFLAGS)
+
+$(PLANNER_TRAIN_BIN): harness/train.cpp $(HARNESS_SRC) $(HARNESS_HDR) $(VFSSHELL_SRC) $(VFSSHELL_HDR)
+	$(CXX) $(CXXFLAGS) harness/train.cpp $(HARNESS_SRC) $(VFSSHELL_SRC) -o $@ $(LDFLAGS)
+
 clean:
-	rm -f $(VFSSHELL_BIN)
+	rm -f $(VFSSHELL_BIN) $(PLANNER_DEMO_BIN) $(PLANNER_TRAIN_BIN)
 	rm -rf build
 
 BUILD_DIR := build

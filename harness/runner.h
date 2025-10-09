@@ -4,99 +4,60 @@
 #include "../VfsShell/codex.h"
 #include "scenario.h"
 #include <memory>
+#include <vector>
+#include <string>
 
 namespace harness {
+
+// Forward declarations
+struct Scenario;
+struct BreakdownResult;
 
 // Scenario runner - executes scenarios and collects results
 class ScenarioRunner {
 public:
-    Vfs vfs;
-    ScopeStore scope_store;
-    TagRegistry& tag_registry;
-    TagStorage& tag_storage;
+    ScenarioRunner(Vfs& vfs, ScopeStore& store);
 
-    ScenarioRunner()
-        : tag_registry(vfs.tag_registry)
-        , tag_storage(vfs.tag_storage) {}
+    void setVerbose(bool v);
+    bool runScenario(const Scenario& scenario);
 
-    // Execute single scenario
-    ScenarioMetrics executeScenario(const Scenario& scenario);
-
-    // Execute command from scenario
-    bool executeCommand(const std::string& command);
-
-    // Verification
-    bool verifyCondition(const std::string& condition);
-
-    // Training data collection
-    TrainingExample captureTrainingExample(
-        const std::string& intent,
-        uint64_t snapshot_id
-    );
-
-    // Metrics
-    const ScenarioMetrics& lastMetrics() const { return last_metrics; }
+    Vfs& getVfs() { return vfs_; }
+    const Vfs& getVfs() const { return vfs_; }
 
 private:
-    ScenarioMetrics last_metrics;
-    std::chrono::steady_clock::time_point start_time;
+    Vfs& vfs_;
+    ScopeStore& scope_store_;
+    bool verbose_;
 
-    void startTimer();
-    double elapsedMs() const;
+    bool runSetup(const Scenario& scenario);
+    bool executePlanGeneration(const Scenario& scenario, std::string& plan_out);
+    bool verifyPlan(const Scenario& scenario, const std::string& actual_plan);
+    bool executeActions(const Scenario& scenario);
+    bool verifyFinalState(const Scenario& scenario);
+
+    std::vector<std::string> tokenizeCommand(const std::string& cmd);
+};
+
+// Breakdown result
+struct BreakdownResult {
+    bool success;
+    size_t iterations;
+    std::string error_message;
 };
 
 // Breakdown loop - validates planner decomposition
 class BreakdownLoop {
 public:
-    using ComplexityLevel = BreakdownResult::ComplexityLevel;
+    BreakdownLoop(ScenarioRunner& runner, ScopeStore& store);
 
-    BreakdownLoop(ScenarioRunner& runner) : runner(runner) {}
-
-    // Run breakdown validation
-    std::vector<BreakdownResult> validateBreakdown(
-        const std::vector<std::string>& scenario_files
-    );
-
-    // Metrics by complexity level
-    double accuracyByLevel(ComplexityLevel level) const;
-    double averageSteps(ComplexityLevel level) const;
-    double successRate(ComplexityLevel level) const;
-
-    // Reporting
-    void generateReport(const std::string& output_path);
-    void printSummary() const;
+    void setMaxIterations(size_t n);
+    BreakdownResult run(const Scenario& scenario);
+    std::string generateFeedback(const BreakdownResult& result);
 
 private:
-    ScenarioRunner& runner;
-    std::vector<BreakdownResult> results;
-
-    ComplexityLevel determineComplexity(const Scenario& scenario) const;
-    bool validateDecomposition(
-        const Scenario& scenario,
-        const std::vector<std::string>& actual_steps
-    );
-};
-
-// Training data collector
-class TrainingCollector {
-public:
-    TrainingCollector(ScenarioRunner& runner) : runner(runner) {}
-
-    // Collect training examples from scenarios
-    void collectFromScenarios(const std::vector<std::string>& scenario_files);
-
-    // Export formats
-    void exportJSONL(const std::string& output_path);
-    void exportBinary(const std::string& output_path);
-
-    // Statistics
-    size_t exampleCount() const { return examples.size(); }
-    size_t successCount() const;
-    size_t failureCount() const;
-
-private:
-    ScenarioRunner& runner;
-    std::vector<TrainingExample> examples;
+    ScenarioRunner& runner_;
+    ScopeStore& scope_store_;
+    size_t max_iterations_;
 };
 
 } // namespace harness

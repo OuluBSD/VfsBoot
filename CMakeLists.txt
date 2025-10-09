@@ -28,11 +28,13 @@ find_library(BLAKE3_LIBRARY blake3 REQUIRED)
 set(VFSSHELL_SOURCES
     VfsShell/codex.cpp
     VfsShell/snippet_catalog.cpp
+    VfsShell/utils.cpp
 )
 
-# Harness sources (for future planner_demo and planner_train)
+# Harness sources
 set(HARNESS_SOURCES
     harness/scenario.cpp
+    harness/runner.cpp
 )
 
 # Main executable
@@ -78,6 +80,42 @@ else()
     message(STATUS "Release flags: ${CMAKE_CXX_FLAGS_RELEASE}")
 endif()
 
-# Future targets (uncomment when ready)
-# add_executable(planner_demo harness/demo.cpp ${VFSSHELL_SOURCES} ${HARNESS_SOURCES})
-# add_executable(planner_train harness/train.cpp ${VFSSHELL_SOURCES} ${HARNESS_SOURCES})
+# Planner harness executables
+add_executable(planner_demo harness/demo.cpp ${VFSSHELL_SOURCES} ${HARNESS_SOURCES})
+add_executable(planner_train harness/train.cpp ${VFSSHELL_SOURCES} ${HARNESS_SOURCES})
+
+# Include directories for harness binaries
+target_include_directories(planner_demo PRIVATE
+    ${SVN_DELTA_INCLUDE_DIRS}
+    ${SVN_SUBR_INCLUDE_DIRS}
+)
+target_include_directories(planner_train PRIVATE
+    ${SVN_DELTA_INCLUDE_DIRS}
+    ${SVN_SUBR_INCLUDE_DIRS}
+)
+
+# Compiler definitions for harness binaries
+target_compile_definitions(planner_demo PRIVATE
+    ${SVN_DELTA_CFLAGS_OTHER}
+    ${SVN_SUBR_CFLAGS_OTHER}
+)
+target_compile_definitions(planner_train PRIVATE
+    ${SVN_DELTA_CFLAGS_OTHER}
+    ${SVN_SUBR_CFLAGS_OTHER}
+)
+
+# Link libraries for harness binaries
+target_link_libraries(planner_demo PRIVATE
+    ${BLAKE3_LIBRARY}
+    ${SVN_DELTA_LIBRARIES}
+    ${SVN_SUBR_LIBRARIES}
+    pthread
+    dl
+)
+target_link_libraries(planner_train PRIVATE
+    ${BLAKE3_LIBRARY}
+    ${SVN_DELTA_LIBRARIES}
+    ${SVN_SUBR_LIBRARIES}
+    pthread
+    dl
+)
