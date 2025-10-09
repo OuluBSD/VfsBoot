@@ -53,8 +53,93 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 	
 ## Upcoming: important (in order)
-- parse (libclang): import clang test suite files to vfs
-	- also collect what preprocessor sees
+
+### Phase 1: libclang Foundation - AST Structure, Locations, Type Links (IN PROGRESS)
+- **Goal**: Parse hello world C++ program, dump AST, regenerate C++ code, compile and run
+- **Purpose**: Fast codebase indexing for efficient AI context building
+
+- **Status**: Headers complete, implementation pending
+  - ✅ Makefile updated with libclang linking (-I/usr/lib/llvm/21/include -L/usr/lib/llvm/21/lib64 -lclang)
+  - ✅ libclang verified working (test program compiled and ran successfully)
+  - ✅ Complete AST node structure defined in codex.h (lines 966-1356):
+    - ✅ SourceLocation struct for file:line:column tracking
+    - ✅ ClangAstNode base class (inherits from AstNode → VfsNode)
+    - ✅ Type nodes (5 types): ClangType, ClangBuiltinType, ClangPointerType, ClangReferenceType, ClangRecordType, ClangFunctionProtoType
+    - ✅ Declaration nodes (9 types): ClangTranslationUnitDecl, ClangFunctionDecl, ClangVarDecl, ClangParmDecl, ClangFieldDecl, ClangClassDecl, ClangStructDecl, ClangEnumDecl, ClangNamespaceDecl, ClangTypedefDecl
+    - ✅ Statement nodes (9 types): ClangCompoundStmt, ClangIfStmt, ClangForStmt, ClangWhileStmt, ClangReturnStmt, ClangDeclStmt, ClangExprStmt, ClangBreakStmt, ClangContinueStmt
+    - ✅ Expression nodes (8 types): ClangBinaryOperator, ClangUnaryOperator, ClangCallExpr, ClangDeclRefExpr, ClangIntegerLiteral, ClangStringLiteral, ClangMemberRefExpr, ClangArraySubscriptExpr
+    - ✅ ClangParser class structure defined
+    - ✅ Shell command prototypes: cmd_parse_file(), cmd_parse_dump()
+
+- **TODO - Implementation (VfsShell/clang_parser.cpp, est. ~1500 lines)**:
+  - [ ] Implement SourceLocation::toString()
+  - [ ] Implement dump() methods for all node types (31 methods)
+  - [ ] Implement ClangParser::parseFile() - parse C++ file from disk
+  - [ ] Implement ClangParser::parseString() - parse C++ source from string
+  - [ ] Implement ClangParser::convertCursor() - main cursor-to-VfsNode converter
+  - [ ] Implement ClangParser::getLocation() - extract source location from CXCursor
+  - [ ] Implement ClangParser::getTypeString() - convert CXType to string
+  - [ ] Implement ClangParser::convertType() - convert CXType to ClangType node
+  - [ ] Implement ClangParser::visitChildren() - recursive AST traversal
+  - [ ] Implement ClangParser::handleDeclaration() - process declaration cursors
+  - [ ] Implement ClangParser::handleStatement() - process statement cursors
+  - [ ] Implement ClangParser::handleExpression() - process expression cursors
+  - [ ] Implement cmd_parse_file() - shell command for `parse.file <path>`
+  - [ ] Implement cmd_parse_dump() - shell command for `parse.dump [path]`
+  - [ ] Wire up commands in shell dispatcher (codex.cpp)
+  - [ ] Add commands to help text
+
+- **TODO - C++ Code Regeneration (est. ~500 lines)**:
+  - [ ] Implement ClangAstNode::toCppString() method (or similar)
+  - [ ] Walk ClangAstNode tree and emit C++ source
+  - [ ] Handle proper indentation and formatting
+  - [ ] Shell command: `parse.generate <ast-path> <output-path>`
+
+- **TODO - Testing**:
+  - [ ] Create test/hello.cpp with simple main() function
+  - [ ] Parse hello.cpp → verify AST created in /ast/hello/
+  - [ ] Dump AST → verify output shows correct structure
+  - [ ] Regenerate C++ from AST → verify compilable code
+  - [ ] Compile regenerated code → verify executable
+  - [ ] Run executable → verify output matches original
+
+- **Out of scope for Phase 1**:
+  - Template instantiations (deferred to Phase 3)
+  - Preprocessor hooks (deferred to Phase 2)
+  - Complex expressions (cast operators, lambda, initializer lists - Phase 3)
+  - Full CXCursor coverage (100+ types - Phases 2-4)
+
+### Phase 2: Preprocessor Integration
+- Collect preprocessor state: macros, includes, conditional compilation
+- Hooks: CXCursor_MacroDefinition, CXCursor_MacroExpansion, CXCursor_InclusionDirective
+- Store in `/ast/<file>/preprocessor/`
+- Track macro expansion locations and include chains
+
+### Phase 3: Complete CXCursor Coverage (C++ Specific)
+- C++ features: CXCursor_Constructor, CXCursor_Destructor, CXCursor_CXXMethod, CXCursor_CXXAccessSpecifier
+- Templates: CXCursor_ClassTemplate, CXCursor_FunctionTemplate, CXCursor_TemplateTypeParameter, CXCursor_TemplateRef
+- Template instantiations: clang_getSpecializedCursorTemplate, clang_getTemplateCursorKind
+- Advanced expressions: CXCursor_CXXStaticCastExpr, CXCursor_LambdaExpr, CXCursor_InitListExpr
+- Operator overloading, conversion functions, friend declarations
+
+### Phase 4: Advanced Features
+- Multi-translation unit support with shared AST database
+- Cross-reference tracking: find all usages of function/variable
+- Call graph construction for context builder optimization
+- Type hierarchy analysis for inheritance chains
+- Symbol resolution across files
+
+### Phase 5: Clang Test Suite Import
+- Batch import Clang's test suite files
+- Validation against known-good ASTs
+- Performance benchmarking for large codebases
+- Integration with context builder for token budget optimization
+
+### Phase 6: AI Context Optimization
+- Fast symbol lookup: "find all calls to function X" without full VFS scan
+- Incremental parsing: only re-parse modified files
+- Semantic search: "functions that return std::vector<int>"
+- Dependency analysis: "what needs recompilation if I change this header?"
 
 ## Upcoming: less important
 - commandline arguments: --llama, --openai, --version/-v, --help/-h, etc.

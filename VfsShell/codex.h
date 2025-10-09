@@ -964,6 +964,397 @@ void vfs_add(Vfs& vfs, const std::string& path, std::shared_ptr<VfsNode> node, s
 void cpp_dump_to_vfs(Vfs& vfs, size_t overlayId, const std::string& tuPath, const std::string& filePath);
 
 //
+// ============================================================================
+// libclang AST Nodes - Phase 1: Foundation (Declarations, Statements, Expressions, Types)
+// ============================================================================
+//
+
+// Forward declarations for libclang
+typedef struct CXTranslationUnitImpl *CXTranslationUnit;
+typedef struct CXCursor CXCursor;
+typedef struct CXType CXType;
+
+// Source location tracking
+struct SourceLocation {
+    std::string file;
+    unsigned int line;
+    unsigned int column;
+    unsigned int offset;
+
+    SourceLocation() : line(0), column(0), offset(0) {}
+    SourceLocation(std::string f, unsigned int l, unsigned int c, unsigned int o = 0)
+        : file(std::move(f)), line(l), column(c), offset(o) {}
+
+    std::string toString() const;
+};
+
+// Base class for all libclang AST nodes
+struct ClangAstNode : AstNode {
+    SourceLocation location;
+    std::string spelling;  // Name/identifier from clang_getCursorSpelling
+    std::map<std::string, std::shared_ptr<VfsNode>> ch;
+
+    ClangAstNode(std::string n, SourceLocation loc, std::string spell)
+        : AstNode(std::move(n)), location(std::move(loc)), spelling(std::move(spell)) {}
+
+    bool isDir() const override { return true; }
+    std::map<std::string, std::shared_ptr<VfsNode>>& children() override { return ch; }
+    Value eval(std::shared_ptr<Env>) override { return Value::S(spelling); }
+    std::string read() const override { return spelling; }
+
+    virtual std::string dump(int indent = 0) const = 0;
+    static std::string ind(int n) { return std::string(n * 2, ' '); }
+};
+
+// Type nodes
+struct ClangType : ClangAstNode {
+    std::string type_name;
+
+    ClangType(std::string n, SourceLocation loc, std::string spell, std::string ty)
+        : ClangAstNode(std::move(n), std::move(loc), std::move(spell)), type_name(std::move(ty)) {}
+
+    std::string dump(int indent) const override;
+};
+
+struct ClangBuiltinType : ClangType {
+    ClangBuiltinType(std::string n, SourceLocation loc, std::string spell, std::string ty)
+        : ClangType(std::move(n), std::move(loc), std::move(spell), std::move(ty)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangPointerType : ClangType {
+    std::shared_ptr<ClangType> pointee;
+
+    ClangPointerType(std::string n, SourceLocation loc, std::string spell, std::string ty)
+        : ClangType(std::move(n), std::move(loc), std::move(spell), std::move(ty)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangReferenceType : ClangType {
+    std::shared_ptr<ClangType> referenced;
+
+    ClangReferenceType(std::string n, SourceLocation loc, std::string spell, std::string ty)
+        : ClangType(std::move(n), std::move(loc), std::move(spell), std::move(ty)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangRecordType : ClangType {
+    ClangRecordType(std::string n, SourceLocation loc, std::string spell, std::string ty)
+        : ClangType(std::move(n), std::move(loc), std::move(spell), std::move(ty)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangFunctionProtoType : ClangType {
+    std::shared_ptr<ClangType> return_type;
+    std::vector<std::shared_ptr<ClangType>> param_types;
+
+    ClangFunctionProtoType(std::string n, SourceLocation loc, std::string spell, std::string ty)
+        : ClangType(std::move(n), std::move(loc), std::move(spell), std::move(ty)) {}
+    std::string dump(int indent) const override;
+};
+
+// Declaration nodes
+struct ClangDecl : ClangAstNode {
+    std::shared_ptr<ClangType> type;
+
+    ClangDecl(std::string n, SourceLocation loc, std::string spell)
+        : ClangAstNode(std::move(n), std::move(loc), std::move(spell)) {}
+};
+
+struct ClangTranslationUnitDecl : ClangDecl {
+    ClangTranslationUnitDecl(std::string n, SourceLocation loc, std::string spell)
+        : ClangDecl(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangFunctionDecl : ClangDecl {
+    std::string return_type_str;
+    std::vector<std::pair<std::string, std::string>> parameters;  // (type, name)
+    std::shared_ptr<ClangAstNode> body;  // CompoundStmt or nullptr
+
+    ClangFunctionDecl(std::string n, SourceLocation loc, std::string spell)
+        : ClangDecl(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangVarDecl : ClangDecl {
+    std::string type_str;
+    std::string var_name;
+    std::shared_ptr<ClangAstNode> initializer;  // Expr or nullptr
+
+    ClangVarDecl(std::string n, SourceLocation loc, std::string spell)
+        : ClangDecl(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangParmDecl : ClangDecl {
+    std::string type_str;
+    std::string param_name;
+
+    ClangParmDecl(std::string n, SourceLocation loc, std::string spell)
+        : ClangDecl(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangFieldDecl : ClangDecl {
+    std::string type_str;
+    std::string field_name;
+
+    ClangFieldDecl(std::string n, SourceLocation loc, std::string spell)
+        : ClangDecl(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangClassDecl : ClangDecl {
+    std::string class_name;
+    std::vector<std::shared_ptr<ClangAstNode>> bases;  // Base classes
+    std::vector<std::shared_ptr<ClangAstNode>> members;  // Fields, methods
+
+    ClangClassDecl(std::string n, SourceLocation loc, std::string spell)
+        : ClangDecl(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangStructDecl : ClangDecl {
+    std::string struct_name;
+    std::vector<std::shared_ptr<ClangAstNode>> members;
+
+    ClangStructDecl(std::string n, SourceLocation loc, std::string spell)
+        : ClangDecl(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangEnumDecl : ClangDecl {
+    std::string enum_name;
+    std::vector<std::pair<std::string, int64_t>> enumerators;  // (name, value)
+
+    ClangEnumDecl(std::string n, SourceLocation loc, std::string spell)
+        : ClangDecl(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangNamespaceDecl : ClangDecl {
+    std::string namespace_name;
+
+    ClangNamespaceDecl(std::string n, SourceLocation loc, std::string spell)
+        : ClangDecl(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangTypedefDecl : ClangDecl {
+    std::string typedef_name;
+    std::string underlying_type;
+
+    ClangTypedefDecl(std::string n, SourceLocation loc, std::string spell)
+        : ClangDecl(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+// Statement nodes
+struct ClangStmt : ClangAstNode {
+    ClangStmt(std::string n, SourceLocation loc, std::string spell)
+        : ClangAstNode(std::move(n), std::move(loc), std::move(spell)) {}
+};
+
+struct ClangCompoundStmt : ClangStmt {
+    std::vector<std::shared_ptr<ClangAstNode>> statements;
+
+    ClangCompoundStmt(std::string n, SourceLocation loc, std::string spell)
+        : ClangStmt(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangIfStmt : ClangStmt {
+    std::shared_ptr<ClangAstNode> condition;
+    std::shared_ptr<ClangAstNode> then_branch;
+    std::shared_ptr<ClangAstNode> else_branch;  // nullptr if no else
+
+    ClangIfStmt(std::string n, SourceLocation loc, std::string spell)
+        : ClangStmt(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangForStmt : ClangStmt {
+    std::shared_ptr<ClangAstNode> init;
+    std::shared_ptr<ClangAstNode> condition;
+    std::shared_ptr<ClangAstNode> increment;
+    std::shared_ptr<ClangAstNode> body;
+
+    ClangForStmt(std::string n, SourceLocation loc, std::string spell)
+        : ClangStmt(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangWhileStmt : ClangStmt {
+    std::shared_ptr<ClangAstNode> condition;
+    std::shared_ptr<ClangAstNode> body;
+
+    ClangWhileStmt(std::string n, SourceLocation loc, std::string spell)
+        : ClangStmt(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangReturnStmt : ClangStmt {
+    std::shared_ptr<ClangAstNode> return_value;  // nullptr for bare return
+
+    ClangReturnStmt(std::string n, SourceLocation loc, std::string spell)
+        : ClangStmt(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangDeclStmt : ClangStmt {
+    std::vector<std::shared_ptr<ClangAstNode>> declarations;
+
+    ClangDeclStmt(std::string n, SourceLocation loc, std::string spell)
+        : ClangStmt(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangExprStmt : ClangStmt {
+    std::shared_ptr<ClangAstNode> expression;
+
+    ClangExprStmt(std::string n, SourceLocation loc, std::string spell)
+        : ClangStmt(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangBreakStmt : ClangStmt {
+    ClangBreakStmt(std::string n, SourceLocation loc, std::string spell)
+        : ClangStmt(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangContinueStmt : ClangStmt {
+    ClangContinueStmt(std::string n, SourceLocation loc, std::string spell)
+        : ClangStmt(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+// Expression nodes
+struct ClangExpr : ClangAstNode {
+    std::shared_ptr<ClangType> expr_type;
+
+    ClangExpr(std::string n, SourceLocation loc, std::string spell)
+        : ClangAstNode(std::move(n), std::move(loc), std::move(spell)) {}
+};
+
+struct ClangBinaryOperator : ClangExpr {
+    std::string opcode;  // +, -, *, /, ==, etc.
+    std::shared_ptr<ClangAstNode> lhs;
+    std::shared_ptr<ClangAstNode> rhs;
+
+    ClangBinaryOperator(std::string n, SourceLocation loc, std::string spell, std::string op)
+        : ClangExpr(std::move(n), std::move(loc), std::move(spell)), opcode(std::move(op)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangUnaryOperator : ClangExpr {
+    std::string opcode;  // ++, --, -, !, etc.
+    std::shared_ptr<ClangAstNode> operand;
+    bool is_prefix;
+
+    ClangUnaryOperator(std::string n, SourceLocation loc, std::string spell, std::string op, bool prefix)
+        : ClangExpr(std::move(n), std::move(loc), std::move(spell)), opcode(std::move(op)), is_prefix(prefix) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangCallExpr : ClangExpr {
+    std::shared_ptr<ClangAstNode> callee;
+    std::vector<std::shared_ptr<ClangAstNode>> arguments;
+
+    ClangCallExpr(std::string n, SourceLocation loc, std::string spell)
+        : ClangExpr(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangDeclRefExpr : ClangExpr {
+    std::string referenced_decl;
+
+    ClangDeclRefExpr(std::string n, SourceLocation loc, std::string spell, std::string ref)
+        : ClangExpr(std::move(n), std::move(loc), std::move(spell)), referenced_decl(std::move(ref)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangIntegerLiteral : ClangExpr {
+    int64_t value;
+
+    ClangIntegerLiteral(std::string n, SourceLocation loc, std::string spell, int64_t val)
+        : ClangExpr(std::move(n), std::move(loc), std::move(spell)), value(val) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangStringLiteral : ClangExpr {
+    std::string value;
+
+    ClangStringLiteral(std::string n, SourceLocation loc, std::string spell, std::string val)
+        : ClangExpr(std::move(n), std::move(loc), std::move(spell)), value(std::move(val)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangMemberRefExpr : ClangExpr {
+    std::shared_ptr<ClangAstNode> base;
+    std::string member_name;
+    bool is_arrow;  // true for ->, false for .
+
+    ClangMemberRefExpr(std::string n, SourceLocation loc, std::string spell, std::string member, bool arrow)
+        : ClangExpr(std::move(n), std::move(loc), std::move(spell)), member_name(std::move(member)), is_arrow(arrow) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangArraySubscriptExpr : ClangExpr {
+    std::shared_ptr<ClangAstNode> base;
+    std::shared_ptr<ClangAstNode> index;
+
+    ClangArraySubscriptExpr(std::string n, SourceLocation loc, std::string spell)
+        : ClangExpr(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+//
+// libclang Parser Context and Visitor
+//
+
+struct ClangParser {
+    Vfs& vfs;
+    CXTranslationUnit tu;
+    std::string filename;
+    size_t node_counter;
+
+    ClangParser(Vfs& v) : vfs(v), tu(nullptr), node_counter(0) {}
+    ~ClangParser();
+
+    // Parse a C++ file
+    bool parseFile(const std::string& filepath, const std::string& vfs_target_path);
+    bool parseString(const std::string& source, const std::string& filename, const std::string& vfs_target_path);
+
+    // Convert libclang cursor to VFS AST node
+    std::shared_ptr<ClangAstNode> convertCursor(CXCursor cursor);
+
+    // Extract source location from cursor
+    static SourceLocation getLocation(CXCursor cursor);
+
+    // Extract type information
+    static std::string getTypeString(CXType type);
+    std::shared_ptr<ClangType> convertType(CXType type);
+
+    // Node naming helpers
+    std::string generateNodeName(const std::string& kind);
+
+private:
+    // Recursive visitor
+    void visitChildren(CXCursor cursor, std::shared_ptr<ClangAstNode> parent_node);
+
+    // Cursor kind dispatch
+    std::shared_ptr<ClangAstNode> handleDeclaration(CXCursor cursor);
+    std::shared_ptr<ClangAstNode> handleStatement(CXCursor cursor);
+    std::shared_ptr<ClangAstNode> handleExpression(CXCursor cursor);
+};
+
+// Shell commands for parsing
+void cmd_parse_file(Vfs& vfs, const std::vector<std::string>& args);
+void cmd_parse_dump(Vfs& vfs, const std::vector<std::string>& args);
+
+//
 // Planner AST nodes (hierarchical planning system)
 //
 struct PlanNode : AstNode {

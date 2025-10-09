@@ -1,6 +1,9 @@
 CXX ?= c++
-CXXFLAGS ?= -std=gnu++17 -O2 -Wall -Wextra -pedantic $(shell pkg-config --cflags libsvn_delta libsvn_subr)
-LDFLAGS ?= -lblake3 $(shell pkg-config --libs libsvn_delta libsvn_subr)
+LLVM_CONFIG ?= /usr/lib/llvm/21/bin/llvm-config
+LIBCLANG_CFLAGS := -I/usr/lib/llvm/21/include
+LIBCLANG_LDFLAGS := -L/usr/lib/llvm/21/lib64 -lclang
+CXXFLAGS ?= -std=gnu++17 -O2 -Wall -Wextra -pedantic $(shell pkg-config --cflags libsvn_delta libsvn_subr) $(LIBCLANG_CFLAGS)
+LDFLAGS ?= -lblake3 $(shell pkg-config --libs libsvn_delta libsvn_subr) $(LIBCLANG_LDFLAGS)
 
 VFSSHELL_SRC := VfsShell/codex.cpp VfsShell/snippet_catalog.cpp VfsShell/utils.cpp
 VFSSHELL_HDR := VfsShell/codex.h VfsShell/snippet_catalog.h VfsShell/utils.h
