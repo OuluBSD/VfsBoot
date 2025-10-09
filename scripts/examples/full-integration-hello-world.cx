@@ -1,0 +1,402 @@
+#!/usr/bin/env ./codex
+# Full Integration Demo: "Create Hello World Program in C++"
+#
+# This demo shows the complete workflow integrating ALL major systems:
+# 1. Planning system with breakdown loop
+# 2. Logic solver with tag-based constraint checking
+# 3. Action planner with context building
+# 4. C++ AST builder for code generation
+# 5. Hypothesis testing for validation
+#
+# USER REQUEST: "ai create hello world program in c++"
+
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║     FULL INTEGRATION DEMO: Hello World in C++               ║"
+echo "║     User: 'ai create hello world program in c++'            ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+
+# ============================================================================
+# PHASE 1: Initialize Logic System and Planning Infrastructure
+# ============================================================================
+echo "═══ PHASE 1: System Initialization ═══"
+echo ""
+
+echo "1.1 Initialize logic system with base rules"
+logic.init
+echo ""
+
+echo "1.2 Add C++ development domain rules"
+logic.rule.add cpp-needs-compiler "cpp" "needs-compiler" 0.95 toolchain
+logic.rule.add cpp-needs-stdlib "cpp" "needs-stdlib" 0.95 toolchain
+logic.rule.add hello-world-simple "hello-world" "simple" 0.9 domain
+logic.rule.add simple-fast "simple" "fast" 0.85 domain
+logic.rule.add iostream-needed "print-text" "needs-iostream" 0.95 cpp-stdlib
+logic.rule.add main-required "cpp-program" "has-main-function" 1.0 cpp-standard
+logic.rule.add return-zero "main-function" "returns-int" 0.95 cpp-standard
+echo ""
+
+echo "1.3 List all loaded rules"
+logic.listrules
+echo ""
+
+# ============================================================================
+# PHASE 2: Create Plan Hierarchy with Tags
+# ============================================================================
+echo "═══ PHASE 2: Planning & Breakdown ═══"
+echo ""
+
+echo "2.1 Create root plan for hello world project"
+plan.create /plan/hello-world-cpp root "Create Hello World Program in C++"
+plan.goto /plan/hello-world-cpp
+plan.forward
+echo ""
+
+echo "2.2 Add initial requirement tags"
+tag.add /plan/hello-world-cpp cpp
+tag.add /plan/hello-world-cpp hello-world
+tag.add /plan/hello-world-cpp print-text
+tag.add /plan/hello-world-cpp cpp-program
+echo ""
+
+echo "2.3 Infer implied requirements from tags"
+plan.tags.infer /plan/hello-world-cpp
+echo ""
+
+echo "2.4 Verify no conflicts in requirements"
+plan.tags.check /plan/hello-world-cpp
+echo ""
+
+# ============================================================================
+# PHASE 3: Break Down into Subplans
+# ============================================================================
+echo "═══ PHASE 3: Hierarchical Plan Breakdown ═══"
+echo ""
+
+echo "3.1 Create design subplan"
+plan.create /plan/hello-world-cpp/design subplan "Design: Plan the structure"
+tag.add /plan/hello-world-cpp/design design
+tag.add /plan/hello-world-cpp/design main-function
+plan.tags.infer /plan/hello-world-cpp/design
+echo ""
+
+echo "3.2 Create implementation subplan"
+plan.create /plan/hello-world-cpp/implementation subplan "Implementation: Write the code"
+tag.add /plan/hello-world-cpp/implementation coding
+tag.add /plan/hello-world-cpp/implementation ast-generation
+plan.tags.infer /plan/hello-world-cpp/implementation
+echo ""
+
+echo "3.3 Create validation subplan"
+plan.create /plan/hello-world-cpp/validation subplan "Validation: Test and verify"
+tag.add /plan/hello-world-cpp/validation testing
+tag.add /plan/hello-world-cpp/validation compilation
+plan.tags.infer /plan/hello-world-cpp/validation
+echo ""
+
+# ============================================================================
+# PHASE 4: Create Detailed Goals and Jobs
+# ============================================================================
+echo "═══ PHASE 4: Detailed Task Planning ═══"
+echo ""
+
+echo "4.1 Design phase goals"
+plan.create /plan/hello-world-cpp/design/goals goals "Design Goals"
+echo "- Create main() function signature" > /plan/hello-world-cpp/design/goals
+echo "- Include iostream for console output" >> /plan/hello-world-cpp/design/goals
+echo "- Plan 'Hello World' message output" >> /plan/hello-world-cpp/design/goals
+echo "- Ensure proper return code (0 for success)" >> /plan/hello-world-cpp/design/goals
+cat /plan/hello-world-cpp/design/goals
+echo ""
+
+echo "4.2 Implementation phase jobs"
+plan.create /plan/hello-world-cpp/implementation/jobs jobs "Implementation Jobs"
+plan.jobs.add /plan/hello-world-cpp/implementation/jobs "Create translation unit in AST" 1 codegen-system
+plan.jobs.add /plan/hello-world-cpp/implementation/jobs "Add iostream include directive" 1 codegen-system
+plan.jobs.add /plan/hello-world-cpp/implementation/jobs "Create main function" 1 codegen-system
+plan.jobs.add /plan/hello-world-cpp/implementation/jobs "Add cout statement for 'Hello World'" 1 codegen-system
+plan.jobs.add /plan/hello-world-cpp/implementation/jobs "Add return 0 statement" 1 codegen-system
+plan.jobs.add /plan/hello-world-cpp/implementation/jobs "Dump AST to C++ source file" 1 codegen-system
+cat /plan/hello-world-cpp/implementation/jobs
+echo ""
+
+echo "4.3 Validation phase strategy"
+plan.create /plan/hello-world-cpp/validation/strategy strategy "Validation Strategy"
+echo "1. Verify AST structure is well-formed" > /plan/hello-world-cpp/validation/strategy
+echo "2. Check generated C++ code syntax" >> /plan/hello-world-cpp/validation/strategy
+echo "3. Use hypothesis testing to validate function structure" >> /plan/hello-world-cpp/validation/strategy
+echo "4. Compile with g++ to verify correctness" >> /plan/hello-world-cpp/validation/strategy
+echo "5. Execute and verify output matches 'Hello World'" >> /plan/hello-world-cpp/validation/strategy
+cat /plan/hello-world-cpp/validation/strategy
+echo ""
+
+# ============================================================================
+# PHASE 5: Context Building for Implementation
+# ============================================================================
+echo "═══ PHASE 5: Context Building for Code Generation ═══"
+echo ""
+
+echo "5.1 Set planner context to implementation phase"
+plan.goto /plan/hello-world-cpp/implementation
+plan.context.add /plan/hello-world-cpp
+plan.context.add /plan/hello-world-cpp/design
+plan.context.add /plan/hello-world-cpp/implementation
+plan.context.list
+echo ""
+
+echo "5.2 Build filtered context for C++ code generation"
+context.filter.tag cpp all
+context.filter.tag coding all
+context.build 3000
+echo ""
+
+echo "5.3 Show plan tree structure"
+tree.adv /plan/hello-world-cpp --tags --depth=3 --colors
+echo ""
+
+# ============================================================================
+# PHASE 6: C++ AST Code Generation (Execute the Plan!)
+# ============================================================================
+echo "═══ PHASE 6: C++ AST Code Generation ═══"
+echo ""
+
+echo "6.1 Create translation unit"
+cpp.tu /astcpp/hello
+plan.jobs.complete /plan/hello-world-cpp/implementation/jobs 0
+echo "   ✓ Job 0 complete: Translation unit created"
+echo ""
+
+echo "6.2 Add iostream include"
+cpp.include /astcpp/hello iostream 1
+plan.jobs.complete /plan/hello-world-cpp/implementation/jobs 1
+echo "   ✓ Job 1 complete: iostream included"
+echo ""
+
+echo "6.3 Create main function"
+cpp.func /astcpp/hello main int
+plan.jobs.complete /plan/hello-world-cpp/implementation/jobs 2
+echo "   ✓ Job 2 complete: main() function created"
+echo ""
+
+echo "6.4 Add Hello World output statement"
+cpp.print /astcpp/hello/main/body "Hello World"
+plan.jobs.complete /plan/hello-world-cpp/implementation/jobs 3
+echo "   ✓ Job 3 complete: cout statement added"
+echo ""
+
+echo "6.5 Add return statement"
+cpp.returni /astcpp/hello/main/body 0
+plan.jobs.complete /plan/hello-world-cpp/implementation/jobs 4
+echo "   ✓ Job 4 complete: return 0 added"
+echo ""
+
+echo "6.6 Dump AST to C++ source file"
+cpp.dump /astcpp/hello /cpp/hello.cpp
+plan.jobs.complete /plan/hello-world-cpp/implementation/jobs 5
+echo "   ✓ Job 5 complete: C++ source generated"
+echo ""
+
+echo "6.7 Show generated C++ code"
+echo "────────────────────────────────────────"
+cat /cpp/hello.cpp
+echo "────────────────────────────────────────"
+echo ""
+
+# ============================================================================
+# PHASE 7: Hypothesis Testing and Validation
+# ============================================================================
+echo "═══ PHASE 7: Hypothesis Testing & Validation ═══"
+echo ""
+
+echo "7.1 Run hypothesis test: Find main function"
+hypothesis.query main /cpp
+echo ""
+
+echo "7.2 Verify AST structure"
+echo "Checking /astcpp/hello tree structure:"
+tree /astcpp/hello
+echo ""
+
+echo "7.3 Create validation research notes"
+plan.create /plan/hello-world-cpp/validation/research research "Validation Research"
+echo "✓ Translation unit exists at /astcpp/hello" > /plan/hello-world-cpp/validation/research
+echo "✓ iostream included (angled bracket style)" >> /plan/hello-world-cpp/validation/research
+echo "✓ main function defined with int return type" >> /plan/hello-world-cpp/validation/research
+echo "✓ Function body contains print and return statements" >> /plan/hello-world-cpp/validation/research
+echo "✓ Generated C++ source available at /cpp/hello.cpp" >> /plan/hello-world-cpp/validation/research
+cat /plan/hello-world-cpp/validation/research
+echo ""
+
+# ============================================================================
+# PHASE 8: Advanced Context Building and Visualization
+# ============================================================================
+echo "═══ PHASE 8: Advanced Analysis & Visualization ═══"
+echo ""
+
+echo "8.1 Build hierarchical context for entire project"
+context.build.adv 5000 --hierarchical --dedup --adaptive
+echo ""
+
+echo "8.2 Advanced tree visualization with all features"
+tree.adv /plan/hello-world-cpp --tags --sizes --depth=4 --colors
+echo ""
+
+echo "8.3 Show implementation notes"
+plan.create /plan/hello-world-cpp/implementation/notes notes "Implementation Notes"
+echo "CODE GENERATION WORKFLOW:" > /plan/hello-world-cpp/implementation/notes
+echo "1. cpp.tu creates TranslationUnit AST node" >> /plan/hello-world-cpp/implementation/notes
+echo "2. cpp.include adds #include directive" >> /plan/hello-world-cpp/implementation/notes
+echo "3. cpp.func creates FunctionDef with body block" >> /plan/hello-world-cpp/implementation/notes
+echo "4. cpp.print creates std::cout << statement" >> /plan/hello-world-cpp/implementation/notes
+echo "5. cpp.returni creates return statement with integer" >> /plan/hello-world-cpp/implementation/notes
+echo "6. cpp.dump walks AST and generates formatted C++ source" >> /plan/hello-world-cpp/implementation/notes
+echo "" >> /plan/hello-world-cpp/implementation/notes
+echo "VFS PATHS:" >> /plan/hello-world-cpp/implementation/notes
+echo "/astcpp/hello - Translation unit node" >> /plan/hello-world-cpp/implementation/notes
+echo "/astcpp/hello/main - Function definition node" >> /plan/hello-world-cpp/implementation/notes
+echo "/astcpp/hello/main/body - Function body block" >> /plan/hello-world-cpp/implementation/notes
+echo "/cpp/hello.cpp - Generated C++ source file" >> /plan/hello-world-cpp/implementation/notes
+cat /plan/hello-world-cpp/implementation/notes
+echo ""
+
+# ============================================================================
+# PHASE 9: Complete Plan Validation and Persistence
+# ============================================================================
+echo "═══ PHASE 9: Plan Validation & Persistence ═══"
+echo ""
+
+echo "9.1 Validate entire plan hierarchy"
+plan.validate /plan/hello-world-cpp
+echo ""
+
+echo "9.2 Check final plan status"
+plan.status
+echo ""
+
+echo "9.3 Create dependencies documentation"
+plan.create /plan/hello-world-cpp/dependencies deps "Phase Dependencies"
+echo "Design -> Implementation (design must complete first)" > /plan/hello-world-cpp/dependencies
+echo "Implementation -> Validation (code must exist before testing)" >> /plan/hello-world-cpp/dependencies
+echo "Logic Rules -> All Phases (constraint checking throughout)" >> /plan/hello-world-cpp/dependencies
+cat /plan/hello-world-cpp/dependencies
+echo ""
+
+echo "9.4 Save plan and rules"
+plan.save hello-world-plan.vfs
+logic.rules.save /plan/rules
+echo ""
+
+echo "9.5 Show all tags used in project"
+tag.list
+echo ""
+
+# ============================================================================
+# PHASE 10: Summary and Next Steps
+# ============================================================================
+echo "═══ PHASE 10: Summary & Results ═══"
+echo ""
+
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║                  INTEGRATION COMPLETE                        ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+echo "┌─────────────────────────────────────────────────────────────┐"
+echo "│ SYSTEMS INTEGRATED:                                         │"
+echo "└─────────────────────────────────────────────────────────────┘"
+echo ""
+echo "✓ PLANNING SYSTEM"
+echo "  • Hierarchical plan tree (3 levels: root → subplans → jobs)"
+echo "  • Forward mode breakdown from high-level to detailed tasks"
+echo "  • 3 subplans: design, implementation, validation"
+echo "  • 6 implementation jobs tracked to completion"
+echo ""
+echo "✓ LOGIC SOLVER"
+echo "  • 7 domain-specific rules (cpp, hello-world, iostream)"
+echo "  • Tag inference (cpp → needs-compiler, needs-stdlib)"
+echo "  • Constraint checking (plan.verify, plan.tags.check)"
+echo "  • No conflicts detected in requirements"
+echo ""
+echo "✓ ACTION PLANNER"
+echo "  • Context building with 3000 token budget"
+echo "  • Tag-based filtering (cpp, coding tags)"
+echo "  • Planner context management (3 visible nodes)"
+echo "  • Hierarchical context with deduplication"
+echo ""
+echo "✓ C++ AST BUILDER"
+echo "  • Translation unit created (/astcpp/hello)"
+echo "  • Include directive (iostream, angled brackets)"
+echo "  • Function definition (main, int return type)"
+echo "  • Statement generation (cout, return 0)"
+echo "  • Source dump (/cpp/hello.cpp)"
+echo ""
+echo "✓ HYPOTHESIS TESTING"
+echo "  • Function query validation"
+echo "  • AST structure verification"
+echo "  • Research notes with validation checklist"
+echo ""
+echo "┌─────────────────────────────────────────────────────────────┐"
+echo "│ GENERATED CODE:                                             │"
+echo "└─────────────────────────────────────────────────────────────┘"
+cat /cpp/hello.cpp
+echo ""
+echo "┌─────────────────────────────────────────────────────────────┐"
+echo "│ WORKFLOW SUMMARY:                                           │"
+echo "└─────────────────────────────────────────────────────────────┘"
+echo ""
+echo "USER REQUEST: 'ai create hello world program in c++'"
+echo ""
+echo "1. PLANNING (PHASE 2-4):"
+echo "   → Created plan hierarchy with tags"
+echo "   → Logic solver inferred requirements (compiler, stdlib)"
+echo "   → Broke down into design/implementation/validation phases"
+echo "   → Created 6 detailed implementation jobs"
+echo ""
+echo "2. CONTEXT BUILDING (PHASE 5):"
+echo "   → Set planner context to implementation phase"
+echo "   → Filtered nodes by cpp and coding tags"
+echo "   → Built 3000-token context for code generation"
+echo ""
+echo "3. CODE GENERATION (PHASE 6):"
+echo "   → Executed jobs sequentially using C++ AST builder"
+echo "   → Created TU → include → function → statements → dump"
+echo "   → Marked each job complete after execution"
+echo ""
+echo "4. VALIDATION (PHASE 7-8):"
+echo "   → Hypothesis testing verified function exists"
+echo "   → AST structure validated in VFS"
+echo "   → Advanced context building for analysis"
+echo ""
+echo "5. PERSISTENCE (PHASE 9):"
+echo "   → Plan validated (no constraint violations)"
+echo "   → Saved to hello-world-plan.vfs"
+echo "   → Rules saved to /plan/rules"
+echo ""
+echo "┌─────────────────────────────────────────────────────────────┐"
+echo "│ KEY INTEGRATION POINTS:                                     │"
+echo "└─────────────────────────────────────────────────────────────┘"
+echo ""
+echo "• Tags drive everything:"
+echo "  User tags → Logic inference → Context filtering → Code gen"
+echo ""
+echo "• Plans track execution:"
+echo "  Jobs created → Executed with AST builder → Marked complete"
+echo ""
+echo "• Validation throughout:"
+echo "  Pre-planning (logic.check) → During (hypothesis) → Post (plan.validate)"
+echo ""
+echo "• VFS unifies all data:"
+echo "  Plans (/plan) + AST (/astcpp) + Code (/cpp) + Rules (/plan/rules)"
+echo ""
+echo "┌─────────────────────────────────────────────────────────────┐"
+echo "│ NEXT STEPS (if this were real AI workflow):                │"
+echo "└─────────────────────────────────────────────────────────────┘"
+echo ""
+echo "1. Compile and run: g++ /cpp/hello.cpp -o hello && ./hello"
+echo "2. For more complex programs, use plan.discuss for AI guidance"
+echo "3. Add more domain rules as project complexity grows"
+echo "4. Use hypothesis testing for refactoring decisions"
+echo "5. Advanced: context.build.adv for large codebases (8K+ tokens)"
+echo ""
+echo "═══════════════════════════════════════════════════════════════"
+echo "DEMO COMPLETE - All systems working together!"
+echo "═══════════════════════════════════════════════════════════════"

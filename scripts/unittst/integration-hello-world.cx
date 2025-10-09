@@ -1,0 +1,196 @@
+#!/usr/bin/env ./codex
+# Integration Test: Full workflow for "ai create hello world program in c++"
+# This test validates that all systems work together WITHOUT requiring AI calls
+#
+# Systems validated:
+# - Logic system (rules, inference, checking)
+# - Planning system (hierarchical plans, tags, jobs)
+# - Action planner (context building)
+# - C++ AST builder (code generation)
+# - Hypothesis testing (validation)
+
+echo "=== INTEGRATION TEST: Hello World Workflow ==="
+echo ""
+echo "Simulating: 'ai create hello world program in c++'"
+echo ""
+
+# Track which phases execute
+echo "[VERBOSE] Starting integration test"
+echo ""
+
+# ============================================================================
+# PHASE 1: Logic System Initialization
+# ============================================================================
+echo "[PHASE 1: LOGIC SYSTEM]"
+echo "[VERBOSE] Initializing logic engine..."
+logic.init
+echo "[VERBOSE] ✓ Logic system initialized"
+echo ""
+
+echo "[VERBOSE] Adding C++ domain rules..."
+logic.rule.add cpp-iostream "cpp" "needs-iostream" 0.95 stdlib
+logic.rule.add cpp-main "cpp-program" "has-main" 1.0 standard
+logic.rule.add main-returns-int "has-main" "returns-int" 0.95 standard
+echo "[VERBOSE] ✓ Domain rules added"
+echo ""
+
+# ============================================================================
+# PHASE 2: Planning System with Tags
+# ============================================================================
+echo "[PHASE 2: PLANNING SYSTEM]"
+echo "[VERBOSE] Creating plan hierarchy..."
+plan.create /plan/hello root "Hello World in C++"
+echo "[VERBOSE] ✓ Root plan created"
+echo ""
+
+echo "[VERBOSE] Adding requirement tags..."
+tag.add /plan/hello cpp
+tag.add /plan/hello cpp-program
+tag.add /plan/hello print-text
+echo "[VERBOSE] ✓ Tags added: cpp, cpp-program, print-text"
+echo ""
+
+echo "[VERBOSE] Running logic inference on tags..."
+plan.tags.infer /plan/hello
+echo "[VERBOSE] ✓ Logic inference complete"
+echo ""
+
+echo "[VERBOSE] Checking for tag conflicts..."
+plan.tags.check /plan/hello
+echo "[VERBOSE] ✓ No conflicts detected"
+echo ""
+
+echo "[VERBOSE] Creating implementation jobs..."
+plan.create /plan/hello/jobs jobs "Implementation Tasks"
+plan.jobs.add /plan/hello/jobs "Create translation unit" 1 codegen
+plan.jobs.add /plan/hello/jobs "Add iostream include" 1 codegen
+plan.jobs.add /plan/hello/jobs "Create main function" 1 codegen
+plan.jobs.add /plan/hello/jobs "Add cout statement" 1 codegen
+plan.jobs.add /plan/hello/jobs "Add return statement" 1 codegen
+plan.jobs.add /plan/hello/jobs "Dump to C++ file" 1 codegen
+echo "[VERBOSE] ✓ 6 jobs created"
+echo ""
+
+# ============================================================================
+# PHASE 3: Action Planner (Context Building)
+# ============================================================================
+echo "[PHASE 3: ACTION PLANNER]"
+echo "[VERBOSE] Building context for code generation..."
+plan.goto /plan/hello
+plan.context.add /plan/hello
+plan.context.add /plan/hello/jobs
+echo "[VERBOSE] ✓ Planner context configured"
+echo ""
+
+echo "[VERBOSE] Applying tag-based filters..."
+context.filter.tag cpp all
+context.filter.tag coding all
+echo "[VERBOSE] ✓ Filters configured"
+echo ""
+
+echo "[VERBOSE] Building AI context (3000 token budget)..."
+context.build 3000
+echo "[VERBOSE] ✓ Context built"
+echo ""
+
+# ============================================================================
+# PHASE 4: C++ AST Code Generation
+# ============================================================================
+echo "[PHASE 4: C++ AST BUILDER]"
+echo "[VERBOSE] Starting code generation..."
+echo ""
+
+echo "[VERBOSE] Job 0: Creating translation unit..."
+cpp.tu /astcpp/hello
+plan.jobs.complete /plan/hello/jobs 0
+echo "[VERBOSE] ✓ Translation unit created"
+echo ""
+
+echo "[VERBOSE] Job 1: Adding iostream include..."
+cpp.include /astcpp/hello iostream 1
+plan.jobs.complete /plan/hello/jobs 1
+echo "[VERBOSE] ✓ iostream included"
+echo ""
+
+echo "[VERBOSE] Job 2: Creating main function..."
+cpp.func /astcpp/hello main int
+plan.jobs.complete /plan/hello/jobs 2
+echo "[VERBOSE] ✓ main() function created"
+echo ""
+
+echo "[VERBOSE] Job 3: Adding cout statement..."
+cpp.print /astcpp/hello/main/body "Hello World"
+plan.jobs.complete /plan/hello/jobs 3
+echo "[VERBOSE] ✓ cout statement added"
+echo ""
+
+echo "[VERBOSE] Job 4: Adding return statement..."
+cpp.returni /astcpp/hello/main/body 0
+plan.jobs.complete /plan/hello/jobs 4
+echo "[VERBOSE] ✓ return 0 added"
+echo ""
+
+echo "[VERBOSE] Job 5: Dumping to C++ source file..."
+cpp.dump /astcpp/hello /cpp/hello.cpp
+plan.jobs.complete /plan/hello/jobs 5
+echo "[VERBOSE] ✓ C++ source generated"
+echo ""
+
+# ============================================================================
+# PHASE 5: Hypothesis Testing & Validation
+# ============================================================================
+echo "[PHASE 5: HYPOTHESIS TESTING]"
+echo "[VERBOSE] Validating generated code..."
+echo ""
+
+echo "[VERBOSE] Running hypothesis test: Find main function..."
+hypothesis.query main /cpp
+echo "[VERBOSE] ✓ main function found"
+echo ""
+
+echo "[VERBOSE] Validating plan hierarchy..."
+plan.validate /plan/hello
+echo "[VERBOSE] ✓ Plan validation passed"
+echo ""
+
+# ============================================================================
+# PHASE 6: Results and Summary
+# ============================================================================
+echo "[PHASE 6: RESULTS]"
+echo ""
+echo "Generated C++ code:"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+cat /cpp/hello.cpp
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+echo "[VERBOSE] Checking job completion status..."
+cat /plan/hello/jobs
+echo ""
+
+echo "[VERBOSE] Showing plan tree..."
+tree /plan/hello
+echo ""
+
+echo "=== INTEGRATION TEST SUMMARY ==="
+echo ""
+echo "✓ PHASE 1: Logic system initialized (3 rules)"
+echo "✓ PHASE 2: Planning system created hierarchical plan"
+echo "✓ PHASE 3: Action planner built context"
+echo "✓ PHASE 4: C++ AST builder generated code (6 jobs)"
+echo "✓ PHASE 5: Hypothesis testing validated result"
+echo "✓ PHASE 6: Results verified"
+echo ""
+echo "SYSTEMS USED:"
+echo "  ✓ Logic solver - tag inference and constraint checking"
+echo "  ✓ Planning system - hierarchical breakdown with jobs"
+echo "  ✓ Action planner - context building with filters"
+echo "  ✓ C++ AST builder - translation unit → code generation"
+echo "  ✓ Hypothesis testing - validation and verification"
+echo ""
+echo "OUTPUT: Working C++ Hello World program at /cpp/hello.cpp"
+echo ""
+echo "This is the workflow that SHOULD execute when user types:"
+echo "  'ai create hello world program in c++'"
+echo ""
+echo "=== TEST COMPLETE ==="

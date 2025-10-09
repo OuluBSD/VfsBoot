@@ -3,168 +3,6 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 
 ## Upcoming: important (in order)
-- **[IN PROGRESS]** planner core engine for breakdown/context (action/state model, A* search, cost heuristics)
-	- **[DONE]** Tag system implementation:
-		- Enumerated tag registry (TagId = uint32_t) for memory efficiency
-		- Tag storage separate from VfsNode (keeps nodes POD-friendly)
-		- Tag commands: `tag.add`, `tag.remove`, `tag.list`, `tag.clear`, `tag.has`
-		- All registered tags queryable, tags attached to any VFS node
-	- **[DONE]** Hierarchical plan node types:
-		- PlanRoot, PlanSubPlan, PlanGoals, PlanIdeas, PlanStrategy
-		- PlanJobs (with priority, completion status, assignee tracking)
-		- PlanDeps, PlanImplemented, PlanResearch, PlanNotes
-		- All nodes support read/write as formatted text (markdown-style lists)
-		- PlannerContext for navigation (forward/backward modes, history, visible nodes)
-	- **[DONE]** Shell commands for plan management:
-		- `plan.create <path> <type> [content]` - Create new plan node (root, subplan, goals, ideas, strategy, jobs, deps, implemented, research, notes)
-		- `plan.goto <path>` - Navigate planner context
-		- `plan.forward` / `plan.backward` - Change navigation mode
-		- `plan.context.add/remove/clear/list` - Manage visible nodes for AI
-		- `plan.jobs.add <path> <desc> [priority] [assignee]` - Add job to plan
-		- `plan.jobs.complete <path> <index>` - Mark jobs as done
-		- `plan.save [file]` - Save /plan tree to plan.vfs (default)
-		- `plan.status` - Show current planner state
-		- Auto-load plan.vfs on startup with /plan tree initialization
-		- Full serialization/deserialization support for all PlanNode types
-	- **[DONE]** Planning loop integration:
-		- **[DONE]** Core `discuss` command (alias `ai.discuss`) with session management
-		- **[DONE]** Intent classification (simple/planning/execution modes) with keyword heuristics
-		- **[DONE]** Auto-routing: simple queries → direct AI, execution → plan tree, planning → breakdown
-		- **[DONE]** Session tracking: random hex IDs, conversation history, plan path association
-		- **[DONE]** Startup reminder to guide users to `discuss` command
-		- **[DONE]** Interactive AI discussion workflow (plan.discuss integration)
-			- Context-aware prompts for forward/backward modes
-			- Automatic question parsing with Q: format detection
-			- Integration with discuss session tracking
-		- **[DONE]** Forward mode: add details to plans (root → leaves)
-			- Auto-suggest next steps based on current location
-			- Show child nodes and suggest drill-down paths
-			- Guidance for creating goals/jobs/subplans
-		- **[DONE]** Backward mode: revise higher-level plans when stuck
-			- Navigate up plan tree with history tracking
-			- Show parent paths and navigation suggestions
-			- Focus on strategy revision and alternative approaches
-		- **[DONE]** Yes/no/explain questions from human expert
-			- plan.answer command for structured responses
-			- Conversation history integration (last 6 messages)
-			- Automatic follow-up question detection
-		- **[DONE]** Hypothesis generation and testing integration
-			- plan.hypothesis command with auto-detection from plan content
-			- Creates hypothesis research nodes in plan tree
-			- Suggests appropriate hypothesis.* commands based on plan keywords
-		- **[DONE]** Advanced tree visualization with multiple display options
-			- tree.adv command with configurable options (box chars, tags, sizes, colors, depth limits, filtering)
-			- Box-drawing characters (├─, └─, │) for better readability
-			- Optional ANSI color coding by node type
-			- Tag display inline with nodes
-			- Token/size estimates for files
-			- Path pattern filtering and depth limiting
-			- Alphabetic sorting option
-		- **[DONE]** Enhanced context builder for AI calls:
-			- context.build.adv command with advanced options
-			- Deduplication using BLAKE3 content hashing
-			- Hierarchical output (overview + details)
-			- Adaptive token budgets for complex contexts
-			- Automatic summarization for large entries
-			- Dependency tracking support (LinkNodes)
-			- Compound filter logic (AND/OR/NOT)
-			- Tag-based, path-based, content-based, and custom filtering
-	- **[DONE]** Logic-based tag system with theorem proving for plan consistency:
-		- **[DONE]** Tag mining workflow: Extract user's mental model through minimal tag input
-			- User provides initial tags (e.g., `fast`, `no-network`, `uses-cache`)
-			- System infers implications and missing tags automatically
-			- Detect contradictions early and suggest resolutions
-			- Commands: `tag.mine.start`, `tag.mine.feedback`, `tag.mine.status`
-		- **[DONE]** Implication engine:
-			- Hardcoded rules: 6 built-in rules (offline→¬network, fast→cached, etc.)
-			- Learned patterns support: confidence scores (87% for fast→cached)
-			- Multiple rule sources: hardcoded, learned, ai-generated, user
-			- Forward-chaining inference to derive all logical consequences
-			- Command: `logic.init` to load hardcoded rules
-		- **[DONE]** Consistency checking with theorem prover:
-			- Propositional logic solver (AND, OR, NOT, IMPLIES) for tag constraints
-			- Brute-force SAT solver for formulas up to 20 variables
-			- Commands: `logic.check`, `logic.sat`, `logic.explain`
-			- ConflictInfo structure with suggestions for resolution
-		- **[DONE]** Contradiction resolution:
-			- Detect conflicting tags before plan generation
-			- Suggest alternatives: "Remove X" or "Remove Y"
-			- Automatic conflict detection with rule violation explanation
-		- **[DONE]** Knowledge representation in `/plan/rules`:
-			- Tag definitions and logical relationships stored in VFS
-			- Implication rules with confidence scores persisted to disk
-			- Exclusion constraints (mutually exclusive tags) via implication rules
-			- Learned patterns from user feedback (infrastructure ready)
-			- Persistence and loading from VFS via logic.rules.save/load commands
-			- Organized by source: hardcoded, learned, ai-generated, user
-			- S-expression format for formulas (pipe-delimited serialization)
-			- Summary file with human-readable overview
-			- Demo script: scripts/examples/logic-rules-persistence-demo.cx
-		- **[DONE]** User feedback loop:
-			- Show inferred tags: interactive tag mining session
-			- User confirms/rejects → feedback recorded in mining session
-			- Builds tag ontology over time (foundation implemented)
-		- **[DONE]** Include initial tags in inferred tags output (combined tag set for planner context)
-			- logic.infer now shows three outputs:
-				1. `initial tags` - user-provided tags that triggered inference
-				2. `inferred tags (only new)` - tags inferred by rules (excluding initial)
-				3. `complete tag set (initial + inferred)` - combined set for planner use
-			- LogicEngine::inferTags() returns complete tag set (includes initial tags)
-			- Planner can use complete set for constraint checking
-			- Example: `initial: [gpu]` → `complete: [gpu, parallel, fast, cached]`
-		- **[DONE]** Integration with planner:
-			- Pre-planning: verify tag set is satisfiable
-				- `plan.verify [path]` - check tag consistency for plan node
-				- `plan.tags.check [path]` - verify no conflicts after inference
-				- Automatic parent tag conflict warnings in `plan.create`
-			- During planning: only generate consistent plan branches
-				- `plan.discuss` includes tag constraints in AI prompts
-				- AI instructed to respect tag constraints and use verification commands
-			- Post-planning: verify AI-generated plan doesn't violate constraints
-				- `plan.validate [path]` - recursively validate entire plan subtree
-			- Use complete tag set from logic.infer for all planner operations
-				- `plan.tags.infer [path]` - show complete inferred tag set
-				- All plan commands use inferred tags (min_confidence=0.8)
-		- Use case: Prevent impossible plans like "build offline but fetch remote dependencies"
-		- **Commands**: `logic.init`, `logic.infer`, `logic.check`, `logic.explain`, `logic.listrules`, `logic.rules.save`, `logic.rules.load`, `logic.rule.add`, `logic.rule.exclude`, `logic.rule.remove`, `logic.sat`, `tag.mine.start`, `tag.mine.feedback`, `tag.mine.status`, `plan.verify`, `plan.tags.infer`, `plan.tags.check`, `plan.validate`
-		- **Demo scripts**:
-			- `scripts/examples/logic-system-demo.cx` - Complete system overview
-			- `scripts/examples/logic-rules-simple-demo.cx` - Basic save/load (EASIEST)
-			- `scripts/examples/logic-rules-persistence-demo.cx` - Full persistence workflow
-			- `scripts/examples/logic-rules-advanced-demo.cx` - Production management
-			- `scripts/examples/logic-rules-dynamic-creation-demo.cx` - Runtime rule creation
-			- `scripts/examples/logic-rules-from-scratch-demo.cx` - **NO hardcoded rules** (web app deployment, 50+ rules)
-			- `scripts/examples/logic-complete-tagset-demo.cx` - Complete tag set for planner integration
-			- **Planner Integration Demos** (progressively more complex):
-				- `scripts/examples/planner-logic-integration-demo.cx` - **BASIC** (simple conflict detection, single-level plan)
-				- `scripts/examples/planner-logic-advanced-demo.cx` - **ADVANCED** (multi-level hierarchy, 3 levels, microservices architecture)
-				- `scripts/examples/planner-logic-expert-demo.cx` - **EXPERT** (cloud migration, 22 rules, hypothesis testing, compliance, context building)
-- **[DONE]** Advanced hypothesis testing examples (progressively more complex):
-	- Implemented comprehensive hypothesis testing system with 5 complexity levels
-	- **Level 1: Simple Query** - `hypothesis.query <target> [path]`
-		- Find functions/patterns in VFS using ContextBuilder
-		- Pattern matching across all VFS nodes
-		- No AI calls required - pure VFS analysis
-	- **Level 2: Code Modification** - `hypothesis.errorhandling <function> [style]`
-		- Identify function definitions and return paths
-		- Propose error handling strategies (try-catch, error-code, optional)
-		- Analyze insertion points for error handling code
-	- **Level 3: Refactoring** - `hypothesis.duplicates [path] [min_lines]`
-		- Detect duplicate code blocks using similarity analysis
-		- 80% similarity threshold with whitespace normalization
-		- Propose extraction to helper functions with parameter inference
-	- **Level 4: Feature Addition** - `hypothesis.logging [path]`
-		- Identify error paths (return nullptr, -1, false, throw, error keywords)
-		- Plan logging infrastructure and instrumentation points
-		- Tag-based tracking for instrumented functions
-	- **Level 5: Architecture** - `hypothesis.pattern <pattern> [path]`
-		- Evaluate design pattern applicability (visitor, factory, singleton)
-		- Analyze node hierarchies for visitor pattern suitability
-		- Consider double-dispatch vs std::variant trade-offs
-	- Shell commands: `test.hypothesis`, `hypothesis.test <level> <goal> [desc]`
-	- Demo scripts: `scripts/examples/hypothesis-testing-demo.cx`, `hypothesis-demo-simple.cx`
-	- All tests executable WITHOUT AI - uses ContextBuilder, filters, pattern matching
-	- Integration with action planner's context builder for hypothesis validation
 - scope store with binary diffs + feature masks, plus deterministic context builder
 - scenario harness binaries (`planner_demo`, `planner_train`) and scripted breakdown loop for validation
 - feedback pipeline for planner rule evolution (metrics capture, rule patch staging, optional AI assistance)
@@ -225,6 +63,33 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 ##
 
 ## Completed
+- **Planner Core Engine for Breakdown/Context** (2025-10-08):
+  - **COMPLETE**: Full integration of planning system, logic solver, action planner, C++ AST builder, and hypothesis testing
+  - All major subsystems implemented and working together:
+    - Tag system with enumerated registry (TagId = uint32_t)
+    - Hierarchical plan nodes (Root, SubPlan, Goals, Ideas, Strategy, Jobs, Deps, Implemented, Research, Notes)
+    - Shell commands for plan management (plan.create, plan.goto, plan.forward/backward, plan.context.*, plan.jobs.*, plan.save, plan.status)
+    - Planning loop integration (discuss command, intent classification, auto-routing, session tracking)
+    - Interactive AI discussion workflow (forward/backward modes, yes/no/explain questions)
+    - Advanced tree visualization (tree.adv with tags, colors, sizes, depth limits, filtering)
+    - Enhanced context builder (context.build.adv with deduplication, hierarchical output, adaptive budgets)
+    - Logic-based tag system with theorem proving:
+      - Tag mining workflow, implication engine, consistency checking, contradiction resolution
+      - Knowledge representation in /plan/rules with persistence
+      - Integration with planner (pre-planning verification, during-planning constraints, post-planning validation)
+    - Hypothesis testing system (5 complexity levels: query, code modification, refactoring, feature addition, architecture)
+    - Full system integration demo: `scripts/examples/full-integration-hello-world.cx`
+      - Demonstrates complete workflow from user request to working C++ code
+      - User: "ai create hello world program in c++"
+      - Result: Compilable and executable C++ "Hello World" program
+      - 10 phases: initialization, planning, breakdown, task planning, context building, code generation, hypothesis testing, visualization, validation, persistence
+  - **Demo scripts** (progressively more complex):
+    - `scripts/examples/planner-logic-integration-demo.cx` - BASIC
+    - `scripts/examples/planner-logic-advanced-demo.cx` - ADVANCED
+    - `scripts/examples/planner-logic-expert-demo.cx` - EXPERT
+    - `scripts/examples/full-integration-hello-world.cx` - FULL INTEGRATION
+  - **Note**: A* search and cost heuristics deferred (not needed for current workflow)
+  - **Note**: Scope store with binary diffs, scenario harness binaries, and feedback pipeline remain as future enhancements
 - **Advanced Tree Visualization and Context Builder Enhancements** (2025-10-08):
   - **Advanced tree visualization** with `tree.adv` / `tree.advanced` command
     - Box-drawing characters (├─, └─, │) for hierarchical display

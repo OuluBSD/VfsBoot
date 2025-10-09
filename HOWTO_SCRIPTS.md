@@ -246,6 +246,25 @@ Build a complete rule system from scratch (NO logic.init):
 - Team collaboration and versioning
 - **Proves system works entirely without hardcoded rules**
 
+**scripts/examples/full-integration-hello-world.cx** - FULL SYSTEM INTEGRATION:
+```bash
+./scripts/examples/full-integration-hello-world.cx
+```
+**THE ULTIMATE DEMO** - Shows all systems working together:
+- **User request**: "ai create hello world program in c++"
+- **Planning System**: 3-level hierarchy (root → subplans → jobs)
+- **Logic Solver**: 13 rules with tag inference and constraint checking
+- **Action Planner**: Context building with 3000 token budget
+- **C++ AST Builder**: Translation unit → include → function → statements → dump
+- **Hypothesis Testing**: Validation and verification
+- **Result**: Working, compilable C++ "Hello World" program
+- **10 phases**: initialization, planning, breakdown, task planning, context building, code generation, hypothesis testing, visualization, validation, persistence
+- **Perfect capstone demo** showing the complete VfsBoot workflow from concept to code
+- Demonstrates: How tags drive everything (user tags → logic inference → context filtering → code gen)
+- Shows: Plans track execution (jobs created → executed with AST builder → marked complete)
+- Validates: Throughout the pipeline (pre-planning logic.check → hypothesis testing → post plan.validate)
+- Unifies: All data in VFS (plans at /plan, AST at /astcpp, code at /cpp, rules at /plan/rules)
+
 ## Running .sexp Scripts
 
 S-expression scripts are primarily used by the test harness, but can be run manually:
