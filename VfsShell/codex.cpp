@@ -7172,7 +7172,8 @@ int main(int argc, char** argv){
         return DiscussSession::Mode::Simple;
     };
 
-    auto execute_single = [&](const CommandInvocation& inv, const std::string& stdin_data) -> CommandResult {
+    std::function<CommandResult(const CommandInvocation&, const std::string&)> execute_single;
+    execute_single = [&](const CommandInvocation& inv, const std::string& stdin_data) -> CommandResult {
         ScopedCoutCapture capture;
         CommandResult result;
         const std::string& cmd = inv.name;
@@ -7591,6 +7592,15 @@ int main(int argc, char** argv){
             std::cout << val.show() << "\n";
 
         } else if(cmd == "ai"){
+            // Alias for discuss (interactive AI discussion)
+            // Redirect to discuss handler
+            CommandInvocation discuss_inv;
+            discuss_inv.name = "discuss";
+            discuss_inv.args = inv.args;
+            return execute_single(discuss_inv, stdin_data);
+
+        } else if(cmd == "ai.raw"){
+            // Raw AI call without discussion context
             std::string prompt = join_args(inv.args);
             if(prompt.empty()){
                 std::cout << "anna promptti.\n";
@@ -7624,18 +7634,39 @@ int main(int argc, char** argv){
         } else if(cmd == "discuss" || cmd == "ai.discuss"){
             std::string user_input = join_args(inv.args);
             if(user_input.empty()){
+                // Enter interactive discuss sub-loop
                 if(!discuss.is_active()){
-                    std::cout << "discuss: no active session. Start with: discuss <your message>\n";
-                } else {
-                    std::cout << "session: " << discuss.session_id << " (" <<
-                        (discuss.mode == DiscussSession::Mode::Simple ? "simple" :
-                         discuss.mode == DiscussSession::Mode::Planning ? "planning" : "execution") << ")\n";
-                    std::cout << "messages: " << discuss.conversation_history.size() << "\n";
-                    if(!discuss.current_plan_path.empty()){
-                        std::cout << "plan: " << discuss.current_plan_path << "\n";
+                    discuss.session_id = discuss.generate_session_id();
+                    std::cout << "📝 Started discussion session: " << discuss.session_id << "\n";
+                }
+                std::cout << "💬 Entering interactive discussion mode. Type 'exit' or 'back' to return.\n";
+                std::string sub_line;
+                std::vector<std::string> sub_history;
+                while(true){
+                    if(!read_line_with_history(vfs, "discuss> ", sub_line, sub_history, cwd.path)){
+                        break;
+                    }
+                    auto trimmed = trim_copy(sub_line);
+                    if(trimmed.empty()) continue;
+                    if(trimmed == "exit" || trimmed == "back" || trimmed == "quit"){
+                        std::cout << "👋 Exiting discuss mode\n";
+                        break;
+                    }
+
+                    // Process as discuss command with argument
+                    CommandInvocation sub_inv;
+                    sub_inv.name = "discuss";
+                    sub_inv.args.push_back(trimmed);
+                    try{
+                        auto sub_result = execute_single(sub_inv, "");
+                        if(!sub_result.output.empty()){
+                            std::cout << sub_result.output;
+                            std::cout.flush();
+                        }
+                    } catch(const std::exception& e){
+                        std::cout << "error: " << e.what() << "\n";
                     }
                 }
-                result.success = false;
             } else {
                 // Start or continue session
                 if(!discuss.is_active()){
@@ -8359,19 +8390,50 @@ int main(int argc, char** argv){
 
                     // Get user message
                     std::string user_msg;
-                    if(inv.args.empty()){
-                        // Interactive mode - ask for input
-                        std::cout << "💬 What would you like to discuss? ";
-                        std::getline(std::cin, user_msg);
-                    } else {
-                        // Message provided as arguments
+                    bool enter_subloop = inv.args.empty();
+
+                    if(!enter_subloop){
+                        // Message provided as arguments - single execution
                         user_msg = inv.args[0];
                         for(size_t i = 1; i < inv.args.size(); ++i){
                             user_msg += " " + inv.args[i];
                         }
                     }
 
-                    if(user_msg.empty()){
+                    if(enter_subloop){
+                        // Enter interactive plan.discuss sub-loop
+                        std::cout << "💬 Entering interactive plan discussion mode. Type 'exit' or 'back' to return.\n";
+                        std::cout << "📍 Context: " << planner.current_path << " (" <<
+                            (planner.mode == PlannerContext::Mode::Forward ? "forward" : "backward") << ")\n";
+
+                        std::string sub_line;
+                        std::vector<std::string> sub_history;
+                        while(true){
+                            if(!read_line_with_history(vfs, "plan.discuss> ", sub_line, sub_history, cwd.path)){
+                                break;
+                            }
+                            auto trimmed = trim_copy(sub_line);
+                            if(trimmed.empty()) continue;
+                            if(trimmed == "exit" || trimmed == "back" || trimmed == "quit"){
+                                std::cout << "👋 Exiting plan.discuss mode\n";
+                                break;
+                            }
+
+                            // Process as plan.discuss command with argument
+                            CommandInvocation sub_inv;
+                            sub_inv.name = "plan.discuss";
+                            sub_inv.args.push_back(trimmed);
+                            try{
+                                auto sub_result = execute_single(sub_inv, "");
+                                if(!sub_result.output.empty()){
+                                    std::cout << sub_result.output;
+                                    std::cout.flush();
+                                }
+                            } catch(const std::exception& e){
+                                std::cout << "error: " << e.what() << "\n";
+                            }
+                        }
+                    } else if(user_msg.empty()){
                         std::cout << "⚠️  No message provided\n";
                         result.success = false;
                     } else {
