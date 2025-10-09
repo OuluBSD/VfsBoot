@@ -7892,6 +7892,15 @@ R"(Commands:
   hypothesis.duplicates [path] [min_lines]     (Level 3: find duplicate code)
   hypothesis.logging [path]                    (Level 4: plan logging instrumentation)
   hypothesis.pattern <pattern> [path]          (Level 5: evaluate architecture pattern)
+  # Feedback Pipeline (automated rule evolution)
+  feedback.metrics.show [top_n]                (show metrics history and top rules)
+  feedback.metrics.save [path]                 (save metrics to VFS file)
+  feedback.patches.list                        (list pending rule patches)
+  feedback.patches.apply [index|all]           (apply pending patches)
+  feedback.patches.reject [index|all]          (reject pending patches)
+  feedback.patches.save [path]                 (save patches to VFS file)
+  feedback.cycle [--auto-apply] [--min-evidence=N]  (run full feedback cycle)
+  feedback.review                              (interactive patch review)
   # C++ builder
   cpp.tu <ast-path>
   cpp.include <tu-path> <header> [angled0/1]

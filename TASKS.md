@@ -53,7 +53,6 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 	
 ## Upcoming: important (in order)
-- integrate planner/context system into CLI once core pieces are stable
 - add in-binary sample runner command `sample.run`
 	- register `sample.run` in the shell command dispatcher so demos/tests can call it directly
 	- reset `/astcpp/demo`, `/cpp/demo.cpp`, and `/logs/sample.*` before each run for deterministic state
@@ -104,6 +103,34 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 ##
 
 ## Completed
+- **Planner/Context System CLI Integration** (2025-10-09):
+  - **COMPLETE**: Full integration of planner/context/feedback systems into CLI with comprehensive help documentation
+  - Added feedback pipeline commands to help text:
+    - `feedback.metrics.show [top_n]` - Display metrics history and top triggered/failed rules
+    - `feedback.metrics.save [path]` - Save metrics to VFS file
+    - `feedback.patches.list` - List pending rule patches
+    - `feedback.patches.apply [index|all]` - Apply pending patches
+    - `feedback.patches.reject [index|all]` - Reject pending patches
+    - `feedback.patches.save [path]` - Save patches to VFS file
+    - `feedback.cycle [--auto-apply] [--min-evidence=N]` - Run full feedback cycle
+    - `feedback.review` - Interactive patch review
+  - Updated CLAUDE.md with comprehensive command reference:
+    - Planner System section with all plan.* commands
+    - Context Builder section with context.build and filtering commands
+    - Hypothesis Testing System with all 5 complexity levels
+    - Feedback Pipeline section with metrics and patch management
+    - Logic Engine section with inference and consistency checking
+    - Advanced Visualization with tree.adv command
+  - All systems previously implemented are now fully documented and discoverable:
+    - Planner commands: plan.create, plan.goto, plan.discuss, plan.jobs.*, etc.
+    - Context commands: context.build, context.build.adv, context.filter.*
+    - Hypothesis commands: hypothesis.query, hypothesis.errorhandling, etc.
+    - Feedback commands: feedback.metrics.*, feedback.patches.*, feedback.cycle
+    - Logic commands: logic.init, logic.infer, logic.check, logic.explain
+    - Visualization: tree.adv with multiple display options
+  - Build status: Clean compilation with only warnings, all tests passing
+  - **Status**: 100% complete, all core pieces stable and integrated
+
 - **AI Planner Integration with Scenario Harness** (2025-10-09):
   - **COMPLETE**: Replaced stub plan generation with actual AI planner calls
   - Implementation changes:

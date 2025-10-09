@@ -62,6 +62,44 @@ All nodes (directories, files, AST nodes) inherit from `VfsNode` base class.
 
 **Overlay System**: Multiple persistent VFS overlays with `overlay.mount`, `overlay.save`, `overlay.list`, `overlay.unmount`, `overlay.use`, `overlay.policy`
 
+**Planner System** (Fully Integrated):
+- Hierarchical planning with `plan.create`, `plan.goto`, `plan.forward`, `plan.backward`
+- Interactive AI discussion with `plan.discuss` and `discuss` commands
+- Context management with `plan.context.add`, `plan.context.remove`, `plan.context.list`
+- Job tracking with `plan.jobs.add`, `plan.jobs.complete`
+- Tag-based validation with `plan.verify`, `plan.tags.infer`, `plan.validate`
+
+**Context Builder** (AI Context Offloader):
+- Build AI context within token budgets: `context.build [max_tokens]`
+- Advanced features: `context.build.adv [--deps] [--dedup] [--summary=N] [--hierarchical] [--adaptive]`
+- Filter by tags: `context.filter.tag <tag-name> [any|all|none]`
+- Filter by path: `context.filter.path <prefix-or-pattern>`
+
+**Hypothesis Testing System** (5 Complexity Levels):
+- Level 1: Simple queries with `hypothesis.query <target> [path]`
+- Level 2: Error handling analysis with `hypothesis.errorhandling <func> [style]`
+- Level 3: Duplicate detection with `hypothesis.duplicates [path] [min_lines]`
+- Level 4: Logging instrumentation with `hypothesis.logging [path]`
+- Level 5: Architecture patterns with `hypothesis.pattern <pattern> [path]`
+- Run all levels: `test.hypothesis`
+
+**Feedback Pipeline** (Automated Rule Evolution):
+- Metrics collection and analysis: `feedback.metrics.show [top_n]`, `feedback.metrics.save [path]`
+- Rule patch management: `feedback.patches.list`, `feedback.patches.apply [index|all]`, `feedback.patches.reject [index|all]`
+- Full feedback cycle: `feedback.cycle [--auto-apply] [--min-evidence=N]`
+- Interactive review: `feedback.review`
+- See **[docs/FEEDBACK_PIPELINE.md](docs/FEEDBACK_PIPELINE.md)** for details
+
+**Logic Engine** (Tag Theorem Proving):
+- Initialize rules: `logic.init`
+- Infer tags via forward chaining: `logic.infer <tag> [tag...]`
+- Check consistency: `logic.check <tag> [tag...]`
+- Explain inference: `logic.explain <target> <source...>`
+- List all rules: `logic.listrules`
+
+**Advanced Visualization**:
+- Tree with metadata: `tree.adv [path] [--sizes] [--tags] [--colors] [--depth=N] [--filter=pattern]`
+
 ## Important Workflows
 
 ### Code Modification Process

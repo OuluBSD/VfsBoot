@@ -5,3 +5,6 @@ build/
 cache/
 tools/__pycache__/**
 codex_trace.log
+
+planner_demo
+
