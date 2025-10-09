@@ -7367,6 +7367,7 @@ static void run_daemon_server(int port, Vfs&, std::shared_ptr<Env>, WorkingDirec
     close(server_fd);
 }
 
+#ifndef CODEX_NO_MAIN
 int main(int argc, char** argv){
     TRACE_FN();
     using std::string; using std::shared_ptr;
@@ -9996,3 +9997,4 @@ int main(int argc, char** argv){
     if(history_dirty) save_history(history);
     return 0;
 }
+#endif // CODEX_NO_MAIN

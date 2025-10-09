@@ -80,7 +80,7 @@ else()
     message(STATUS "Release flags: ${CMAKE_CXX_FLAGS_RELEASE}")
 endif()
 
-# Planner harness executables
+# Planner harness executables (compile with CODEX_NO_MAIN to exclude main())
 add_executable(planner_demo harness/demo.cpp ${VFSSHELL_SOURCES} ${HARNESS_SOURCES})
 add_executable(planner_train harness/train.cpp ${VFSSHELL_SOURCES} ${HARNESS_SOURCES})
 
@@ -94,12 +94,14 @@ target_include_directories(planner_train PRIVATE
     ${SVN_SUBR_INCLUDE_DIRS}
 )
 
-# Compiler definitions for harness binaries
+# Compiler definitions for harness binaries (add CODEX_NO_MAIN)
 target_compile_definitions(planner_demo PRIVATE
+    CODEX_NO_MAIN
     ${SVN_DELTA_CFLAGS_OTHER}
     ${SVN_SUBR_CFLAGS_OTHER}
 )
 target_compile_definitions(planner_train PRIVATE
+    CODEX_NO_MAIN
     ${SVN_DELTA_CFLAGS_OTHER}
     ${SVN_SUBR_CFLAGS_OTHER}
 )
