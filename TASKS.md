@@ -3,6 +3,14 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 
 ## Upcoming: important (in order)
+- integrate feedback pipeline with scenario harness for real metrics collection
+	- add MetricsCollector calls to ScenarioRunner (startRun, recordRuleTrigger, recordRuleFailed, recordSuccess, recordIterations, recordPerformance, recordOutcome, finishRun)
+	- integrate with BreakdownLoop to track iterative refinement metrics
+	- update planner_demo to output metrics summary after each scenario run
+	- update planner_train to aggregate metrics across all scenarios and export to JSON
+	- create test scenarios demonstrating metrics collection and feedback cycle
+	- run feedback.cycle on collected metrics to generate rule patches
+	- create workflow documentation showing: run scenarios → collect metrics → analyze patterns → generate patches → review → apply → improved rules
 - integrate scenario harness with actual AI planner (currently uses stub plan generation)
 - integrate planner/context system into CLI once core pieces are stable
 - add in-binary sample runner command `sample.run`
