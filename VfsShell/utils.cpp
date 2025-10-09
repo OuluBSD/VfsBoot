@@ -54,9 +54,9 @@ std::string join_path(const std::string& base, const std::string& leaf){
     return base + "/" + leaf;
 }
 
-// Note: normalize_path needs Vfs::splitPath, so it's implemented after including codex.h
-#ifdef CODEX_TRACE
+// Note: normalize_path needs Vfs::splitPath, so we include codex.h here
 #include "codex.h"
+
 std::string normalize_path(const std::string& cwd, const std::string& operand){
     auto stack = (operand.empty() || operand[0]!='/') ? Vfs::splitPath(cwd.empty() ? "/" : cwd)
                                                     : std::vector<std::string>{};
@@ -76,10 +76,6 @@ std::string normalize_path(const std::string& cwd, const std::string& operand){
     }
     return out.empty() ? std::string("/") : out;
 }
-#else
-// Stub when CODEX_TRACE is not defined - will be linked from codex.cpp
-std::string normalize_path(const std::string& cwd, const std::string& operand);
-#endif
 
 std::string path_basename(const std::string& path){
     if(path.empty() || path=="/") return "/";

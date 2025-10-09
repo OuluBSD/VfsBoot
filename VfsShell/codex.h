@@ -845,12 +845,6 @@ std::shared_ptr<AstNode> parse(const std::string& src);
 void install_builtins(std::shared_ptr<Env> g);
 
 //
-// Exec util
-//
-std::string exec_capture(const std::string& cmd, const std::string& desc = {});
-bool has_cmd(const std::string& c);
-
-//
 // C++ AST (perii AstNode → VfsNode)
 //
 struct CppNode : AstNode {
@@ -1102,7 +1096,6 @@ std::string compute_string_hash(const std::string& data);
 //
 // AI helpers (OpenAI + llama.cpp bridge)
 //
-std::string json_escape(const std::string& s);
 std::string build_responses_payload(const std::string& model, const std::string& user_prompt);
 std::string call_openai(const std::string& prompt);
 std::string call_llama(const std::string& prompt);

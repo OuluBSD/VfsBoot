@@ -2,8 +2,8 @@ CXX ?= c++
 CXXFLAGS ?= -std=gnu++17 -O2 -Wall -Wextra -pedantic $(shell pkg-config --cflags libsvn_delta libsvn_subr)
 LDFLAGS ?= -lblake3 $(shell pkg-config --libs libsvn_delta libsvn_subr)
 
-VFSSHELL_SRC := VfsShell/codex.cpp VfsShell/snippet_catalog.cpp
-VFSSHELL_HDR := VfsShell/codex.h VfsShell/snippet_catalog.h
+VFSSHELL_SRC := VfsShell/codex.cpp VfsShell/snippet_catalog.cpp VfsShell/utils.cpp
+VFSSHELL_HDR := VfsShell/codex.h VfsShell/snippet_catalog.h VfsShell/utils.h
 VFSSHELL_BIN := codex
 
 .PHONY: all clean debug release sample test-lib
