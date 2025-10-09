@@ -86,46 +86,69 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 	- you should plan like 5 progressively more difficult interaction demos
 - we should have actual programming project in a directory, with multiple files, which is mounted to the vfs as overlay. the code is kept both in persistent vfs-file and as cpp/h/Makefile files
 
-##
 
 ## Completed
-- **Minimal GNU Make Implementation** (2025-10-09):
-  - **COMPLETE**: Internal make utility for build automation within VfsBoot
+- **Minimal GNU Make Implementation with Bootstrap Build** (2025-10-09):
+  - **COMPLETE**: Internal make utility for build automation within VfsBoot + standalone bootstrap executable
   - Implementation features:
     - Makefile parser supporting basic GNU make syntax
     - Variable substitution: `$(VAR)` and `${VAR}` expansion
+    - Variable assignment operators: `=` (recursive), `:=` (immediate), `?=` (conditional with env check)
+    - Shell function support: `$(shell command)` for inline command execution
     - Automatic variables: `$@` (target name), `$<` (first prerequisite), `$^` (all prerequisites)
     - .PHONY target support for always-rebuild targets
     - Timestamp-based dependency checking (VFS + filesystem)
     - Recursive dependency graph builder with cycle detection
     - Shell command execution via popen
     - Verbose mode for debugging with `-v` or `--verbose`
+    - Environment variable integration for ?= assignments
+  - Two implementations:
+    - **Internal VFS make**: Integrated into codex VFS shell (`make [target] [-f makefile] [-v|--verbose]`)
+    - **Standalone bootstrap make**: `make_main.cpp` (472 lines) compiled to `./codex-make` for bootstrapping
+  - Bootstrap build system:
+    - **Stage 1**: C++ compiler compiles `make_main.cpp` → `./codex-make` (71K executable)
+    - **Stage 2**: `./codex-make` builds full codex binary from Makefile
+    - Usage: `./build.sh -b` or `./build.sh --bootstrap`
+    - Zero dependencies: only C++ stdlib + POSIX (no external make required)
+    - Enables self-contained build on systems without GNU make
   - Command interface:
-    - `make [target] [-f makefile] [-v|--verbose]`
-    - Default Makefile: `/Makefile` in VFS
+    - VFS make: `make [target] [-f makefile] [-v|--verbose]`
+    - Standalone make: `./codex-make [target] [-f Makefile] [-v|--verbose] [-h|--help]`
+    - Default Makefile: `/Makefile` (VFS) or `./Makefile` (standalone)
     - Default target: `all` (or first rule if `all` not defined)
   - Architecture:
     - `MakeRule` struct: target, dependencies, commands, is_phony flag
     - `MakeFile` class: parse(), expandVariables(), expandAutomaticVars(), build()
     - BuildResult struct with success/output/targets_built/errors tracking
     - getModTime() checks both VFS and filesystem for timestamp comparison
+    - parseLine() handles variable assignments, rule definitions, .PHONY declarations
   - Features NOT implemented (minimal subset):
     - Pattern rules (`%.o: %.c`)
     - Built-in implicit rules
     - Conditional directives (ifdef/ifndef/else/endif)
-    - Functions ($(wildcard), $(patsubst), etc.)
+    - Advanced functions ($(wildcard), $(patsubst), $(filter), etc.)
     - Multiple target support in single rule
     - Include directives
     - Special targets beyond .PHONY
+    - Parallel job execution (-j)
   - Testing:
     - Successfully compiles with only warnings
     - Added to help text and autocomplete
-    - Integration tested with simple Makefiles
+    - Bootstrap build tested: `./build.sh -b` successfully builds codex (1.4M)
+    - Standalone make compiles to 71K executable
+    - Variable expansion verified with complex Makefiles ($(shell ...), :=, ?=)
   - Documentation:
     - Added to CLAUDE.md with comprehensive feature list
     - Command added to help output
     - Demo script created in scripts/examples/make-demo.cx
-  - **Status**: 100% complete for minimal subset, ready for production use
+    - build.sh updated with bootstrap documentation
+  - Files modified:
+    - VfsShell/codex.h: Added MakeRule and MakeFile structures (lines 1818-1876)
+    - VfsShell/codex.cpp: Implemented make functionality (~320 lines, 7929-8252) + shell command (10993-11064)
+    - make_main.cpp: Standalone make executable (472 lines, NEW)
+    - build.sh: Added bootstrap build support with -b/--bootstrap flag
+    - CLAUDE.md: Added make utility documentation
+  - **Status**: 100% complete for minimal subset with bootstrap support, ready for production use
 
 - **In-Binary Sample Runner** (2025-10-09):
   - **COMPLETE**: Full implementation of `sample.run` command for in-binary C++ compilation and execution

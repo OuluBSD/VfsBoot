@@ -14,6 +14,7 @@ NC='\033[0m' # No Color
 BUILD_TYPE="release"
 BUILD_SYSTEM=""
 VERBOSE=0
+BOOTSTRAP=0
 
 usage() {
     cat << EOF
@@ -27,11 +28,13 @@ OPTIONS:
     -s, --system TYPE   Force build system: umk, cmake, or make
     -v, --verbose       Verbose output
     -c, --clean         Clean before build
+    -b, --bootstrap     Bootstrap build (compile internal make, then use it)
     -h, --help          Show this help
 
 EXAMPLES:
     $0                  # Auto-detect and build (release)
     $0 -d               # Debug build
+    $0 -b               # Bootstrap build (build internal make first)
     $0 -s umk -d        # Force U++ debug build
     $0 -s cmake -r      # Force CMake release build
     $0 -s make -c -d    # Force Unix Makefile clean debug build
@@ -66,6 +69,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -c|--clean)
             CLEAN=1
+            shift
+            ;;
+        -b|--bootstrap)
+            BOOTSTRAP=1
             shift
             ;;
         -h|--help)
@@ -223,30 +230,99 @@ build_make() {
     fi
 }
 
+# Bootstrap build: compile internal make, then use it to build codex
+build_bootstrap() {
+    echo -e "${BLUE}=== Bootstrap Build ===${NC}"
+    echo "Step 1: Compiling internal make utility..."
+
+    # Detect C++ compiler
+    local CXX="${CXX:-g++}"
+    if ! command -v "$CXX" &> /dev/null; then
+        CXX="c++"
+        if ! command -v "$CXX" &> /dev/null; then
+            echo -e "${RED}Error: No C++ compiler found (tried g++ and c++)${NC}" >&2
+            exit 1
+        fi
+    fi
+
+    echo "Using compiler: $CXX"
+
+    # Compile make_main.cpp to ./codex-make
+    local cxx_flags="-std=c++17 -O2 -Wall -Wextra"
+    if [ "$BUILD_TYPE" = "debug" ]; then
+        cxx_flags="-std=c++17 -g -O0 -Wall -Wextra"
+    fi
+
+    if [ "$VERBOSE" = "1" ]; then
+        echo "$CXX $cxx_flags make_main.cpp -o codex-make"
+    fi
+
+    $CXX $cxx_flags make_main.cpp -o codex-make
+
+    if [ ! -f "./codex-make" ]; then
+        echo -e "${RED}Error: Failed to compile internal make${NC}" >&2
+        exit 1
+    fi
+
+    echo -e "${GREEN}✓ Internal make compiled successfully${NC}"
+    ls -lh ./codex-make
+
+    echo ""
+    echo "Step 2: Using internal make to build codex..."
+
+    # Use our make to build codex
+    local make_target="all"
+    if [ "$BUILD_TYPE" = "debug" ]; then
+        make_target="debug"
+    elif [ "$BUILD_TYPE" = "release" ]; then
+        make_target="release"
+    fi
+
+    if [ "$VERBOSE" = "1" ]; then
+        ./codex-make -v $make_target
+    else
+        ./codex-make $make_target
+    fi
+
+    if [ ! -f "./codex" ]; then
+        echo -e "${RED}Error: codex binary not created${NC}" >&2
+        exit 1
+    fi
+
+    echo -e "${GREEN}✓ Bootstrap build successful!${NC}"
+}
+
 # Main build logic
 main() {
     echo -e "${GREEN}=== VfsBoot Build Script ===${NC}"
     echo "Build type: ${BUILD_TYPE}"
 
-    local system=$(detect_build_system)
-    echo "Build system: ${system}"
-    echo ""
+    # Bootstrap build uses internal make
+    if [ "$BOOTSTRAP" = "1" ]; then
+        echo "Build mode: Bootstrap (internal make)"
+        echo ""
+        build_bootstrap
+    else
+        local system=$(detect_build_system)
+        echo "Build system: ${system}"
+        echo ""
 
-    case "$system" in
-        umk)
-            build_umk
-            ;;
-        cmake)
-            build_cmake
-            ;;
-        make)
-            build_make
-            ;;
-        *)
-            echo -e "${RED}Unknown build system: $system${NC}" >&2
-            exit 1
-            ;;
-    esac
+        case "$system" in
+            umk)
+                build_umk
+                ;;
+            cmake)
+                build_cmake
+                ;;
+            make)
+                build_make
+                ;;
+            *)
+                echo -e "${RED}Unknown build system: $system${NC}" >&2
+                exit 1
+                ;;
+        esac
+    fi
 
     # Check if binary was created
     if [ -f "./codex" ]; then
