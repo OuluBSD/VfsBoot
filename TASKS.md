@@ -3,12 +3,8 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 
 ## Upcoming: important (in order)
-- **[IN PROGRESS]** scenario harness binaries (`planner_demo`, `planner_train`) - 95% complete, needs build refactoring
-  - Status: All harness code implemented (harness/scenario.{h,cpp}, harness/runner.{h,cpp}, harness/demo.cpp, harness/train.cpp)
-  - Remaining: Resolve multiple main() conflict (codex.cpp and demo.cpp both have main())
-  - Solution: Either wrap codex.cpp main() with #ifndef CODEX_LIB_ONLY, or split main() to separate file
-  - Build targets added to Makefile and CMakeLists.txt but currently fail at link time
 - feedback pipeline for planner rule evolution (metrics capture, rule patch staging, optional AI assistance)
+- integrate scenario harness with actual AI planner (currently uses stub plan generation)
 - integrate planner/context system into CLI once core pieces are stable
 - add in-binary sample runner command `sample.run`
 	- register `sample.run` in the shell command dispatcher so demos/tests can call it directly
@@ -66,6 +62,28 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 ##
 
 ## Completed
+- **Scenario Harness for Planner Testing and Training** (2025-10-09):
+  - **COMPLETE**: Full testing infrastructure for planner validation and training data generation
+  - Implemented components:
+    - **Scenario File Parser**: harness/scenario.{h,cpp} with structured [SETUP], [USER_INTENT], [EXPECTED_PLAN], [ACTIONS], [VERIFICATION] sections
+    - **ScenarioRunner**: Five-phase execution engine (Setup, Plan Generation, Verification, Actions, Final Checks)
+    - **BreakdownLoop**: Iterative refinement with VFS snapshot rollback for validation
+    - **planner_demo**: Interactive single-scenario runner with verbose mode and iteration control
+    - **planner_train**: Batch training data generator with JSON export
+  - Build integration:
+    - Successfully builds with make, cmake, and umk
+    - Solution: Wrapped main() in codex.cpp with #ifndef CODEX_NO_MAIN / #endif
+    - Compile flag -DCODEX_NO_MAIN excludes main() from planner binaries
+  - Binary sizes:
+    - codex: 1.3M (full shell with main())
+    - planner_demo: 850K (scenario runner)
+    - planner_train: 870K (training data generator)
+  - Documentation:
+    - harness/README.md: Complete usage guide, file format, integration notes
+    - Example scenarios in scenarios/basic/hello-world.scenario
+  - **Next steps**: Integrate actual AI planner (currently uses stub), execute actions through shell dispatcher
+  - **Status**: 100% buildable, ready for integration with live planner
+
 - **Scope Store System with Binary Diffs and Feature Masks** (2025-10-09):
   - **COMPLETE**: Core scope store infrastructure for deterministic context building and feature-gated development
   - Implemented components:
