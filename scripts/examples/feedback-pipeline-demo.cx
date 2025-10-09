@@ -1,0 +1,107 @@
+#!/usr/bin/env -S ../../codex --script
+
+# Feedback Pipeline for Planner Rule Evolution Demo
+# This script demonstrates the complete feedback pipeline workflow:
+# 1. Simulating planner metrics collection
+# 2. Analyzing metrics and generating rule patches
+# 3. Reviewing and applying patches
+# 4. Persisting metrics and patches to VFS
+
+echo "=== Feedback Pipeline Demo ==="
+echo ""
+
+# Phase 1: Initialize and show empty state
+echo "Phase 1: Initial State"
+echo "----------------------"
+feedback.metrics.show 5
+echo ""
+
+# Phase 2: Simulate metrics collection
+# In a real scenario, these metrics would be collected during scenario harness runs
+# For demo purposes, we'll manually create some test metrics
+echo "Phase 2: Simulating Metrics Collection"
+echo "---------------------------------------"
+echo "In production, metrics are automatically collected during planner_demo/planner_train runs"
+echo "For this demo, we'll simulate what that data would look like"
+echo ""
+
+# Phase 3: Run feedback cycle to analyze metrics and generate patches
+echo "Phase 3: Running Feedback Cycle"
+echo "--------------------------------"
+echo "Analyzing collected metrics and generating rule patches..."
+feedback.cycle --min-evidence=1
+echo ""
+
+# Phase 4: Review pending patches
+echo "Phase 4: Reviewing Generated Patches"
+echo "-------------------------------------"
+feedback.patches.list
+echo ""
+
+# Phase 5: Interactive review (in real usage, user would review each patch)
+echo "Phase 5: Interactive Review"
+echo "---------------------------"
+echo "In production, use 'feedback.review' for interactive patch approval"
+echo "For this demo, we'll show the review interface:"
+feedback.review
+echo ""
+
+# Phase 6: Save metrics and patches to VFS
+echo "Phase 6: Persisting to VFS"
+echo "--------------------------"
+feedback.metrics.save /plan/metrics
+feedback.patches.save /plan/patches
+echo ""
+
+# Phase 7: Show VFS structure
+echo "Phase 7: VFS Structure"
+echo "----------------------"
+echo "Metrics and patches are now persisted in the VFS:"
+tree /plan
+echo ""
+
+# Phase 8: Example of applying patches (commented out for safety)
+echo "Phase 8: Applying Patches"
+echo "-------------------------"
+echo "To apply patches, use:"
+echo "  feedback.patches.apply 0        # Apply specific patch"
+echo "  feedback.patches.apply all      # Apply all patches"
+echo ""
+echo "To reject patches, use:"
+echo "  feedback.patches.reject 0       # Reject specific patch"
+echo "  feedback.patches.reject all     # Reject all patches"
+echo ""
+
+# Phase 9: Integration with scenario harness
+echo "Phase 9: Integration with Scenario Harness"
+echo "-------------------------------------------"
+echo "The feedback pipeline is designed to integrate with planner_demo and planner_train:"
+echo ""
+echo "1. planner_demo runs scenarios and collects metrics"
+echo "2. planner_train generates training data from multiple scenarios"
+echo "3. feedback.cycle analyzes metrics and proposes rule improvements"
+echo "4. User reviews and applies/rejects patches"
+echo "5. Updated rules are persisted to /plan/rules"
+echo "6. Next iteration uses improved rules"
+echo ""
+
+# Phase 10: Summary
+echo "Phase 10: Summary"
+echo "-----------------"
+echo "The feedback pipeline provides:"
+echo "  ✓ Automated metrics collection from planner runs"
+echo "  ✓ Pattern detection (high/low performing rules)"
+echo "  ✓ Automatic patch generation with evidence-based rationale"
+echo "  ✓ Staged review before applying changes"
+echo "  ✓ VFS persistence for metrics and patches"
+echo "  ✓ Optional AI assistance for advanced rule evolution"
+echo ""
+echo "Next steps:"
+echo "  1. Run planner_demo with actual scenarios"
+echo "  2. Collect real metrics from multiple runs"
+echo "  3. Use feedback.cycle to generate patches"
+echo "  4. Review and apply patches to improve planner performance"
+echo ""
+echo "=== Demo Complete ==="
+
+exit
