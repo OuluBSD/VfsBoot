@@ -3,12 +3,54 @@ Making codex-like tool with locally hosted AI
 
 ## Building
 
-Use the root `Makefile` to build the stage1 binary:
+### Quick Start
 
+Use the unified `build.sh` script which auto-detects and uses the best available build system:
+
+```sh
+./build.sh              # Auto-detect build system, release build
+./build.sh -d           # Debug build with symbols
+./build.sh -r           # Release build (optimized)
+./build.sh -c           # Clean build
+./build.sh -v           # Verbose output
+```
+
+The build script supports three build systems (in priority order):
+1. **U++ (umk)** - Ultimate++ build system (if available)
+2. **CMake** - Modern cross-platform build
+3. **Make** - Traditional GNU Make fallback
+
+### Force Specific Build System
+
+```sh
+./build.sh -s make -r      # Force GNU Make release build
+./build.sh -s cmake -d     # Force CMake debug build
+./build.sh -s umk -d       # Force U++ debug build
+```
+
+### Manual Building
+
+Alternatively, use the build system directly:
+
+#### Make (Traditional)
 ```sh
 make            # builds ./codex with gnu++17 + O2
 make debug      # rebuilt with -O0 -g
 make release    # rebuilt with -O3 -DNDEBUG
+```
+
+#### CMake
+```sh
+mkdir build && cd build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+cmake --build . -j$(nproc)
+cp codex ..
+```
+
+#### U++ (umk)
+```sh
+umk .,~/upp/uppsrc VfsShell CLANG.bm -rs ./codex    # release + shared
+umk .,~/upp/uppsrc VfsShell CLANG.bm -ds ./codex    # debug + shared
 ```
 
 ### Internationalization (i18n)
