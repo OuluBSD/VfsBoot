@@ -1,3 +1,9 @@
+description "VfsBoot - Meta-compiler with VFS and AI integration\377";
+
+library(LINUX) blake3, svn_delta-1, svn_subr-1, aprutil-1, apr-1, z, expat, magic, lz4, utf8proc;
+
+include(LINUX) /usr/include/subversion-1, /usr/include/apr-1;
+
 file
 	codex.h,
 	codex.cpp,
