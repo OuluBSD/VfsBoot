@@ -972,18 +972,20 @@ void cpp_dump_to_vfs(Vfs& vfs, size_t overlayId, const std::string& tuPath, cons
 // Include libclang header
 #include <clang-c/Index.h>
 
-// Source location tracking
+// Source location tracking with code span
 struct SourceLocation {
     std::string file;
     unsigned int line;
     unsigned int column;
     unsigned int offset;
+    unsigned int length;  // Length in bytes of the code span
 
-    SourceLocation() : line(0), column(0), offset(0) {}
-    SourceLocation(std::string f, unsigned int l, unsigned int c, unsigned int o = 0)
-        : file(std::move(f)), line(l), column(c), offset(o) {}
+    SourceLocation() : line(0), column(0), offset(0), length(0) {}
+    SourceLocation(std::string f, unsigned int l, unsigned int c, unsigned int o = 0, unsigned int len = 0)
+        : file(std::move(f)), line(l), column(c), offset(o), length(len) {}
 
     std::string toString() const;
+    std::string toStringWithLength() const;
 };
 
 // Base class for all libclang AST nodes

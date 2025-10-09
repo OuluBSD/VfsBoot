@@ -58,11 +58,11 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 - **Goal**: Parse hello world C++ program, dump AST, regenerate C++ code, compile and run
 - **Purpose**: Fast codebase indexing for efficient AI context building
 
-- **Status**: Core parsing implementation complete ✅
+- **Status**: Core parsing implementation complete with code span tracking ✅
   - ✅ Makefile updated with libclang linking (-I/usr/lib/llvm/21/include -L/usr/lib/llvm/21/lib64 -lclang)
   - ✅ libclang verified working (test program compiled and ran successfully)
   - ✅ Complete AST node structure defined in codex.h (lines 966-1356):
-    - ✅ SourceLocation struct for file:line:column tracking
+    - ✅ SourceLocation struct for file:line:column tracking **with code span length in bytes**
     - ✅ ClangAstNode base class (inherits from AstNode → VfsNode)
     - ✅ Type nodes (5 types): ClangType, ClangBuiltinType, ClangPointerType, ClangReferenceType, ClangRecordType, ClangFunctionProtoType
     - ✅ Declaration nodes (9 types): ClangTranslationUnitDecl, ClangFunctionDecl, ClangVarDecl, ClangParmDecl, ClangFieldDecl, ClangClassDecl, ClangStructDecl, ClangEnumDecl, ClangNamespaceDecl, ClangTypedefDecl
@@ -92,9 +92,10 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 - **Testing Complete**:
   - ✅ Created tests/hello.cpp with simple main() function
   - ✅ Parsed hello.cpp → verified AST created in /ast/translation_unit
-  - ✅ Dumped AST → verified output shows correct structure with source locations
-  - ✅ Successfully parsed main function at tests/hello.cpp:3:5 with CompoundStmt and ReturnStmt
-  - ✅ AST includes full details: function declarations, parameters, statements, expressions with file:line:column locations
+  - ✅ Dumped AST → verified output shows correct structure with source locations **and byte lengths**
+  - ✅ Successfully parsed main function at tests/hello.cpp:3:1 [75 bytes] with CompoundStmt [64 bytes] and ReturnStmt [8 bytes]
+  - ✅ AST includes full details: function declarations, parameters, statements, expressions with file:line:column locations and code span lengths
+  - ✅ Code span tracking enables precise source extraction for AI context building
 
 - **Deferred to Future Phases**:
   - C++ Code Regeneration (Phase 1.5):

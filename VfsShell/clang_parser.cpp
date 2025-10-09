@@ -24,6 +24,16 @@ std::string SourceLocation::toString() const {
     return oss.str();
 }
 
+std::string SourceLocation::toStringWithLength() const {
+    std::ostringstream oss;
+    if (!file.empty()) {
+        oss << file << ":" << line << ":" << column << " [" << length << " bytes]";
+    } else {
+        oss << "<unknown>:" << line << ":" << column << " [" << length << " bytes]";
+    }
+    return oss.str();
+}
+
 //
 // ClangParser destructor
 //
@@ -36,19 +46,29 @@ ClangParser::~ClangParser() {
 }
 
 //
-// ClangParser::getLocation - Extract source location from cursor
+// ClangParser::getLocation - Extract source location from cursor with extent/length
 //
 
 SourceLocation ClangParser::getLocation(CXCursor cursor) {
-    CXSourceLocation loc = clang_getCursorLocation(cursor);
+    // Get start location
+    CXSourceRange extent = clang_getCursorExtent(cursor);
+    CXSourceLocation start_loc = clang_getRangeStart(extent);
+    CXSourceLocation end_loc = clang_getRangeEnd(extent);
+
     CXFile file;
     unsigned line, column, offset;
-    clang_getSpellingLocation(loc, &file, &line, &column, &offset);
+    clang_getSpellingLocation(start_loc, &file, &line, &column, &offset);
+
+    // Calculate length from extent
+    unsigned end_offset;
+    clang_getSpellingLocation(end_loc, nullptr, nullptr, nullptr, &end_offset);
+    unsigned length = end_offset > offset ? end_offset - offset : 0;
 
     SourceLocation result;
     result.line = line;
     result.column = column;
     result.offset = offset;
+    result.length = length;
 
     if (file) {
         CXString filename = clang_getFileName(file);
@@ -555,15 +575,15 @@ bool ClangParser::parseString(const std::string& source, const std::string& file
 //
 
 std::string ClangType::dump(int indent) const {
-    return ind(indent) + "Type: " + type_name + " @ " + location.toString();
+    return ind(indent) + "Type: " + type_name + " @ " + location.toStringWithLength();
 }
 
 std::string ClangBuiltinType::dump(int indent) const {
-    return ind(indent) + "BuiltinType: " + type_name + " @ " + location.toString();
+    return ind(indent) + "BuiltinType: " + type_name + " @ " + location.toStringWithLength();
 }
 
 std::string ClangPointerType::dump(int indent) const {
-    std::string result = ind(indent) + "PointerType: " + type_name + " @ " + location.toString() + "\n";
+    std::string result = ind(indent) + "PointerType: " + type_name + " @ " + location.toStringWithLength() + "\n";
     if (pointee) {
         result += pointee->dump(indent + 1);
     }
@@ -571,7 +591,7 @@ std::string ClangPointerType::dump(int indent) const {
 }
 
 std::string ClangReferenceType::dump(int indent) const {
-    std::string result = ind(indent) + "ReferenceType: " + type_name + " @ " + location.toString() + "\n";
+    std::string result = ind(indent) + "ReferenceType: " + type_name + " @ " + location.toStringWithLength() + "\n";
     if (referenced) {
         result += referenced->dump(indent + 1);
     }
@@ -579,11 +599,11 @@ std::string ClangReferenceType::dump(int indent) const {
 }
 
 std::string ClangRecordType::dump(int indent) const {
-    return ind(indent) + "RecordType: " + type_name + " @ " + location.toString();
+    return ind(indent) + "RecordType: " + type_name + " @ " + location.toStringWithLength();
 }
 
 std::string ClangFunctionProtoType::dump(int indent) const {
-    std::string result = ind(indent) + "FunctionProtoType: " + type_name + " @ " + location.toString() + "\n";
+    std::string result = ind(indent) + "FunctionProtoType: " + type_name + " @ " + location.toStringWithLength() + "\n";
     if (return_type) {
         result += ind(indent + 1) + "ReturnType:\n";
         result += return_type->dump(indent + 2);
@@ -598,7 +618,7 @@ std::string ClangFunctionProtoType::dump(int indent) const {
 }
 
 std::string ClangTranslationUnitDecl::dump(int indent) const {
-    std::string result = ind(indent) + "TranslationUnit: " + spelling + " @ " + location.toString() + "\n";
+    std::string result = ind(indent) + "TranslationUnit: " + spelling + " @ " + location.toStringWithLength() + "\n";
     for (const auto& [name, child] : ch) {
         if (auto clang_child = std::dynamic_pointer_cast<ClangAstNode>(child)) {
             result += clang_child->dump(indent + 1) + "\n";
@@ -613,7 +633,7 @@ std::string ClangFunctionDecl::dump(int indent) const {
         if (i > 0) result += ", ";
         result += parameters[i].first + " " + parameters[i].second;
     }
-    result += ") @ " + location.toString() + "\n";
+    result += ") @ " + location.toStringWithLength() + "\n";
 
     for (const auto& [name, child] : ch) {
         if (auto clang_child = std::dynamic_pointer_cast<ClangAstNode>(child)) {
@@ -624,19 +644,19 @@ std::string ClangFunctionDecl::dump(int indent) const {
 }
 
 std::string ClangVarDecl::dump(int indent) const {
-    return ind(indent) + "VarDecl: " + type_str + " " + var_name + " @ " + location.toString();
+    return ind(indent) + "VarDecl: " + type_str + " " + var_name + " @ " + location.toStringWithLength();
 }
 
 std::string ClangParmDecl::dump(int indent) const {
-    return ind(indent) + "ParmDecl: " + type_str + " " + param_name + " @ " + location.toString();
+    return ind(indent) + "ParmDecl: " + type_str + " " + param_name + " @ " + location.toStringWithLength();
 }
 
 std::string ClangFieldDecl::dump(int indent) const {
-    return ind(indent) + "FieldDecl: " + type_str + " " + field_name + " @ " + location.toString();
+    return ind(indent) + "FieldDecl: " + type_str + " " + field_name + " @ " + location.toStringWithLength();
 }
 
 std::string ClangClassDecl::dump(int indent) const {
-    std::string result = ind(indent) + "ClassDecl: " + class_name + " @ " + location.toString() + "\n";
+    std::string result = ind(indent) + "ClassDecl: " + class_name + " @ " + location.toStringWithLength() + "\n";
     for (const auto& [name, child] : ch) {
         if (auto clang_child = std::dynamic_pointer_cast<ClangAstNode>(child)) {
             result += clang_child->dump(indent + 1) + "\n";
@@ -646,7 +666,7 @@ std::string ClangClassDecl::dump(int indent) const {
 }
 
 std::string ClangStructDecl::dump(int indent) const {
-    std::string result = ind(indent) + "StructDecl: " + struct_name + " @ " + location.toString() + "\n";
+    std::string result = ind(indent) + "StructDecl: " + struct_name + " @ " + location.toStringWithLength() + "\n";
     for (const auto& [name, child] : ch) {
         if (auto clang_child = std::dynamic_pointer_cast<ClangAstNode>(child)) {
             result += clang_child->dump(indent + 1) + "\n";
@@ -656,7 +676,7 @@ std::string ClangStructDecl::dump(int indent) const {
 }
 
 std::string ClangEnumDecl::dump(int indent) const {
-    std::string result = ind(indent) + "EnumDecl: " + enum_name + " @ " + location.toString() + "\n";
+    std::string result = ind(indent) + "EnumDecl: " + enum_name + " @ " + location.toStringWithLength() + "\n";
     for (const auto& [name, value] : enumerators) {
         result += ind(indent + 1) + name + " = " + std::to_string(value) + "\n";
     }
@@ -664,7 +684,7 @@ std::string ClangEnumDecl::dump(int indent) const {
 }
 
 std::string ClangNamespaceDecl::dump(int indent) const {
-    std::string result = ind(indent) + "NamespaceDecl: " + namespace_name + " @ " + location.toString() + "\n";
+    std::string result = ind(indent) + "NamespaceDecl: " + namespace_name + " @ " + location.toStringWithLength() + "\n";
     for (const auto& [name, child] : ch) {
         if (auto clang_child = std::dynamic_pointer_cast<ClangAstNode>(child)) {
             result += clang_child->dump(indent + 1) + "\n";
@@ -674,11 +694,11 @@ std::string ClangNamespaceDecl::dump(int indent) const {
 }
 
 std::string ClangTypedefDecl::dump(int indent) const {
-    return ind(indent) + "TypedefDecl: " + typedef_name + " = " + underlying_type + " @ " + location.toString();
+    return ind(indent) + "TypedefDecl: " + typedef_name + " = " + underlying_type + " @ " + location.toStringWithLength();
 }
 
 std::string ClangCompoundStmt::dump(int indent) const {
-    std::string result = ind(indent) + "CompoundStmt @ " + location.toString() + "\n";
+    std::string result = ind(indent) + "CompoundStmt @ " + location.toStringWithLength() + "\n";
     for (const auto& [name, child] : ch) {
         if (auto clang_child = std::dynamic_pointer_cast<ClangAstNode>(child)) {
             result += clang_child->dump(indent + 1) + "\n";
@@ -688,67 +708,67 @@ std::string ClangCompoundStmt::dump(int indent) const {
 }
 
 std::string ClangIfStmt::dump(int indent) const {
-    return ind(indent) + "IfStmt @ " + location.toString();
+    return ind(indent) + "IfStmt @ " + location.toStringWithLength();
 }
 
 std::string ClangForStmt::dump(int indent) const {
-    return ind(indent) + "ForStmt @ " + location.toString();
+    return ind(indent) + "ForStmt @ " + location.toStringWithLength();
 }
 
 std::string ClangWhileStmt::dump(int indent) const {
-    return ind(indent) + "WhileStmt @ " + location.toString();
+    return ind(indent) + "WhileStmt @ " + location.toStringWithLength();
 }
 
 std::string ClangReturnStmt::dump(int indent) const {
-    return ind(indent) + "ReturnStmt @ " + location.toString();
+    return ind(indent) + "ReturnStmt @ " + location.toStringWithLength();
 }
 
 std::string ClangDeclStmt::dump(int indent) const {
-    return ind(indent) + "DeclStmt @ " + location.toString();
+    return ind(indent) + "DeclStmt @ " + location.toStringWithLength();
 }
 
 std::string ClangExprStmt::dump(int indent) const {
-    return ind(indent) + "ExprStmt @ " + location.toString();
+    return ind(indent) + "ExprStmt @ " + location.toStringWithLength();
 }
 
 std::string ClangBreakStmt::dump(int indent) const {
-    return ind(indent) + "BreakStmt @ " + location.toString();
+    return ind(indent) + "BreakStmt @ " + location.toStringWithLength();
 }
 
 std::string ClangContinueStmt::dump(int indent) const {
-    return ind(indent) + "ContinueStmt @ " + location.toString();
+    return ind(indent) + "ContinueStmt @ " + location.toStringWithLength();
 }
 
 std::string ClangBinaryOperator::dump(int indent) const {
-    return ind(indent) + "BinaryOperator: " + opcode + " @ " + location.toString();
+    return ind(indent) + "BinaryOperator: " + opcode + " @ " + location.toStringWithLength();
 }
 
 std::string ClangUnaryOperator::dump(int indent) const {
-    return ind(indent) + "UnaryOperator: " + opcode + " @ " + location.toString();
+    return ind(indent) + "UnaryOperator: " + opcode + " @ " + location.toStringWithLength();
 }
 
 std::string ClangCallExpr::dump(int indent) const {
-    return ind(indent) + "CallExpr: " + spelling + " @ " + location.toString();
+    return ind(indent) + "CallExpr: " + spelling + " @ " + location.toStringWithLength();
 }
 
 std::string ClangDeclRefExpr::dump(int indent) const {
-    return ind(indent) + "DeclRefExpr: " + referenced_decl + " @ " + location.toString();
+    return ind(indent) + "DeclRefExpr: " + referenced_decl + " @ " + location.toStringWithLength();
 }
 
 std::string ClangIntegerLiteral::dump(int indent) const {
-    return ind(indent) + "IntegerLiteral: " + std::to_string(value) + " @ " + location.toString();
+    return ind(indent) + "IntegerLiteral: " + std::to_string(value) + " @ " + location.toStringWithLength();
 }
 
 std::string ClangStringLiteral::dump(int indent) const {
-    return ind(indent) + "StringLiteral: \"" + value + "\" @ " + location.toString();
+    return ind(indent) + "StringLiteral: \"" + value + "\" @ " + location.toStringWithLength();
 }
 
 std::string ClangMemberRefExpr::dump(int indent) const {
-    return ind(indent) + "MemberRefExpr: " + member_name + " @ " + location.toString();
+    return ind(indent) + "MemberRefExpr: " + member_name + " @ " + location.toStringWithLength();
 }
 
 std::string ClangArraySubscriptExpr::dump(int indent) const {
-    return ind(indent) + "ArraySubscriptExpr @ " + location.toString();
+    return ind(indent) + "ArraySubscriptExpr @ " + location.toStringWithLength();
 }
 
 //
