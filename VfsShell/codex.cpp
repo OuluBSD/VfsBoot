@@ -7918,6 +7918,9 @@ R"(Commands:
   # Build automation
   make [target] [-f makefile] [-v|--verbose]  (minimal GNU make subset)
   sample.run [--keep] [--trace]               (build, compile, and run demo C++ program)
+  # libclang C++ AST parsing
+  parse.file <filepath> [vfs-target-path]     (parse C++ file with libclang)
+  parse.dump [vfs-path]                       (dump parsed AST tree)
 Notes:
   - Polut voivat olla suhteellisia nykyiseen VFS-hakemistoon (cd).
   - ./codex <skripti> suorittaa komennot tiedostosta ilman REPL-kehotetta.
@@ -11207,6 +11210,27 @@ int main(int argc, char** argv){
             std::cout << "Status: /env/sample.status\n";
 
             if(exec_status != 0){
+                result.success = false;
+            }
+
+        } else if(cmd == "parse.file"){
+            // libclang: parse C++ file from disk
+            // Usage: parse.file <filepath> [vfs-target-path]
+            try {
+                cmd_parse_file(vfs, inv.args);
+                std::cout << "Parsed C++ file successfully\n";
+            } catch(const std::exception& e) {
+                std::cout << "parse.file: " << e.what() << "\n";
+                result.success = false;
+            }
+
+        } else if(cmd == "parse.dump"){
+            // libclang: dump AST tree
+            // Usage: parse.dump [vfs-path]
+            try {
+                cmd_parse_dump(vfs, inv.args);
+            } catch(const std::exception& e) {
+                std::cout << "parse.dump: " << e.what() << "\n";
                 result.success = false;
             }
 

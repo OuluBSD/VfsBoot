@@ -969,10 +969,8 @@ void cpp_dump_to_vfs(Vfs& vfs, size_t overlayId, const std::string& tuPath, cons
 // ============================================================================
 //
 
-// Forward declarations for libclang
-typedef struct CXTranslationUnitImpl *CXTranslationUnit;
-typedef struct CXCursor CXCursor;
-typedef struct CXType CXType;
+// Include libclang header
+#include <clang-c/Index.h>
 
 // Source location tracking
 struct SourceLocation {
