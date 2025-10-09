@@ -34,11 +34,13 @@ EXAMPLES:
     $0 -d               # Debug build
     $0 -s umk -d        # Force U++ debug build
     $0 -s cmake -r      # Force CMake release build
+    $0 -s make -c -d    # Force Unix Makefile clean debug build
     $0 -c -d            # Clean debug build
 
 ENVIRONMENT:
     UMK                 Path to umk executable (default: search PATH)
     CMAKE               Path to cmake executable (default: search PATH)
+    MAKE                Path to make executable (default: search PATH)
 EOF
     exit 0
 }
