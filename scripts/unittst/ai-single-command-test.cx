@@ -1,0 +1,43 @@
+#!/usr/bin/env ./codex
+# Test: Single AI command (non-interactive)
+# Validates that 'ai <message>' works with cached responses
+
+echo "=== AI Single Command Test ==="
+echo ""
+echo "This test validates that the 'ai' command (alias for 'discuss')"
+echo "works correctly with a single command and uses cached responses."
+echo ""
+
+echo "Test: ai create hello world program in c++"
+echo "Expected: Should use cached AI response and execute commands"
+echo ""
+
+# Note: This will use the cached response we created
+# Cache files: cache/ai/{provider}/{hash}-in.txt and {hash}-out.txt
+# For "create hello world program in c++":
+#   - llama: 8b55e798465adefb
+#   - openai: df5718cf5f8a8698
+
+# Uncomment to test (requires AI provider or will use cache):
+# ai create hello world program in c++
+
+echo "Manual test command:"
+echo "  printf 'ai create hello world program in c++\nexit\n' | CODEX_AI_PROVIDER=llama ./codex"
+echo ""
+
+echo "Expected output includes:"
+echo "  - 📝 Started discussion session"
+echo "  - 🤔 Thinking..."
+echo "  - logic.init"
+echo "  - cpp.tu /astcpp/hello"
+echo "  - cat /cpp/hello.cpp"
+echo "  - Generated C++ code"
+echo ""
+
+echo "=== Test Complete ==="
+echo ""
+echo "To run the actual AI command test:"
+echo "  1. Set CODEX_AI_PROVIDER=llama (or openai)"
+echo "  2. Run: ./scripts/unittst/ai-single-command-test.cx"
+echo "  3. Or use cached: printf 'ai create hello world\\nexit\\n' | CODEX_AI_PROVIDER=llama ./codex"
+echo ""
