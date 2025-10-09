@@ -31,6 +31,12 @@ struct TrainingData {
     bool success;
     size_t iterations;
     std::string error_message;
+
+    // Additional metrics from PlannerMetrics
+    double execution_time_ms;
+    size_t vfs_nodes_examined;
+    std::vector<std::string> rules_triggered;
+    std::vector<std::string> rules_failed;
 };
 
 std::vector<std::string> find_scenario_files(const std::string& dir) {
@@ -105,6 +111,9 @@ int main(int argc, char* argv[]) {
     Vfs vfs;
     ScopeStore scope_store;
 
+    // Initialize global metrics collector to aggregate across all scenarios
+    MetricsCollector global_metrics;
+
     std::vector<TrainingData> training_results;
     size_t passed = 0, failed = 0;
 
@@ -129,17 +138,17 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        // Create runner
-        harness::ScenarioRunner runner(vfs, scope_store);
+        // Create runner with metrics
+        harness::ScenarioRunner runner(vfs, scope_store, &global_metrics);
         runner.setVerbose(verbose);
 
-        // Run breakdown loop
-        harness::BreakdownLoop loop(runner, scope_store);
+        // Run breakdown loop with metrics
+        harness::BreakdownLoop loop(runner, scope_store, &global_metrics);
         loop.setMaxIterations(max_iterations);
 
         harness::BreakdownResult result = loop.run(scenario);
 
-        // Collect training data
+        // Collect training data with metrics
         TrainingData data;
         data.scenario_name = scenario.name;
         data.user_intent = scenario.user_intent;
@@ -148,6 +157,18 @@ int main(int argc, char* argv[]) {
         data.success = result.success;
         data.iterations = result.iterations;
         data.error_message = result.error_message;
+
+        // Copy metrics from the last run
+        if (!global_metrics.history.empty()) {
+            const auto& last_metrics = global_metrics.history.back();
+            data.execution_time_ms = last_metrics.execution_time_ms;
+            data.vfs_nodes_examined = last_metrics.vfs_nodes_examined;
+            data.rules_triggered = last_metrics.rules_triggered;
+            data.rules_failed = last_metrics.rules_failed;
+        } else {
+            data.execution_time_ms = 0.0;
+            data.vfs_nodes_examined = 0;
+        }
 
         training_results.push_back(data);
 
@@ -169,25 +190,84 @@ int main(int argc, char* argv[]) {
     std::cout << "Passed: " << passed << "\n";
     std::cout << "Failed: " << failed << "\n";
 
+    // Display global metrics summary
+    if (!global_metrics.history.empty()) {
+        auto top_triggered = global_metrics.getMostTriggeredRules(10);
+        auto top_failed = global_metrics.getMostFailedRules(10);
+        double avg_success = global_metrics.getAverageSuccessRate();
+        double avg_iterations = global_metrics.getAverageIterations();
+
+        std::cout << "\n=== Aggregated Metrics ===\n";
+        std::cout << "Average Success Rate: " << (avg_success * 100.0) << "%\n";
+        std::cout << "Average Iterations: " << avg_iterations << "\n";
+
+        if (!top_triggered.empty()) {
+            std::cout << "\nTop 10 Triggered Rules:\n";
+            for (const auto& rule : top_triggered) {
+                std::cout << "  - " << rule << "\n";
+            }
+        }
+
+        if (!top_failed.empty()) {
+            std::cout << "\nTop 10 Failed Rules:\n";
+            for (const auto& rule : top_failed) {
+                std::cout << "  - " << rule << "\n";
+            }
+        }
+    }
+
     std::ofstream output(output_file);
     if (!output) {
         std::cerr << "Error: Cannot write to " << output_file << "\n";
         return 1;
     }
 
-    // Write simple JSON format
+    // Helper function to escape JSON strings
+    auto escape_json = [](const std::string& s) -> std::string {
+        std::string result;
+        for (char c : s) {
+            if (c == '"' || c == '\\') result += '\\';
+            else if (c == '\n') { result += "\\n"; continue; }
+            else if (c == '\r') { result += "\\r"; continue; }
+            else if (c == '\t') { result += "\\t"; continue; }
+            result += c;
+        }
+        return result;
+    };
+
+    // Write comprehensive JSON format with metrics
     output << "{\n";
+    output << "  \"summary\": {\n";
+    output << "    \"total_scenarios\": " << training_results.size() << ",\n";
+    output << "    \"passed\": " << passed << ",\n";
+    output << "    \"failed\": " << failed << ",\n";
+    output << "    \"success_rate\": " << (training_results.empty() ? 0.0 : (double)passed / training_results.size()) << "\n";
+    output << "  },\n";
     output << "  \"training_data\": [\n";
 
     for (size_t i = 0; i < training_results.size(); ++i) {
         const auto& data = training_results[i];
         output << "    {\n";
-        output << "      \"scenario_name\": \"" << data.scenario_name << "\",\n";
-        output << "      \"user_intent\": \"" << data.user_intent << "\",\n";
-        output << "      \"generated_plan\": \"" << data.generated_plan << "\",\n";
+        output << "      \"scenario_name\": \"" << escape_json(data.scenario_name) << "\",\n";
+        output << "      \"user_intent\": \"" << escape_json(data.user_intent) << "\",\n";
+        output << "      \"generated_plan\": \"" << escape_json(data.generated_plan) << "\",\n";
         output << "      \"success\": " << (data.success ? "true" : "false") << ",\n";
         output << "      \"iterations\": " << data.iterations << ",\n";
-        output << "      \"error_message\": \"" << data.error_message << "\"\n";
+        output << "      \"execution_time_ms\": " << data.execution_time_ms << ",\n";
+        output << "      \"vfs_nodes_examined\": " << data.vfs_nodes_examined << ",\n";
+        output << "      \"rules_triggered\": [";
+        for (size_t j = 0; j < data.rules_triggered.size(); ++j) {
+            output << "\"" << escape_json(data.rules_triggered[j]) << "\"";
+            if (j + 1 < data.rules_triggered.size()) output << ", ";
+        }
+        output << "],\n";
+        output << "      \"rules_failed\": [";
+        for (size_t j = 0; j < data.rules_failed.size(); ++j) {
+            output << "\"" << escape_json(data.rules_failed[j]) << "\"";
+            if (j + 1 < data.rules_failed.size()) output << ", ";
+        }
+        output << "],\n";
+        output << "      \"error_message\": \"" << escape_json(data.error_message) << "\"\n";
         output << "    }";
         if (i + 1 < training_results.size()) {
             output << ",";
@@ -198,7 +278,7 @@ int main(int argc, char* argv[]) {
     output << "  ]\n";
     output << "}\n";
 
-    std::cout << "\nTraining data written to: " << output_file << "\n";
+    std::cout << "\nTraining data with metrics written to: " << output_file << "\n";
 
     return (failed == 0) ? 0 : 1;
 }

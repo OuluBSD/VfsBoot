@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <chrono>
 
 namespace harness {
 
@@ -16,9 +17,10 @@ struct BreakdownResult;
 // Scenario runner - executes scenarios and collects results
 class ScenarioRunner {
 public:
-    ScenarioRunner(Vfs& vfs, ScopeStore& store);
+    ScenarioRunner(Vfs& vfs, ScopeStore& store, MetricsCollector* metrics = nullptr);
 
     void setVerbose(bool v);
+    void setMetricsCollector(MetricsCollector* metrics);
     bool runScenario(const Scenario& scenario);
 
     Vfs& getVfs() { return vfs_; }
@@ -27,7 +29,11 @@ public:
 private:
     Vfs& vfs_;
     ScopeStore& scope_store_;
+    MetricsCollector* metrics_collector_;
     bool verbose_;
+
+    // Timing support for performance metrics
+    std::chrono::steady_clock::time_point start_time_;
 
     bool runSetup(const Scenario& scenario);
     bool executePlanGeneration(const Scenario& scenario, std::string& plan_out);
@@ -48,15 +54,17 @@ struct BreakdownResult {
 // Breakdown loop - validates planner decomposition
 class BreakdownLoop {
 public:
-    BreakdownLoop(ScenarioRunner& runner, ScopeStore& store);
+    BreakdownLoop(ScenarioRunner& runner, ScopeStore& store, MetricsCollector* metrics = nullptr);
 
     void setMaxIterations(size_t n);
+    void setMetricsCollector(MetricsCollector* metrics);
     BreakdownResult run(const Scenario& scenario);
     std::string generateFeedback(const BreakdownResult& result);
 
 private:
     ScenarioRunner& runner_;
     ScopeStore& scope_store_;
+    MetricsCollector* metrics_collector_;
     size_t max_iterations_;
 };
 

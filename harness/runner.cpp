@@ -7,55 +7,105 @@
 using namespace harness;
 
 // ScenarioRunner implementation
-ScenarioRunner::ScenarioRunner(Vfs& vfs, ScopeStore& store)
-    : vfs_(vfs), scope_store_(store), verbose_(false) {}
+ScenarioRunner::ScenarioRunner(Vfs& vfs, ScopeStore& store, MetricsCollector* metrics)
+    : vfs_(vfs), scope_store_(store), metrics_collector_(metrics), verbose_(false) {}
 
 void ScenarioRunner::setVerbose(bool v) {
     verbose_ = v;
 }
 
+void ScenarioRunner::setMetricsCollector(MetricsCollector* metrics) {
+    metrics_collector_ = metrics;
+}
+
 bool ScenarioRunner::runScenario(const Scenario& scenario) {
+    // Start metrics recording
+    if (metrics_collector_) {
+        metrics_collector_->startRun(scenario.name);
+        start_time_ = std::chrono::steady_clock::now();
+    }
+
     if (verbose_) {
         std::cout << "=== Running Scenario: " << scenario.name << " ===\n";
         std::cout << "Description: " << scenario.description << "\n\n";
     }
 
+    // Track success state and error message
+    bool success = true;
+    std::string error_msg;
+
     // Phase 1: Setup
     if (!runSetup(scenario)) {
-        std::cerr << "Setup phase failed\n";
-        return false;
+        error_msg = "Setup phase failed";
+        std::cerr << error_msg << "\n";
+        success = false;
     }
 
     // Phase 2: Execute user intent and capture plan
-    std::string actual_plan;
-    if (!executePlanGeneration(scenario, actual_plan)) {
-        std::cerr << "Plan generation failed\n";
-        return false;
-    }
-
-    // Phase 3: Verify expected plan
-    if (!verifyPlan(scenario, actual_plan)) {
-        std::cerr << "Plan verification failed\n";
-        return false;
+    if (success) {
+        std::string actual_plan;
+        if (!executePlanGeneration(scenario, actual_plan)) {
+            error_msg = "Plan generation failed";
+            std::cerr << error_msg << "\n";
+            success = false;
+        } else {
+            // Phase 3: Verify expected plan
+            if (!verifyPlan(scenario, actual_plan)) {
+                error_msg = "Plan verification failed";
+                std::cerr << error_msg << "\n";
+                success = false;
+            }
+        }
     }
 
     // Phase 4: Execute actions and verify
-    if (!executeActions(scenario)) {
-        std::cerr << "Action execution failed\n";
-        return false;
+    if (success) {
+        if (!executeActions(scenario)) {
+            error_msg = "Action execution failed";
+            std::cerr << error_msg << "\n";
+            success = false;
+        }
     }
 
     // Phase 5: Verify final state
-    if (!verifyFinalState(scenario)) {
-        std::cerr << "Final state verification failed\n";
-        return false;
+    if (success) {
+        if (!verifyFinalState(scenario)) {
+            error_msg = "Final state verification failed";
+            std::cerr << error_msg << "\n";
+            success = false;
+        }
     }
 
-    if (verbose_) {
+    if (verbose_ && success) {
         std::cout << "\n✓ Scenario passed: " << scenario.name << "\n";
     }
 
-    return true;
+    // Record metrics
+    if (metrics_collector_) {
+        // Calculate execution time
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time_);
+        double exec_time_ms = duration.count();
+
+        // Record success/failure
+        metrics_collector_->recordSuccess(success, error_msg);
+
+        // Record performance (stub values for now - would need actual counters)
+        size_t context_tokens = 0;  // TODO: integrate with actual AI calls
+        size_t vfs_nodes = 0;  // TODO: implement proper VFS node counting
+        metrics_collector_->recordPerformance(exec_time_ms, context_tokens, vfs_nodes);
+
+        // Record outcome (all phases passed/failed)
+        bool plan_matched = success;  // If we got to verification, plan matched
+        bool actions_completed = success;  // If we completed, actions were done
+        bool verification_passed = success;  // Final state verified
+        metrics_collector_->recordOutcome(plan_matched, actions_completed, verification_passed);
+
+        // Finish metrics recording
+        metrics_collector_->finishRun();
+    }
+
+    return success;
 }
 
 bool ScenarioRunner::runSetup(const Scenario& scenario) {
@@ -312,11 +362,15 @@ std::vector<std::string> ScenarioRunner::tokenizeCommand(const std::string& cmd)
 }
 
 // BreakdownLoop implementation
-BreakdownLoop::BreakdownLoop(ScenarioRunner& runner, ScopeStore& store)
-    : runner_(runner), scope_store_(store), max_iterations_(10) {}
+BreakdownLoop::BreakdownLoop(ScenarioRunner& runner, ScopeStore& store, MetricsCollector* metrics)
+    : runner_(runner), scope_store_(store), metrics_collector_(metrics), max_iterations_(10) {}
 
 void BreakdownLoop::setMaxIterations(size_t n) {
     max_iterations_ = n;
+}
+
+void BreakdownLoop::setMetricsCollector(MetricsCollector* metrics) {
+    metrics_collector_ = metrics;
 }
 
 BreakdownResult BreakdownLoop::run(const Scenario& scenario) {
@@ -335,13 +389,19 @@ BreakdownResult BreakdownLoop::run(const Scenario& scenario) {
             "Iteration " + std::to_string(i+1)
         );
 
-        // Run scenario
+        // Run scenario (this will record its own metrics)
         bool success = runner_.runScenario(scenario);
 
         if (success) {
             result.success = true;
             result.error_message = "";
             std::cout << "✓ Breakdown successful on iteration " << i+1 << "\n";
+
+            // Record total iterations in metrics
+            if (metrics_collector_) {
+                metrics_collector_->recordIterations(result.iterations);
+            }
+
             return result;
         }
 
@@ -354,6 +414,12 @@ BreakdownResult BreakdownLoop::run(const Scenario& scenario) {
     }
 
     result.error_message = "Failed after " + std::to_string(max_iterations_) + " iterations";
+
+    // Record iteration count even on failure
+    if (metrics_collector_) {
+        metrics_collector_->recordIterations(result.iterations);
+    }
+
     return result;
 }
 

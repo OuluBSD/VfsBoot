@@ -76,12 +76,15 @@ int main(int argc, char* argv[]) {
     Vfs vfs;
     ScopeStore scope_store;
 
-    // Create runner
-    harness::ScenarioRunner runner(vfs, scope_store);
+    // Initialize metrics collector
+    MetricsCollector metrics_collector;
+
+    // Create runner with metrics
+    harness::ScenarioRunner runner(vfs, scope_store, &metrics_collector);
     runner.setVerbose(verbose);
 
-    // Run breakdown loop
-    harness::BreakdownLoop loop(runner, scope_store);
+    // Run breakdown loop with metrics
+    harness::BreakdownLoop loop(runner, scope_store, &metrics_collector);
     loop.setMaxIterations(max_iterations);
 
     std::cout << "Starting breakdown loop with " << max_iterations << " max iterations...\n\n";
@@ -91,6 +94,46 @@ int main(int argc, char* argv[]) {
     // Print feedback
     std::string feedback = loop.generateFeedback(result);
     std::cout << "\n" << feedback << "\n";
+
+    // Display metrics summary
+    if (!metrics_collector.history.empty()) {
+        std::cout << "\n=== Metrics Summary ===\n";
+
+        auto top_triggered = metrics_collector.getMostTriggeredRules(5);
+        auto top_failed = metrics_collector.getMostFailedRules(5);
+        double avg_success = metrics_collector.getAverageSuccessRate();
+        double avg_iterations = metrics_collector.getAverageIterations();
+
+        std::cout << "Average Success Rate: " << (avg_success * 100.0) << "%\n";
+        std::cout << "Average Iterations: " << avg_iterations << "\n";
+
+        if (!top_triggered.empty()) {
+            std::cout << "\nTop Triggered Rules:\n";
+            for (const auto& rule : top_triggered) {
+                std::cout << "  - " << rule << "\n";
+            }
+        }
+
+        if (!top_failed.empty()) {
+            std::cout << "\nTop Failed Rules:\n";
+            for (const auto& rule : top_failed) {
+                std::cout << "  - " << rule << "\n";
+            }
+        }
+
+        // Show detailed metrics for last run
+        const auto& last_metrics = metrics_collector.history.back();
+        std::cout << "\nLast Run Details:\n";
+        std::cout << "  Scenario: " << last_metrics.scenario_name << "\n";
+        std::cout << "  Success: " << (last_metrics.success ? "Yes" : "No") << "\n";
+        std::cout << "  Iterations: " << last_metrics.iterations << "\n";
+        std::cout << "  Execution Time: " << last_metrics.execution_time_ms << " ms\n";
+        std::cout << "  VFS Nodes Examined: " << last_metrics.vfs_nodes_examined << "\n";
+
+        if (!last_metrics.success && !last_metrics.error_message.empty()) {
+            std::cout << "  Error: " << last_metrics.error_message << "\n";
+        }
+    }
 
     return result.success ? 0 : 1;
 }

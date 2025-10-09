@@ -1,0 +1,23 @@
+name: multi-dir-creation
+description: Create multiple nested directories
+
+[SETUP]
+mkdir /root
+
+[USER_INTENT]
+Create nested directory structure for project
+
+[EXPECTED_PLAN]
+1. Create src directory
+2. Create include directory
+3. Create tests directory
+
+[ACTIONS]
+mkdir /root/src
+mkdir /root/include
+mkdir /root/tests
+
+[VERIFICATION]
+exists /root/src
+exists /root/include
+exists /root/tests

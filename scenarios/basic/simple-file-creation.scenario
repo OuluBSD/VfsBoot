@@ -1,0 +1,20 @@
+name: simple-file-creation
+description: Create a simple text file with content
+
+[SETUP]
+mkdir /testdir
+
+[USER_INTENT]
+Create a text file with hello world content
+
+[EXPECTED_PLAN]
+1. Create file in testdir
+2. Write hello world content
+
+[ACTIONS]
+touch /testdir/hello.txt
+echo "Hello World" > /testdir/hello.txt
+
+[VERIFICATION]
+exists /testdir/hello.txt
+contains /testdir/hello.txt "Hello World"
