@@ -1,0 +1,57 @@
+# Demonstration of the internal make utility
+
+echo "=== Make Utility Demo ==="
+echo ""
+
+# Create a simple Makefile in VFS using echo
+echo "Creating sample Makefile..."
+echo "# Simple Makefile demo" /Makefile
+echo "CC = gcc" /Makefile
+echo "CFLAGS = -Wall -O2" /Makefile
+echo "TARGET = hello" /Makefile
+echo "OBJS = main.o utils.o" /Makefile
+echo "" /Makefile
+echo ".PHONY: all clean" /Makefile
+echo "" /Makefile
+echo "all: $(TARGET)" /Makefile
+echo "" /Makefile
+echo "$(TARGET): $(OBJS)" /Makefile
+echo "	echo Linking $@..." /Makefile
+echo "	$(CC) $(CFLAGS) -o $@ $^" /Makefile
+echo "" /Makefile
+echo "main.o: main.c utils.h" /Makefile
+echo "	echo Compiling main.c..." /Makefile
+echo "	touch $@" /Makefile
+echo "" /Makefile
+echo "utils.o: utils.c utils.h" /Makefile
+echo "	echo Compiling utils.c..." /Makefile
+echo "	touch $@" /Makefile
+echo "" /Makefile
+echo "clean:" /Makefile
+echo "	echo Cleaning..." /Makefile
+echo "	rm -f $(TARGET) $(OBJS)" /Makefile
+
+# Create dummy source files
+echo "Creating dummy source files..."
+touch /main.c
+touch /utils.c
+touch /utils.h
+
+echo ""
+echo "=== Makefile contents ==="
+cat /Makefile
+
+echo ""
+echo "=== Running make (verbose) ==="
+make -v
+
+echo ""
+echo "=== Running make again (should be up-to-date) ==="
+make
+
+echo ""
+echo "=== Running make clean ==="
+make clean
+
+echo ""
+echo "=== Make demo complete! ===="

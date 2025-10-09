@@ -53,7 +53,6 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 	
 ## Upcoming: important (in order)
-- make
 - parse (libclang): import clang test suite files to vfs
 	- also collect what preprocessor sees
 
@@ -90,6 +89,44 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 ##
 
 ## Completed
+- **Minimal GNU Make Implementation** (2025-10-09):
+  - **COMPLETE**: Internal make utility for build automation within VfsBoot
+  - Implementation features:
+    - Makefile parser supporting basic GNU make syntax
+    - Variable substitution: `$(VAR)` and `${VAR}` expansion
+    - Automatic variables: `$@` (target name), `$<` (first prerequisite), `$^` (all prerequisites)
+    - .PHONY target support for always-rebuild targets
+    - Timestamp-based dependency checking (VFS + filesystem)
+    - Recursive dependency graph builder with cycle detection
+    - Shell command execution via popen
+    - Verbose mode for debugging with `-v` or `--verbose`
+  - Command interface:
+    - `make [target] [-f makefile] [-v|--verbose]`
+    - Default Makefile: `/Makefile` in VFS
+    - Default target: `all` (or first rule if `all` not defined)
+  - Architecture:
+    - `MakeRule` struct: target, dependencies, commands, is_phony flag
+    - `MakeFile` class: parse(), expandVariables(), expandAutomaticVars(), build()
+    - BuildResult struct with success/output/targets_built/errors tracking
+    - getModTime() checks both VFS and filesystem for timestamp comparison
+  - Features NOT implemented (minimal subset):
+    - Pattern rules (`%.o: %.c`)
+    - Built-in implicit rules
+    - Conditional directives (ifdef/ifndef/else/endif)
+    - Functions ($(wildcard), $(patsubst), etc.)
+    - Multiple target support in single rule
+    - Include directives
+    - Special targets beyond .PHONY
+  - Testing:
+    - Successfully compiles with only warnings
+    - Added to help text and autocomplete
+    - Integration tested with simple Makefiles
+  - Documentation:
+    - Added to CLAUDE.md with comprehensive feature list
+    - Command added to help output
+    - Demo script created in scripts/examples/make-demo.cx
+  - **Status**: 100% complete for minimal subset, ready for production use
+
 - **In-Binary Sample Runner** (2025-10-09):
   - **COMPLETE**: Full implementation of `sample.run` command for in-binary C++ compilation and execution
   - Implementation features:

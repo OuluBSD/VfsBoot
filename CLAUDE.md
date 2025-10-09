@@ -58,6 +58,18 @@ All nodes (directories, files, AST nodes) inherit from `VfsNode` base class.
 
 **C++ Code Builder**: `cpp.tu`, `cpp.include`, `cpp.func`, `cpp.param`, `cpp.vardecl`, `cpp.expr`, `cpp.stmt`, `cpp.print`, `cpp.return`, `cpp.returni`, `cpp.rangefor`, `cpp.dump`, `sample.run`
 
+**Make Utility** (Minimal GNU Make Subset):
+- Build automation with Makefile support: `make [target] [-f makefile] [-v|--verbose]`
+- Features:
+  - Basic rule syntax: `target: dependencies` with tab-indented commands
+  - Variable substitution: `$(VAR)` and `${VAR}`
+  - Automatic variables: `$@` (target), `$<` (first prerequisite), `$^` (all prerequisites)
+  - Phony targets: `.PHONY` declaration
+  - Timestamp-based rebuilds (filesystem + VFS)
+  - Dependency graph with cycle detection
+- Default Makefile location: `/Makefile` (override with `-f`)
+- Default target: `all` (or first rule)
+
 **Sample Runner** (In-Binary Pipeline):
 - Build, compile, and execute demo C++ program: `sample.run [--keep] [--trace]`
 - Outputs: `/logs/sample.run.out`, `/logs/sample.compile.out`, `/env/sample.status`

@@ -1,0 +1,25 @@
+# Simple Makefile demo
+CC = gcc
+CFLAGS = -Wall -O2
+TARGET = hello
+OBJS = main.o utils.o
+
+.PHONY: all clean
+
+all: $(TARGET)
+
+$(TARGET): $(OBJS)
+	echo "Linking $@..."
+	touch $@
+
+main.o: main.c utils.h
+	echo "Compiling main.c..."
+	touch $@
+
+utils.o: utils.c utils.h
+	echo "Compiling utils.c..."
+	touch $@
+
+clean:
+	echo "Cleaning..."
+	rm -f $(TARGET) $(OBJS)
