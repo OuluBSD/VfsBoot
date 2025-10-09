@@ -265,6 +265,22 @@ Build a complete rule system from scratch (NO logic.init):
 - Validates: Throughout the pipeline (pre-planning logic.check → hypothesis testing → post plan.validate)
 - Unifies: All data in VFS (plans at /plan, AST at /astcpp, code at /cpp, rules at /plan/rules)
 
+**scripts/examples/ai-interactive-demo.cx** - Interactive AI Sub-Loop Demo:
+```bash
+./scripts/examples/ai-interactive-demo.cx
+```
+**NEW FEATURE** - Interactive multi-turn conversations:
+- **Command**: `ai` (without arguments) enters interactive mode
+- **Prompt**: Changes to `discuss>` for conversation mode
+- **Command**: `plan.discuss` (without arguments) for plan-specific discussion
+- **Prompt**: Changes to `plan.discuss>` with context display
+- **Exit**: Type `exit`, `back`, or `quit` to return to main prompt
+- **Old workflow**: Repeat `discuss <msg>` for each turn (repetitive)
+- **New workflow**: Enter `ai` once, multiple turns, then `exit` (natural)
+- **Features**: Custom prompts per mode, session preservation, independent history
+- **Usage examples**: Shows before/after comparison and interactive test commands
+- **Perfect for**: Extended AI conversations without command repetition
+
 ## Running .sexp Scripts
 
 S-expression scripts are primarily used by the test harness, but can be run manually:
