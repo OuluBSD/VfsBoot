@@ -95,7 +95,242 @@ struct Vfs;
 //
 using TagId = uint32_t;
 constexpr TagId TAG_INVALID = 0;
-using TagSet = std::set<TagId>;
+
+//
+// BitVector-based TagSet for O(1) operations with 64-bit chunks
+//
+class TagSet {
+    static constexpr size_t BITS_PER_CHUNK = 64;
+    std::vector<uint64_t> chunks;  // Bit vector in 64-bit chunks
+
+    // Get chunk index and bit position for a tag
+    static constexpr size_t chunkIndex(TagId tag) { return tag / BITS_PER_CHUNK; }
+    static constexpr size_t bitPosition(TagId tag) { return tag % BITS_PER_CHUNK; }
+
+    void ensureCapacity(TagId tag) {
+        size_t needed = chunkIndex(tag) + 1;
+        if(chunks.size() < needed) {
+            chunks.resize(needed, 0);
+        }
+    }
+
+public:
+    TagSet() = default;
+    TagSet(std::initializer_list<TagId> tags) {
+        for(TagId tag : tags) insert(tag);
+    }
+
+    // Insert tag - O(1) amortized
+    void insert(TagId tag) {
+        if(tag == TAG_INVALID) return;
+        ensureCapacity(tag);
+        chunks[chunkIndex(tag)] |= (1ULL << bitPosition(tag));
+    }
+
+    // Erase tag - O(1)
+    void erase(TagId tag) {
+        if(tag == TAG_INVALID) return;
+        size_t idx = chunkIndex(tag);
+        if(idx < chunks.size()) {
+            chunks[idx] &= ~(1ULL << bitPosition(tag));
+        }
+    }
+
+    // Check membership - O(1)
+    size_t count(TagId tag) const {
+        if(tag == TAG_INVALID) return 0;
+        size_t idx = chunkIndex(tag);
+        if(idx >= chunks.size()) return 0;
+        return (chunks[idx] & (1ULL << bitPosition(tag))) ? 1 : 0;
+    }
+
+    bool contains(TagId tag) const { return count(tag) > 0; }
+
+    // Cardinality using popcount - O(chunks)
+    size_t size() const {
+        size_t total = 0;
+        for(uint64_t chunk : chunks) {
+            total += __builtin_popcountll(chunk);
+        }
+        return total;
+    }
+
+    bool empty() const {
+        for(uint64_t chunk : chunks) {
+            if(chunk != 0) return false;
+        }
+        return true;
+    }
+
+    void clear() { chunks.clear(); }
+
+    // Set operations using bitwise ops
+    TagSet operator|(const TagSet& other) const {  // Union
+        TagSet result;
+        size_t max_size = std::max(chunks.size(), other.chunks.size());
+        result.chunks.resize(max_size, 0);
+        for(size_t i = 0; i < chunks.size(); ++i) {
+            result.chunks[i] = chunks[i];
+        }
+        for(size_t i = 0; i < other.chunks.size(); ++i) {
+            result.chunks[i] |= other.chunks[i];
+        }
+        return result;
+    }
+
+    TagSet operator&(const TagSet& other) const {  // Intersection
+        TagSet result;
+        size_t min_size = std::min(chunks.size(), other.chunks.size());
+        result.chunks.resize(min_size, 0);
+        for(size_t i = 0; i < min_size; ++i) {
+            result.chunks[i] = chunks[i] & other.chunks[i];
+        }
+        return result;
+    }
+
+    TagSet operator-(const TagSet& other) const {  // Difference
+        TagSet result;
+        result.chunks.resize(chunks.size(), 0);
+        for(size_t i = 0; i < chunks.size(); ++i) {
+            uint64_t other_chunk = i < other.chunks.size() ? other.chunks[i] : 0;
+            result.chunks[i] = chunks[i] & ~other_chunk;
+        }
+        return result;
+    }
+
+    TagSet operator^(const TagSet& other) const {  // Symmetric difference (XOR)
+        TagSet result;
+        size_t max_size = std::max(chunks.size(), other.chunks.size());
+        result.chunks.resize(max_size, 0);
+        for(size_t i = 0; i < max_size; ++i) {
+            uint64_t a = i < chunks.size() ? chunks[i] : 0;
+            uint64_t b = i < other.chunks.size() ? other.chunks[i] : 0;
+            result.chunks[i] = a ^ b;
+        }
+        return result;
+    }
+
+    // In-place operations
+    TagSet& operator|=(const TagSet& other) {
+        if(other.chunks.size() > chunks.size()) {
+            chunks.resize(other.chunks.size(), 0);
+        }
+        for(size_t i = 0; i < other.chunks.size(); ++i) {
+            chunks[i] |= other.chunks[i];
+        }
+        return *this;
+    }
+
+    TagSet& operator&=(const TagSet& other) {
+        for(size_t i = 0; i < chunks.size(); ++i) {
+            chunks[i] &= i < other.chunks.size() ? other.chunks[i] : 0;
+        }
+        return *this;
+    }
+
+    TagSet& operator-=(const TagSet& other) {
+        for(size_t i = 0; i < std::min(chunks.size(), other.chunks.size()); ++i) {
+            chunks[i] &= ~other.chunks[i];
+        }
+        return *this;
+    }
+
+    // Fast subset checking
+    bool isSubsetOf(const TagSet& other) const {
+        for(size_t i = 0; i < chunks.size(); ++i) {
+            uint64_t other_chunk = i < other.chunks.size() ? other.chunks[i] : 0;
+            if((chunks[i] & ~other_chunk) != 0) return false;
+        }
+        return true;
+    }
+
+    bool isSupersetOf(const TagSet& other) const {
+        return other.isSubsetOf(*this);
+    }
+
+    // Iterator support for range-based for loops
+    class iterator {
+        const std::vector<uint64_t>* chunks_ptr;
+        size_t chunk_idx;
+        size_t bit_idx;
+
+        void advance() {
+            if(!chunks_ptr || chunk_idx >= chunks_ptr->size()) return;
+
+            // Find next set bit
+            while(chunk_idx < chunks_ptr->size()) {
+                uint64_t chunk = (*chunks_ptr)[chunk_idx];
+                if(chunk == 0) {
+                    chunk_idx++;
+                    bit_idx = 0;
+                    continue;
+                }
+
+                // Skip to next set bit in current chunk
+                chunk >>= bit_idx;
+                while(bit_idx < BITS_PER_CHUNK && (chunk & 1) == 0) {
+                    chunk >>= 1;
+                    bit_idx++;
+                }
+
+                if(bit_idx < BITS_PER_CHUNK) return;  // Found
+                chunk_idx++;
+                bit_idx = 0;
+            }
+        }
+
+    public:
+        iterator(const std::vector<uint64_t>* ptr, bool is_end)
+            : chunks_ptr(ptr), chunk_idx(is_end ? ptr->size() : 0), bit_idx(0) {
+            if(!is_end && ptr && !ptr->empty()) advance();
+        }
+
+        TagId operator*() const {
+            return static_cast<TagId>(chunk_idx * BITS_PER_CHUNK + bit_idx);
+        }
+
+        iterator& operator++() {
+            bit_idx++;
+            advance();
+            return *this;
+        }
+
+        bool operator!=(const iterator& other) const {
+            return chunk_idx != other.chunk_idx || bit_idx != other.bit_idx;
+        }
+
+        bool operator==(const iterator& other) const {
+            return !(*this != other);
+        }
+    };
+
+    iterator begin() const { return iterator(&chunks, false); }
+    iterator end() const { return iterator(&chunks, true); }
+
+    // XOR-based hash for fast fingerprinting
+    uint64_t hash() const {
+        uint64_t h = 0;
+        for(uint64_t chunk : chunks) {
+            h ^= chunk;
+        }
+        return h;
+    }
+
+    // Comparison operators
+    bool operator==(const TagSet& other) const {
+        size_t max_size = std::max(chunks.size(), other.chunks.size());
+        for(size_t i = 0; i < max_size; ++i) {
+            uint64_t a = i < chunks.size() ? chunks[i] : 0;
+            uint64_t b = i < other.chunks.size() ? other.chunks[i] : 0;
+            if(a != b) return false;
+        }
+        return true;
+    }
+
+    bool operator!=(const TagSet& other) const {
+        return !(*this == other);
+    }
+};
 
 struct TagRegistry {
     std::map<std::string, TagId> name_to_id;
@@ -908,10 +1143,42 @@ struct ContextBuilder {
     enum class FilterLogic { And, Or, Not };
     void addCompoundFilter(FilterLogic logic, const std::vector<ContextFilter>& subfilters);
 
+    // Fast XOR-based content fingerprinting for deduplication
+    static uint64_t contentFingerprint(const std::string& content) {
+        uint64_t hash = 0xcbf29ce484222325ULL;  // FNV-1a basis
+        const uint64_t prime = 0x100000001b3ULL;
+
+        // Process 8 bytes at a time for speed
+        size_t i = 0;
+        const char* data = content.data();
+        size_t len = content.size();
+
+        while(i + 8 <= len) {
+            uint64_t chunk;
+            std::memcpy(&chunk, data + i, 8);
+            hash = (hash ^ chunk) * prime;
+            i += 8;
+        }
+
+        // Process remaining bytes
+        while(i < len) {
+            hash = (hash ^ static_cast<uint64_t>(data[i])) * prime;
+            i++;
+        }
+
+        return hash;
+    }
+
+    // Fast TagSet fingerprint for quick tag comparison
+    static uint64_t tagFingerprint(const TagSet& tags) {
+        return tags.hash();  // Uses XOR of all chunks
+    }
+
 private:
     void visitNode(const std::string& path, VfsNode* node);
     bool matchesAnyFilter(const std::string& path, VfsNode* node) const;
-    std::unordered_set<std::string> seen_content;  // For deduplication
+    std::unordered_set<std::string> seen_content;  // For deduplication (fallback)
+    std::unordered_set<uint64_t> seen_fingerprints;  // Fast hash-based deduplication
 };
 
 // Code replacement strategy for determining what statements to remove/modify

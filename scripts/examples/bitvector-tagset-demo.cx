@@ -1,0 +1,117 @@
+#!/usr/bin/env codex
+
+# BitVector TagSet Performance Demonstration
+# Shows O(1) operations with popcount, XOR hashing, and bitwise set ops
+
+echo "=== BitVector TagSet Performance Demo ==="
+echo ""
+
+# Create test files with tags
+mkdir /test
+touch /test/file1.txt
+touch /test/file2.txt
+touch /test/file3.txt
+touch /test/file4.txt
+
+# Add multiple tags to demonstrate bitwise operations
+echo "Adding tags to files..."
+tag.add /test/file1.txt fast
+tag.add /test/file1.txt cached
+tag.add /test/file1.txt optimized
+tag.add /test/file1.txt vectorized
+
+tag.add /test/file2.txt fast
+tag.add /test/file2.txt network
+tag.add /test/file2.txt remote
+
+tag.add /test/file3.txt cached
+tag.add /test/file3.txt local-only
+tag.add /test/file3.txt optimized
+
+tag.add /test/file4.txt slow
+tag.add /test/file4.txt network
+tag.add /test/file4.txt uncached
+
+echo ""
+echo "=== Tag Operations ==="
+
+# Show tags on each file
+echo ""
+echo "File1 tags:"
+tag.show /test/file1.txt
+
+echo ""
+echo "File2 tags:"
+tag.show /test/file2.txt
+
+echo ""
+echo "File3 tags:"
+tag.show /test/file3.txt
+
+echo ""
+echo "=== Logic Engine Inference (uses TagSet operations) ==="
+echo ""
+
+# Test forward chaining with bitwise set operations
+echo "Inferring tags from 'fast':"
+logic.infer fast
+
+echo ""
+echo "Inferring tags from 'cached':"
+logic.infer cached
+
+echo ""
+echo "Checking consistency of 'offline' and 'network' (should conflict):"
+logic.check offline network
+
+echo ""
+echo "=== Tag Filtering (TagSet intersection/union) ==="
+echo ""
+
+# Find nodes with ANY of these tags (union operation)
+echo "Finding files with tag 'fast' OR 'cached':"
+tag.find fast cached
+
+echo ""
+echo "Finding files with tag 'network':"
+tag.find network
+
+echo ""
+echo "=== Context Builder with Fingerprinting ==="
+echo ""
+
+# Context building uses TagSet filtering and XOR-based deduplication
+echo "Building context with tag filter (uses fast TagSet.count()):"
+context.filter.tag fast
+
+echo ""
+echo "Context entries:"
+context.build 2000
+
+echo ""
+echo "=== Performance Characteristics ==="
+echo ""
+echo "BitVector TagSet implementation:"
+echo "  - Tag membership check: O(1) with single bitwise AND"
+echo "  - Tag insertion: O(1) amortized with bitwise OR"
+echo "  - Tag removal: O(1) with bitwise AND NOT"
+echo "  - Set union: O(chunks) with bitwise OR on 64-bit chunks"
+echo "  - Set intersection: O(chunks) with bitwise AND"
+echo "  - Set difference: O(chunks) with bitwise AND NOT"
+echo "  - Cardinality: O(chunks) using __builtin_popcountll"
+echo "  - XOR hash: O(chunks) for fingerprinting"
+echo ""
+echo "Memory usage:"
+echo "  - First 64 tags: 8 bytes (single uint64_t)"
+echo "  - Next 64 tags: +8 bytes per chunk"
+echo "  - Dynamic growth: vector<uint64_t> resizes as needed"
+echo ""
+echo "Compared to std::set<uint32_t>:"
+echo "  - Insert: O(1) vs O(log n)"
+echo "  - Lookup: O(1) vs O(log n)"
+echo "  - Union/Intersection: O(chunks) vs O(n + m)"
+echo "  - Memory: ~8n/64 bytes vs ~48n bytes (RB-tree overhead)"
+echo ""
+
+echo "Demo complete!"
+exit
