@@ -80,6 +80,7 @@ namespace i18n {
 
     const char* get(MsgId id);
     void init();
+    void set_english_only();  // Force English (for scripting)
 }
 
 #define _(msg_id) ::i18n::get(::i18n::MsgId::msg_id)

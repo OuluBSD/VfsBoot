@@ -128,6 +128,10 @@ namespace i18n {
 #endif
     }
 
+    void set_english_only() {
+        current_lang = Lang::EN;
+    }
+
     const char* get(MsgId id) {
         size_t idx = static_cast<size_t>(id);
         if(idx >= sizeof(messages) / sizeof(messages[0])) {
@@ -6976,12 +6980,13 @@ int main(int argc, char** argv){
         return 1;
     };
 
-    const string usage_text = string("usage: ") + argv[0] + " [--solution <pkg|asm>] [--daemon <port>] [script [-]]";
+    const string usage_text = string("usage: ") + argv[0] + " [--solution <pkg|asm>] [--daemon <port>] [--quiet] [script [-]]";
 
     std::string script_path;
     std::string solution_arg;
     bool fallback_after_script = false;
     int daemon_port = -1;
+    bool quiet_mode = false;
 
     auto looks_like_solution_hint = [](const std::string& arg){
         return is_solution_file(std::filesystem::path(arg));
@@ -6999,9 +7004,14 @@ int main(int argc, char** argv){
             daemon_port = std::stoi(argv[++i]);
             continue;
         }
+        if(arg == "--quiet" || arg == "-q"){
+            quiet_mode = true;
+            continue;
+        }
         if(arg == "--script"){
             if(i + 1 >= argc) return usage("--script requires a file path");
             script_path = argv[++i];
+            quiet_mode = true;  // Auto-enable quiet mode for scripts
             if(i + 1 < argc && std::string(argv[i + 1]) == "-"){
                 fallback_after_script = true;
                 ++i;
@@ -7019,9 +7029,15 @@ int main(int argc, char** argv){
         }
         if(script_path.empty()){
             script_path = arg;
+            quiet_mode = true;  // Auto-enable quiet mode for script files
             continue;
         }
         return usage(usage_text);
+    }
+
+    // Enable quiet mode if running a script
+    if(quiet_mode) {
+        i18n::set_english_only();
     }
 
     bool interactive = script_path.empty();
