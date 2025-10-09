@@ -1353,6 +1353,7 @@ private:
 // Shell commands for parsing
 void cmd_parse_file(Vfs& vfs, const std::vector<std::string>& args);
 void cmd_parse_dump(Vfs& vfs, const std::vector<std::string>& args);
+void cmd_parse_generate(Vfs& vfs, const std::vector<std::string>& args);
 
 //
 // Planner AST nodes (hierarchical planning system)

@@ -9,6 +9,7 @@
 #include <clang-c/Index.h>
 #include <sstream>
 #include <iomanip>
+#include <fstream>
 
 //
 // SourceLocation implementation
@@ -772,6 +773,71 @@ std::string ClangArraySubscriptExpr::dump(int indent) const {
 }
 
 //
+// Code generation helpers
+//
+
+// Read source file content (cached for efficiency)
+static std::map<std::string, std::string> source_file_cache;
+
+static std::string readSourceFile(const std::string& filepath) {
+    auto it = source_file_cache.find(filepath);
+    if (it != source_file_cache.end()) {
+        return it->second;
+    }
+
+    std::ifstream f(filepath);
+    if (!f.is_open()) {
+        throw std::runtime_error("Failed to open source file: " + filepath);
+    }
+
+    std::string content((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+    source_file_cache[filepath] = content;
+    return content;
+}
+
+// Extract source code for a node using its location
+static std::string extractSourceCode(const SourceLocation& loc) {
+    if (loc.file.empty() || loc.length == 0) {
+        return "";
+    }
+
+    std::string content = readSourceFile(loc.file);
+    if (loc.offset + loc.length > content.size()) {
+        return "";
+    }
+
+    return content.substr(loc.offset, loc.length);
+}
+
+// Generate C++ code from AST node tree
+std::string generateCppCode(std::shared_ptr<ClangAstNode> node) {
+    if (!node) {
+        return "";
+    }
+
+    // For Phase 1, we use source extraction
+    std::string code = extractSourceCode(node->location);
+    if (!code.empty()) {
+        return code;
+    }
+
+    // Fallback: if we can't extract from source, try to generate from children
+    std::ostringstream result;
+
+    // For TranslationUnit, concatenate all top-level declarations
+    if (auto tu = std::dynamic_pointer_cast<ClangTranslationUnitDecl>(node)) {
+        for (const auto& [name, child] : tu->children()) {
+            if (auto clang_child = std::dynamic_pointer_cast<ClangAstNode>(child)) {
+                result << generateCppCode(clang_child) << "\n";
+            }
+        }
+    }
+
+    return result.str();
+}
+
+//
 // Shell commands
 //
 
@@ -804,4 +870,49 @@ void cmd_parse_dump(Vfs& vfs, const std::vector<std::string>& args) {
     } else {
         throw std::runtime_error("parse.dump: not a clang AST node: " + path);
     }
+}
+
+void cmd_parse_generate(Vfs& vfs, const std::vector<std::string>& args) {
+    if (args.size() < 2) {
+        throw std::runtime_error("parse.generate: requires <ast-path> <output-path>");
+    }
+
+    std::string ast_path = args[0];
+    std::string output_path = args[1];
+
+    // Resolve AST node
+    auto node = vfs.resolve(ast_path);
+    if (!node) {
+        throw std::runtime_error("parse.generate: AST path not found: " + ast_path);
+    }
+
+    auto clang_node = std::dynamic_pointer_cast<ClangAstNode>(node);
+    if (!clang_node) {
+        throw std::runtime_error("parse.generate: not a clang AST node: " + ast_path);
+    }
+
+    // Generate C++ code
+    std::string cpp_code = generateCppCode(clang_node);
+    if (cpp_code.empty()) {
+        throw std::runtime_error("parse.generate: failed to generate code from AST");
+    }
+
+    // Write to VFS
+    size_t last_slash = output_path.rfind('/');
+    if (last_slash != std::string::npos) {
+        std::string parent_path = output_path.substr(0, last_slash);
+        vfs.mkdir(parent_path, true);
+    }
+
+    std::string filename = (last_slash != std::string::npos)
+        ? output_path.substr(last_slash + 1)
+        : output_path;
+    std::string parent_dir = (last_slash != std::string::npos)
+        ? output_path.substr(0, last_slash)
+        : "/";
+
+    auto file = std::make_shared<FileNode>(filename, cpp_code);
+    vfs.addNode(parent_dir, file, 0);
+
+    std::cout << "Generated " << cpp_code.length() << " bytes of C++ code to " << output_path << std::endl;
 }

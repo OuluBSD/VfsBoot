@@ -1,0 +1,40 @@
+#!/usr/bin/env ../codex
+# libclang Code Regeneration Demo
+# Phase 1.5: Parse → Generate → Compile → Run
+
+echo "=== libclang Code Regeneration Demo ==="
+echo ""
+
+# Step 1: Parse C++ file with libclang
+echo "Step 1: Parsing tests/hello.cpp..."
+parse.file tests/hello.cpp /ast/hello
+
+# Step 2: Show AST location
+echo ""
+echo "Step 2: Verifying AST was created..."
+ls /ast/hello
+
+# Step 3: Generate C++ code from AST
+echo ""
+echo "Step 3: Generating C++ code from AST..."
+parse.generate /ast/hello/translation_unit /generated/hello.cpp
+
+# Step 4: Show generated code
+echo ""
+echo "Step 4: Generated C++ code:"
+cat /generated/hello.cpp
+
+# Step 5: Write to /tmp and compile
+echo ""
+echo "Step 5: Compiling generated code..."
+cat /generated/hello.cpp > /tmp/hello_regen.cpp
+c++ -std=c++17 /tmp/hello_regen.cpp -o /tmp/hello_regen
+
+# Step 6: Run compiled program
+echo ""
+echo "Step 6: Running compiled program:"
+/tmp/hello_regen
+
+echo ""
+echo "=== Code Regeneration Complete ==="
+echo "Successfully: Parse → AST → Generate → Compile → Run!"

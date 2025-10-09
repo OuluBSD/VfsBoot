@@ -7921,6 +7921,7 @@ R"(Commands:
   # libclang C++ AST parsing
   parse.file <filepath> [vfs-target-path]     (parse C++ file with libclang)
   parse.dump [vfs-path]                       (dump parsed AST tree)
+  parse.generate <ast-path> <output-path>     (generate C++ code from AST)
 Notes:
   - Polut voivat olla suhteellisia nykyiseen VFS-hakemistoon (cd).
   - ./codex <skripti> suorittaa komennot tiedostosta ilman REPL-kehotetta.
@@ -11231,6 +11232,16 @@ int main(int argc, char** argv){
                 cmd_parse_dump(vfs, inv.args);
             } catch(const std::exception& e) {
                 std::cout << "parse.dump: " << e.what() << "\n";
+                result.success = false;
+            }
+
+        } else if(cmd == "parse.generate"){
+            // libclang: generate C++ code from AST
+            // Usage: parse.generate <ast-path> <output-path>
+            try {
+                cmd_parse_generate(vfs, inv.args);
+            } catch(const std::exception& e) {
+                std::cout << "parse.generate: " << e.what() << "\n";
                 result.success = false;
             }
 
