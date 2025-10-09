@@ -75,9 +75,22 @@ This removes all non-English translations and locale detection code. Useful for 
 ## Sample pipeline
 
 ```sh
-make sample
+make sample          # External Makefile pipeline (legacy)
+./codex              # Interactive mode with sample.run command
 ```
 
+**In-binary sample runner** (recommended):
+```sh
+printf 'sample.run\nexit\n' | ./codex
+```
+The `sample.run` command builds a hello-world C++ program entirely within codex:
+- Constructs AST using `cpp.tu`, `cpp.include`, `cpp.func`, `cpp.print`, `cpp.returni`, `cpp.dump`
+- Compiles generated code with the system C++ compiler
+- Executes the binary and captures output
+- Stores results in VFS: `/logs/sample.run.out`, `/logs/sample.compile.out`, `/env/sample.status`
+- Flags: `--keep` (preserve temp files), `--trace` (verbose diagnostics)
+
+**Legacy Makefile pipeline**:
 `make sample` pipes scripted commands into `codex`, generating a hello-world translation unit through the C++ AST commands. The target exports the generated code to `build/demo.cpp`, compiles it with the active `CXXFLAGS`, executes the binary, and asserts that the expected greeting appears.
 
 ## VfsShell Test Harness

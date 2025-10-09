@@ -1854,7 +1854,7 @@ static std::vector<std::string> get_all_commands(){
         "hypothesis.duplicates", "hypothesis.logging", "hypothesis.pattern",
         "cpp.tu", "cpp.include", "cpp.func", "cpp.param", "cpp.print",
         "cpp.returni", "cpp.return", "cpp.expr", "cpp.vardecl", "cpp.stmt",
-        "cpp.rangefor", "cpp.dump", "help", "quit", "exit"
+        "cpp.rangefor", "cpp.dump", "sample.run", "help", "quit", "exit"
     };
 }
 
@@ -7914,6 +7914,7 @@ R"(Commands:
   cpp.returni <scope-path> <int>
   cpp.rangefor <scope-path> <loop-name> <decl> | <range>
   cpp.dump <tu-path> <vfs-file-path>
+  sample.run [--keep] [--trace]               (build, compile, and run demo C++ program)
 Notes:
   - Polut voivat olla suhteellisia nykyiseen VFS-hakemistoon (cd).
   - ./codex <skripti> suorittaa komennot tiedostosta ilman REPL-kehotetta.
@@ -10663,6 +10664,151 @@ int main(int argc, char** argv){
             std::string absOut = normalize_path(cwd.path, inv.args[1]);
             cpp_dump_to_vfs(vfs, cwd.primary_overlay, absTu, absOut);
             std::cout << "dump -> " << absOut << "\n";
+
+        } else if(cmd == "sample.run"){
+            // Parse flags
+            bool keep_temp = false;
+            bool trace = false;
+            for(const auto& arg : inv.args){
+                if(arg == "--keep") keep_temp = true;
+                else if(arg == "--trace") trace = true;
+                else throw std::runtime_error("sample.run: unknown flag: " + arg);
+            }
+
+            auto start_time = std::chrono::steady_clock::now();
+
+            // Step 1: Reset VFS state for deterministic runs
+            if(trace) std::cout << "[sample.run] Resetting VFS state...\n";
+            try { vfs.rm("/astcpp/demo", cwd.primary_overlay); } catch(...) {}
+            try { vfs.rm("/cpp/demo.cpp", cwd.primary_overlay); } catch(...) {}
+            try { vfs.rm("/logs/sample.compile.out", cwd.primary_overlay); } catch(...) {}
+            try { vfs.rm("/logs/sample.compile.err", cwd.primary_overlay); } catch(...) {}
+            try { vfs.rm("/logs/sample.run.out", cwd.primary_overlay); } catch(...) {}
+            try { vfs.rm("/logs/sample.run.err", cwd.primary_overlay); } catch(...) {}
+            try { vfs.rm("/env/sample.status", cwd.primary_overlay); } catch(...) {}
+
+            // Step 2: Build demo translation unit using C++ AST helpers
+            if(trace) std::cout << "[sample.run] Building C++ AST...\n";
+
+            // Create /logs directory if it doesn't exist
+            try { vfs.mkdir("/logs", cwd.primary_overlay); } catch(...) {}
+
+            // Execute cpp commands to build the demo
+            execute_single(CommandInvocation{"cpp.tu", {"/astcpp/demo"}}, "");
+            execute_single(CommandInvocation{"cpp.include", {"/astcpp/demo", "iostream", "1"}}, "");
+            execute_single(CommandInvocation{"cpp.func", {"/astcpp/demo", "main", "int"}}, "");
+            execute_single(CommandInvocation{"cpp.print", {"/astcpp/demo/main", "Hello from codex-mini sample!"}}, "");
+            execute_single(CommandInvocation{"cpp.returni", {"/astcpp/demo/main", "0"}}, "");
+            execute_single(CommandInvocation{"cpp.dump", {"/astcpp/demo", "/cpp/demo.cpp"}}, "");
+
+            // Read generated source
+            std::string source_code = vfs.read("/cpp/demo.cpp", std::nullopt);
+
+            // Step 3: Locate compiler
+            std::string compiler = "c++";
+            try {
+                std::string env_compiler = vfs.read("/env/compiler", std::nullopt);
+                if(!env_compiler.empty()) compiler = env_compiler;
+            } catch(...) {}
+
+            const char* env_cxx = std::getenv("CXX");
+            if(env_cxx && env_cxx[0]) compiler = env_cxx;
+
+            if(trace) std::cout << "[sample.run] Using compiler: " << compiler << "\n";
+
+            // Step 4: Write source to temporary file and compile
+            std::string temp_src = "/tmp/codex_sample_" + std::to_string(getpid()) + ".cpp";
+            std::string temp_bin = "/tmp/codex_sample_" + std::to_string(getpid());
+
+            {
+                std::ofstream src_file(temp_src);
+                if(!src_file) throw std::runtime_error("sample.run: cannot create temp source file");
+                src_file << source_code;
+            }
+
+            if(trace) std::cout << "[sample.run] Compiling " << temp_src << " -> " << temp_bin << "\n";
+
+            std::string compile_cmd = compiler + " -std=c++17 -O2 " + temp_src + " -o " + temp_bin + " 2>&1";
+            FILE* compile_pipe = popen(compile_cmd.c_str(), "r");
+            if(!compile_pipe) throw std::runtime_error("sample.run: cannot run compiler");
+
+            std::string compile_output;
+            char buffer[256];
+            while(fgets(buffer, sizeof(buffer), compile_pipe)){
+                compile_output += buffer;
+            }
+            int compile_status = pclose(compile_pipe);
+
+            vfs.write("/logs/sample.compile.out", compile_output, cwd.primary_overlay);
+            vfs.write("/logs/sample.compile.err", compile_status != 0 ? compile_output : "", cwd.primary_overlay);
+
+            if(compile_status != 0){
+                if(!keep_temp){
+                    unlink(temp_src.c_str());
+                }
+                std::string status = "FAILED: compilation\nexit_code: " + std::to_string(WEXITSTATUS(compile_status)) + "\n";
+                vfs.write("/env/sample.status", status, cwd.primary_overlay);
+                std::cout << "sample.run: compilation failed (exit code " << WEXITSTATUS(compile_status) << ")\n";
+                std::cout << "Logs: /logs/sample.compile.out, /logs/sample.compile.err\n";
+                result.success = false;
+                return result;
+            }
+
+            // Step 5: Execute compiled binary
+            if(trace) std::cout << "[sample.run] Executing " << temp_bin << "\n";
+
+            std::string exec_cmd = temp_bin + std::string(" 2>&1");
+            FILE* exec_pipe = popen(exec_cmd.c_str(), "r");
+            if(!exec_pipe){
+                if(!keep_temp){
+                    unlink(temp_src.c_str());
+                    unlink(temp_bin.c_str());
+                }
+                throw std::runtime_error("sample.run: cannot execute binary");
+            }
+
+            std::string exec_output;
+            while(fgets(buffer, sizeof(buffer), exec_pipe)){
+                exec_output += buffer;
+            }
+            int exec_status = pclose(exec_pipe);
+
+            vfs.write("/logs/sample.run.out", exec_output, cwd.primary_overlay);
+            vfs.write("/logs/sample.run.err", exec_status != 0 ? exec_output : "", cwd.primary_overlay);
+
+            // Step 6: Clean up temp files unless --keep
+            if(!keep_temp){
+                unlink(temp_src.c_str());
+                unlink(temp_bin.c_str());
+            } else {
+                std::cout << "Kept temp files: " << temp_src << ", " << temp_bin << "\n";
+            }
+
+            // Step 7: Write status and timing
+            auto end_time = std::chrono::steady_clock::now();
+            auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+
+            std::ostringstream status_oss;
+            if(exec_status == 0){
+                status_oss << "SUCCESS\n";
+            } else {
+                status_oss << "FAILED: execution\n";
+            }
+            status_oss << "compile_exit_code: 0\n";
+            status_oss << "exec_exit_code: " << WEXITSTATUS(exec_status) << "\n";
+            status_oss << "duration_ms: " << duration_ms << "\n";
+
+            vfs.write("/env/sample.status", status_oss.str(), cwd.primary_overlay);
+
+            // Output summary
+            std::cout << "sample.run: " << (exec_status == 0 ? "SUCCESS" : "FAILED") << "\n";
+            std::cout << "Execution time: " << duration_ms << " ms\n";
+            std::cout << "Output: /logs/sample.run.out\n";
+            std::cout << "Status: /env/sample.status\n";
+
+            if(exec_status != 0){
+                result.success = false;
+            }
 
         } else if(cmd == "help"){
             help();

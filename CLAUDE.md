@@ -56,7 +56,12 @@ All nodes (directories, files, AST nodes) inherit from `VfsNode` base class.
 - `parse` – turns source into AST holders
 - `eval` – runs minimal λ-language (ints, bools, strings, lists, closures, builtins)
 
-**C++ Code Builder**: `cpp.tu`, `cpp.include`, `cpp.func`, `cpp.param`, `cpp.vardecl`, `cpp.expr`, `cpp.stmt`, `cpp.print`, `cpp.return`, `cpp.returni`, `cpp.rangefor`, `cpp.dump`
+**C++ Code Builder**: `cpp.tu`, `cpp.include`, `cpp.func`, `cpp.param`, `cpp.vardecl`, `cpp.expr`, `cpp.stmt`, `cpp.print`, `cpp.return`, `cpp.returni`, `cpp.rangefor`, `cpp.dump`, `sample.run`
+
+**Sample Runner** (In-Binary Pipeline):
+- Build, compile, and execute demo C++ program: `sample.run [--keep] [--trace]`
+- Outputs: `/logs/sample.run.out`, `/logs/sample.compile.out`, `/env/sample.status`
+- Flags: `--keep` (preserve temp files), `--trace` (verbose output)
 
 **AI Bridge**: `ai <prompt>` posts to OpenAI/Llama; `tools` echoes command surface
 
