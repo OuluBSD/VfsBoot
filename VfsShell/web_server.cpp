@@ -326,25 +326,35 @@ static int callback_websocket(lws *wsi, enum lws_callback_reasons reason,
             try {
                 auto [success, output] = g_command_callback(command);
 
+                // Convert \n to \r\n for proper terminal display
+                std::string terminal_output;
+                terminal_output.reserve(output.size() + 100); // Reserve extra space for \r characters
+                for (size_t i = 0; i < output.size(); i++) {
+                    if (output[i] == '\n' && (i == 0 || output[i-1] != '\r')) {
+                        terminal_output += '\r';
+                    }
+                    terminal_output += output[i];
+                }
+
                 // Send output back to client
                 // Split large messages into chunks to avoid buffer overflow and UTF-8 truncation
                 {
                     std::lock_guard<std::mutex> msg_lock(session->mutex);
-                    if (!output.empty()) {
+                    if (!terminal_output.empty()) {
                         const size_t CHUNK_SIZE = 4000; // Leave room for safety
                         size_t offset = 0;
-                        while (offset < output.length()) {
-                            size_t chunk_len = std::min(CHUNK_SIZE, output.length() - offset);
+                        while (offset < terminal_output.length()) {
+                            size_t chunk_len = std::min(CHUNK_SIZE, terminal_output.length() - offset);
 
                             // Make sure we don't split a UTF-8 character
-                            if (offset + chunk_len < output.length()) {
-                                unsigned char byte_at_boundary = output[offset + chunk_len];
+                            if (offset + chunk_len < terminal_output.length()) {
+                                unsigned char byte_at_boundary = terminal_output[offset + chunk_len];
 
                                 // If we're about to split in the middle of a continuation byte, back up
                                 while (chunk_len > 0 && (byte_at_boundary & 0xC0) == 0x80) {
                                     chunk_len--;
-                                    if (offset + chunk_len < output.length()) {
-                                        byte_at_boundary = output[offset + chunk_len];
+                                    if (offset + chunk_len < terminal_output.length()) {
+                                        byte_at_boundary = terminal_output[offset + chunk_len];
                                     } else {
                                         break;
                                     }
@@ -352,8 +362,8 @@ static int callback_websocket(lws *wsi, enum lws_callback_reasons reason,
 
                                 // Now check if the last byte in our chunk starts a multibyte sequence
                                 // that would be incomplete
-                                if (chunk_len > 0 && offset + chunk_len - 1 < output.length()) {
-                                    unsigned char last_byte = output[offset + chunk_len - 1];
+                                if (chunk_len > 0 && offset + chunk_len - 1 < terminal_output.length()) {
+                                    unsigned char last_byte = terminal_output[offset + chunk_len - 1];
                                     size_t bytes_needed = 0;
 
                                     if ((last_byte & 0xF8) == 0xF0) bytes_needed = 4; // 4-byte UTF-8
@@ -362,7 +372,7 @@ static int callback_websocket(lws *wsi, enum lws_callback_reasons reason,
 
                                     // Check if we have all the bytes we need
                                     if (bytes_needed > 0) {
-                                        size_t bytes_available = output.length() - (offset + chunk_len - 1);
+                                        size_t bytes_available = terminal_output.length() - (offset + chunk_len - 1);
                                         if (bytes_available < bytes_needed) {
                                             // Incomplete sequence - back up to before it starts
                                             chunk_len--;
@@ -372,11 +382,11 @@ static int callback_websocket(lws *wsi, enum lws_callback_reasons reason,
                             }
 
                             if (chunk_len > 0) {
-                                session->outgoing_messages.push(output.substr(offset, chunk_len));
+                                session->outgoing_messages.push(terminal_output.substr(offset, chunk_len));
                                 offset += chunk_len;
                             } else {
                                 // Safeguard: if we can't find a valid boundary, just send one byte
-                                session->outgoing_messages.push(output.substr(offset, 1));
+                                session->outgoing_messages.push(terminal_output.substr(offset, 1));
                                 offset++;
                             }
                         }

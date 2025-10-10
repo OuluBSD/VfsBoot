@@ -293,6 +293,32 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 
 ## Completed
+- **Bootstrap Build Dependency Detection and Static Analysis** (2025-10-10):
+  - **COMPLETE**: Comprehensive library detection and static analysis integration
+  - Dependency checking features:
+    - Automatic detection of all required libraries before build
+    - Check for: C++ compiler, pkg-config, BLAKE3, Subversion libs, libclang, libwebsockets, pthread
+    - Helpful error messages with library names and Gentoo installation commands
+    - Multi-distribution support (Gentoo, Debian/Ubuntu, Fedora/RHEL, Arch)
+    - Integrated into both bootstrap (`./build.sh -b`) and regular make builds
+    - Prevents cryptic linker errors by detecting missing dependencies early
+  - Static analysis features:
+    - clang-tidy integration for comprehensive code quality checks
+    - Interactive prompt after successful build: "Would you like to run static analysis?"
+    - Command-line flags: `--static-analysis` (auto-run), `--no-static-analysis` (skip)
+    - Analyzes all VfsShell source files with extensive check categories
+    - Logs saved to `.static-analysis-*.log` files (gitignored)
+    - Checks for: bugs, modernization, performance, readability, best practices
+  - Documentation updates:
+    - CLAUDE.md: New "Static Analysis" section with usage examples and workflow
+    - build.sh: Updated help text and usage examples
+    - .gitignore: Added static analysis log files
+  - Workflow integration:
+    - Recommended to run after completing tasks
+    - Suggested before git commits
+    - CI/CD friendly with `--no-static-analysis` flag
+  - **Status**: 100% complete, production ready
+
 - **Minimal GNU Make Implementation with Bootstrap Build** (2025-10-09):
   - **COMPLETE**: Internal make utility for build automation within VfsBoot + standalone bootstrap executable
   - Implementation features:
@@ -788,11 +814,12 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
     - Add floating window system (WinBox.js) and graph visualization (Cytoscape.js)
     - Session management: attachable/detachable sessions like tmux
   - **Status**: Phase 2 complete! Full interactive web terminal functional. Users can run any VfsShell command through their browser.
-  - **Known Issue**: Terminal output formatting needs improvement
-    - Newlines and tabs not properly handled in command output
-    - Example: `ls` output shows all entries on single line without proper formatting
-    - Need to convert `\n` to `\r\n` for xterm.js terminal
-    - Tab characters may need expansion or conversion
+  - **Terminal Formatting Fix** (2025-10-10):
+    - ✅ Fixed progressive indentation issue in web terminal output
+    - ✅ Implemented automatic `\n` to `\r\n` conversion for xterm.js compatibility
+    - ✅ Terminal cursor now properly returns to left margin after each line
+    - ✅ Commands like `ls` and `tree` now display with correct formatting
+    - Implementation: VfsShell/web_server.cpp lines 329-337, converts output before WebSocket transmission
 
 ## Backlog / Ideas
 - Harden string escaping in the C++ AST dumper before expanding code generation.

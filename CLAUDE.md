@@ -173,6 +173,59 @@ cat codex_trace.log
 
 Tracing macros: `TRACE_FN`, `TRACE_LOOP`, `TRACE_MSG`
 
+## Static Analysis
+
+VfsBoot includes comprehensive static analysis support using `clang-tidy` to catch potential bugs, code quality issues, and enforce best practices beyond what the compiler warnings provide.
+
+### Running Static Analysis
+
+The build script (`./build.sh`) automatically prompts to run static analysis after successful builds:
+
+```sh
+# Build and get prompted for static analysis
+./build.sh
+
+# Automatically run static analysis after build
+./build.sh --static-analysis
+
+# Skip static analysis prompt (for CI/automated builds)
+./build.sh --no-static-analysis
+```
+
+### Manual Static Analysis
+
+You can also run static analysis manually on individual files:
+
+```sh
+clang-tidy VfsShell/codex.cpp \
+  --checks='*,-fuchsia-*,-google-*,-llvm-*,-llvmlibc-*,-altera-*,-android-*' \
+  -- -std=c++17 -I/usr/lib/llvm/21/include \
+  $(pkg-config --cflags libsvn_delta libsvn_subr)
+```
+
+### When to Run Static Analysis
+
+- **After completing a task**: The build script prompts after successful builds
+- **Before committing to git**: Recommended workflow after code modifications
+- **During code review**: To catch issues early
+- **CI/CD pipelines**: Use `--static-analysis` flag for automated checks
+
+### Static Analysis Output
+
+Results are saved to `.static-analysis-*.log` files for detailed review. The tool checks for:
+- Potential bugs (null pointer dereferences, use-after-free, etc.)
+- Code modernization opportunities (C++11/14/17 features)
+- Performance issues (inefficient copies, unnecessary allocations)
+- Code readability (naming conventions, magic numbers)
+- Best practices (const correctness, RAII patterns)
+
+### Installing clang-tidy
+
+**Gentoo**: `emerge sys-devel/clang`
+**Debian/Ubuntu**: `apt-get install clang-tidy`
+**Fedora/RHEL**: `dnf install clang-tools-extra`
+**Arch**: `pacman -S clang`
+
 ## Critical Notes
 
 1. **No persistence by default** – Everything lives in-memory unless using overlays

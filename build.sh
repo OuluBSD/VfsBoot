@@ -15,6 +15,7 @@ BUILD_TYPE="release"
 BUILD_SYSTEM=""
 VERBOSE=0
 BOOTSTRAP=0
+STATIC_ANALYSIS=""  # "yes", "no", or "" (prompt)
 
 usage() {
     cat << EOF
@@ -23,18 +24,21 @@ Usage: $0 [OPTIONS]
 Build VfsBoot using available build system (umk > cmake > make)
 
 OPTIONS:
-    -d, --debug         Debug build (default: release)
-    -r, --release       Release build
-    -s, --system TYPE   Force build system: umk, cmake, or make
-    -v, --verbose       Verbose output
-    -c, --clean         Clean before build
-    -b, --bootstrap     Bootstrap build (compile internal make, then use it)
-    -h, --help          Show this help
+    -d, --debug           Debug build (default: release)
+    -r, --release         Release build
+    -s, --system TYPE     Force build system: umk, cmake, or make
+    -v, --verbose         Verbose output
+    -c, --clean           Clean before build
+    -b, --bootstrap       Bootstrap build (compile internal make, then use it)
+    --static-analysis     Run static analysis after successful build (clang-tidy)
+    --no-static-analysis  Skip static analysis prompt
+    -h, --help            Show this help
 
 EXAMPLES:
     $0                  # Auto-detect and build (release)
     $0 -d               # Debug build
     $0 -b               # Bootstrap build (build internal make first)
+    $0 --static-analysis  # Build and run static analysis
     $0 -s umk -d        # Force U++ debug build
     $0 -s cmake -r      # Force CMake release build
     $0 -s make -c -d    # Force Unix Makefile clean debug build
@@ -73,6 +77,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         -b|--bootstrap)
             BOOTSTRAP=1
+            shift
+            ;;
+        --static-analysis)
+            STATIC_ANALYSIS="yes"
+            shift
+            ;;
+        --no-static-analysis)
+            STATIC_ANALYSIS="no"
             shift
             ;;
         -h|--help)
@@ -208,6 +220,11 @@ build_make() {
 
     echo -e "${BLUE}Building with Make...${NC}"
 
+    # Check dependencies first
+    if ! check_dependencies; then
+        exit 1
+    fi
+
     # Clean if requested
     if [ -n "$CLEAN" ]; then
         echo "Cleaning..."
@@ -230,9 +247,98 @@ build_make() {
     fi
 }
 
+# Check for required libraries
+check_dependencies() {
+    echo -e "${BLUE}Checking dependencies...${NC}"
+    local missing_deps=()
+    local missing_hints=()
+
+    # Check for C++ compiler
+    local CXX="${CXX:-g++}"
+    if ! command -v "$CXX" &> /dev/null; then
+        CXX="c++"
+        if ! command -v "$CXX" &> /dev/null; then
+            missing_deps+=("C++ compiler (g++ or c++)")
+            missing_hints+=("  Install: emerge sys-devel/gcc")
+        fi
+    fi
+
+    # Check for pkg-config
+    if ! command -v pkg-config &> /dev/null; then
+        missing_deps+=("pkg-config")
+        missing_hints+=("  Install: emerge dev-util/pkgconfig")
+    fi
+
+    # Check for BLAKE3 library
+    if ! pkg-config --exists blake3 2>/dev/null && ! ldconfig -p 2>/dev/null | grep -q libblake3; then
+        missing_deps+=("BLAKE3 library")
+        missing_hints+=("  Install: emerge dev-libs/blake3")
+    fi
+
+    # Check for Subversion development libraries
+    if ! pkg-config --exists libsvn_delta 2>/dev/null; then
+        missing_deps+=("Subversion development libraries (libsvn_delta)")
+        missing_hints+=("  Install: emerge dev-vcs/subversion")
+    fi
+
+    if ! pkg-config --exists libsvn_subr 2>/dev/null; then
+        missing_deps+=("Subversion development libraries (libsvn_subr)")
+        missing_hints+=("  Install: emerge dev-vcs/subversion")
+    fi
+
+    # Check for libclang
+    local LLVM_VERSION="${LLVM_VERSION:-21}"
+    if [ ! -f "/usr/lib/llvm/${LLVM_VERSION}/lib64/libclang.so" ] && \
+       [ ! -f "/usr/lib/llvm/${LLVM_VERSION}/lib/libclang.so" ] && \
+       ! ldconfig -p 2>/dev/null | grep -q libclang; then
+        missing_deps+=("libclang (LLVM ${LLVM_VERSION})")
+        missing_hints+=("  Install: emerge sys-devel/clang")
+    fi
+
+    # Check for libwebsockets
+    if ! pkg-config --exists libwebsockets 2>/dev/null && ! ldconfig -p 2>/dev/null | grep -q libwebsockets; then
+        missing_deps+=("libwebsockets")
+        missing_hints+=("  Install: emerge net-libs/libwebsockets")
+    fi
+
+    # Check for pthread (usually part of glibc)
+    if ! echo '#include <pthread.h>' | ${CXX:-g++} -E -x c++ - &>/dev/null; then
+        missing_deps+=("pthread library")
+        missing_hints+=("  Usually provided by glibc - check your system installation")
+    fi
+
+    # Report missing dependencies
+    if [ ${#missing_deps[@]} -gt 0 ]; then
+        echo -e "${RED}✗ Missing dependencies:${NC}"
+        for dep in "${missing_deps[@]}"; do
+            echo -e "  ${RED}✗${NC} $dep"
+        done
+        echo ""
+        echo -e "${YELLOW}Installation hints (Gentoo):${NC}"
+        for hint in "${missing_hints[@]}"; do
+            echo -e "$hint"
+        done
+        echo ""
+        echo -e "${YELLOW}Note: For other distributions:${NC}"
+        echo "  Debian/Ubuntu: apt-get install libblake3-dev libsvn-dev libclang-dev libwebsockets-dev"
+        echo "  Fedora/RHEL:   dnf install blake3-devel subversion-devel clang-devel libwebsockets-devel"
+        echo "  Arch:          pacman -S blake3 subversion clang libwebsockets"
+        return 1
+    fi
+
+    echo -e "${GREEN}✓ All dependencies found${NC}"
+    return 0
+}
+
 # Bootstrap build: compile internal make, then use it to build codex
 build_bootstrap() {
     echo -e "${BLUE}=== Bootstrap Build ===${NC}"
+
+    # Check dependencies first
+    if ! check_dependencies; then
+        exit 1
+    fi
+
     echo "Step 1: Compiling internal make utility..."
 
     # Detect C++ compiler
@@ -292,6 +398,98 @@ build_bootstrap() {
     echo -e "${GREEN}✓ Bootstrap build successful!${NC}"
 }
 
+# Run static analysis with clang-tidy
+run_static_analysis() {
+    echo ""
+    echo -e "${BLUE}=== Static Analysis ===${NC}"
+
+    # Check if clang-tidy is available
+    if ! command -v clang-tidy &> /dev/null; then
+        echo -e "${YELLOW}Warning: clang-tidy not found${NC}"
+        echo "  Install: emerge sys-devel/clang (Gentoo)"
+        echo "           apt-get install clang-tidy (Debian/Ubuntu)"
+        return 1
+    fi
+
+    echo "Running clang-tidy on VfsShell sources..."
+    echo ""
+
+    # Create a compile_commands.json if it doesn't exist
+    if [ ! -f compile_commands.json ]; then
+        echo -e "${YELLOW}Note: No compile_commands.json found, using manual flags${NC}"
+    fi
+
+    # Define source files to analyze
+    local sources=(
+        "VfsShell/codex.cpp"
+        "VfsShell/snippet_catalog.cpp"
+        "VfsShell/utils.cpp"
+        "VfsShell/clang_parser.cpp"
+        "VfsShell/web_server.cpp"
+    )
+
+    # Run clang-tidy on each source file
+    local warnings=0
+    for src in "${sources[@]}"; do
+        echo -e "${BLUE}Analyzing $src...${NC}"
+
+        # Run clang-tidy with common checks
+        # Redirect stderr to stdout to capture all warnings
+        if ! clang-tidy "$src" \
+            --checks='*,-fuchsia-*,-google-*,-llvm-*,-llvmlibc-*,-altera-*,-android-*' \
+            -- -std=c++17 \
+            -I/usr/lib/llvm/21/include \
+            $(pkg-config --cflags libsvn_delta libsvn_subr 2>/dev/null) \
+            2>&1 | tee ".static-analysis-$(basename "$src").log"; then
+            ((warnings++))
+        fi
+        echo ""
+    done
+
+    echo -e "${GREEN}Static analysis complete${NC}"
+    echo "Full logs saved to: .static-analysis-*.log"
+
+    if [ $warnings -gt 0 ]; then
+        echo -e "${YELLOW}Found issues in $warnings file(s)${NC}"
+        return 1
+    else
+        echo -e "${GREEN}No critical issues found${NC}"
+        return 0
+    fi
+}
+
+# Prompt user to run static analysis
+prompt_static_analysis() {
+    # Check command-line flag
+    if [ "$STATIC_ANALYSIS" = "yes" ]; then
+        run_static_analysis
+        return
+    elif [ "$STATIC_ANALYSIS" = "no" ]; then
+        return
+    fi
+
+    # Default: prompt user
+    echo ""
+    echo -e "${YELLOW}Would you like to run static analysis (clang-tidy)?${NC}"
+    echo "  This provides comprehensive code quality checks beyond normal compiler warnings."
+    echo -n "Run static analysis? [y/N]: "
+
+    # Only prompt if interactive
+    if [ -t 0 ]; then
+        read -r response
+        case "$response" in
+            [yY][eE][sS]|[yY])
+                run_static_analysis
+                ;;
+            *)
+                echo "Skipping static analysis."
+                ;;
+        esac
+    else
+        echo "Skipping (non-interactive mode)"
+    fi
+}
+
 # Main build logic
 main() {
     echo -e "${GREEN}=== VfsBoot Build Script ===${NC}"
@@ -330,6 +528,9 @@ main() {
         echo -e "${GREEN}✓ Build successful!${NC}"
         echo -e "Binary: ${BLUE}./codex${NC}"
         ls -lh ./codex
+
+        # Prompt for static analysis after successful build
+        prompt_static_analysis
     else
         echo -e "${RED}✗ Build failed - binary not found${NC}" >&2
         exit 1
