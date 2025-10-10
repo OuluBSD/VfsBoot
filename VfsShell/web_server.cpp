@@ -217,6 +217,12 @@ static int callback_http(lws *wsi, enum lws_callback_reasons reason,
     case LWS_CALLBACK_HTTP: {
         char *requested_uri = (char *)in;
 
+        // Allow WebSocket upgrade for /ws path
+        if (strcmp(requested_uri, "/ws") == 0) {
+            // Let libwebsockets handle the WebSocket upgrade
+            return 0;
+        }
+
         // Serve index.html for root path
         if (strcmp(requested_uri, "/") == 0 || strcmp(requested_uri, "/index.html") == 0) {
             unsigned char buffer[LWS_PRE + 4096];
@@ -394,6 +400,27 @@ static struct lws_protocols protocols[] = {
     LWS_PROTOCOL_LIST_TERM
 };
 
+// Mount table for WebSocket endpoint
+static const struct lws_http_mount mount_ws = {
+    /* .mount_next */            nullptr,
+    /* .mountpoint */            "/ws",
+    /* .origin */                nullptr,
+    /* .def */                   nullptr,
+    /* .protocol */              "ws-terminal",
+    /* .cgienv */                nullptr,
+    /* .extra_mimetypes */       nullptr,
+    /* .interpret */             nullptr,
+    /* .cgi_timeout */           0,
+    /* .cache_max_age */         0,
+    /* .auth_mask */             0,
+    /* .cache_reusable */        0,
+    /* .cache_revalidate */      0,
+    /* .cache_intermediaries */  0,
+    /* .origin_protocol */       LWSMPRO_CALLBACK,
+    /* .mountpoint_len */        0,
+    /* .basic_auth_login_file */ nullptr,
+};
+
 // Server thread function
 static void server_thread_func(int port) {
     struct lws_context_creation_info info;
@@ -401,6 +428,7 @@ static void server_thread_func(int port) {
 
     info.port = port;
     info.protocols = protocols;
+    info.mounts = &mount_ws;    // Add WebSocket mount
     info.gid = -1;
     info.uid = -1;
     info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT |
