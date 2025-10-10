@@ -147,7 +147,7 @@ static const char* INDEX_HTML = R"HTML(<!DOCTYPE html>
 
         // WebSocket connection
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+        const ws = new WebSocket(`${protocol}//${window.location.host}/ws`, 'ws-terminal');
         let inputBuffer = '';
 
         ws.onopen = () => {
@@ -220,10 +220,11 @@ static int callback_http(lws *wsi, enum lws_callback_reasons reason,
     switch (reason) {
     case LWS_CALLBACK_HTTP: {
         char *requested_uri = (char *)in;
+        std::cout << "[WebServer] HTTP request for: " << requested_uri << std::endl;
 
-        // Allow WebSocket upgrade for /ws path
+        // WebSocket upgrade for /ws - just return 0 to let libwebsockets handle it
         if (strcmp(requested_uri, "/ws") == 0) {
-            // Let libwebsockets handle the WebSocket upgrade
+            std::cout << "[WebServer] WebSocket upgrade requested for /ws" << std::endl;
             return 0;
         }
 
@@ -275,6 +276,8 @@ static int callback_http(lws *wsi, enum lws_callback_reasons reason,
 static int callback_websocket(lws *wsi, enum lws_callback_reasons reason,
                               void *user, void *in, size_t len) {
     WebSocketSession *session = nullptr;
+
+    std::cout << "[WebServer] WebSocket callback: reason=" << reason << std::endl;
 
     switch (reason) {
     case LWS_CALLBACK_ESTABLISHED: {
@@ -388,14 +391,14 @@ static int callback_websocket(lws *wsi, enum lws_callback_reasons reason,
 // Protocol definitions
 static struct lws_protocols protocols[] = {
     {
-        "http",
+        "",  // Default protocol (HTTP) - empty string means "handle everything not matched by other protocols"
         callback_http,
         0,
         0,
         0, nullptr, 0
     },
     {
-        "ws-terminal",
+        "ws-terminal",  // WebSocket protocol
         callback_websocket,
         0,
         4096,
@@ -437,7 +440,7 @@ static void server_thread_func(int port) {
 
     info.port = port;
     info.protocols = protocols;
-    info.mounts = &mount_ws;    // Add WebSocket mount
+    info.mounts = nullptr;      // Don't use mount for WebSocket - handle via protocol
     info.gid = -1;
     info.uid = -1;
     info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT |

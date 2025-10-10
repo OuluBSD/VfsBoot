@@ -788,6 +788,11 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
     - Add floating window system (WinBox.js) and graph visualization (Cytoscape.js)
     - Session management: attachable/detachable sessions like tmux
   - **Status**: Phase 2 complete! Full interactive web terminal functional. Users can run any VfsShell command through their browser.
+  - **Known Issue**: Terminal output formatting needs improvement
+    - Newlines and tabs not properly handled in command output
+    - Example: `ls` output shows all entries on single line without proper formatting
+    - Need to convert `\n` to `\r\n` for xterm.js terminal
+    - Tab characters may need expansion or conversion
 
 ## Backlog / Ideas
 - Harden string escaping in the C++ AST dumper before expanding code generation.
