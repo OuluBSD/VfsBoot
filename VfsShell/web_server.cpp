@@ -327,10 +327,59 @@ static int callback_websocket(lws *wsi, enum lws_callback_reasons reason,
                 auto [success, output] = g_command_callback(command);
 
                 // Send output back to client
+                // Split large messages into chunks to avoid buffer overflow and UTF-8 truncation
                 {
                     std::lock_guard<std::mutex> msg_lock(session->mutex);
                     if (!output.empty()) {
-                        session->outgoing_messages.push(output);
+                        const size_t CHUNK_SIZE = 4000; // Leave room for safety
+                        size_t offset = 0;
+                        while (offset < output.length()) {
+                            size_t chunk_len = std::min(CHUNK_SIZE, output.length() - offset);
+
+                            // Make sure we don't split a UTF-8 character
+                            if (offset + chunk_len < output.length()) {
+                                unsigned char byte_at_boundary = output[offset + chunk_len];
+
+                                // If we're about to split in the middle of a continuation byte, back up
+                                while (chunk_len > 0 && (byte_at_boundary & 0xC0) == 0x80) {
+                                    chunk_len--;
+                                    if (offset + chunk_len < output.length()) {
+                                        byte_at_boundary = output[offset + chunk_len];
+                                    } else {
+                                        break;
+                                    }
+                                }
+
+                                // Now check if the last byte in our chunk starts a multibyte sequence
+                                // that would be incomplete
+                                if (chunk_len > 0 && offset + chunk_len - 1 < output.length()) {
+                                    unsigned char last_byte = output[offset + chunk_len - 1];
+                                    size_t bytes_needed = 0;
+
+                                    if ((last_byte & 0xF8) == 0xF0) bytes_needed = 4; // 4-byte UTF-8
+                                    else if ((last_byte & 0xF0) == 0xE0) bytes_needed = 3; // 3-byte UTF-8
+                                    else if ((last_byte & 0xE0) == 0xC0) bytes_needed = 2; // 2-byte UTF-8
+
+                                    // Check if we have all the bytes we need
+                                    if (bytes_needed > 0) {
+                                        size_t bytes_available = output.length() - (offset + chunk_len - 1);
+                                        if (bytes_available < bytes_needed) {
+                                            // Incomplete sequence - back up to before it starts
+                                            chunk_len--;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (chunk_len > 0) {
+                                session->outgoing_messages.push(output.substr(offset, chunk_len));
+                                offset += chunk_len;
+                            } else {
+                                // Safeguard: if we can't find a valid boundary, just send one byte
+                                session->outgoing_messages.push(output.substr(offset, 1));
+                                offset++;
+                            }
+                        }
                     }
                     // Send prompt for next command
                     session->outgoing_messages.push("\x1b[36mcodex>\x1b[0m ");
@@ -372,8 +421,71 @@ static int callback_websocket(lws *wsi, enum lws_callback_reasons reason,
         session->outgoing_messages.pop();
 
         unsigned char buffer[LWS_PRE + 4096];
-        int n = snprintf((char*)buffer + LWS_PRE, 4096, "%s", msg.c_str());
-        lws_write(wsi, buffer + LWS_PRE, n, LWS_WRITE_TEXT);
+        size_t msg_len = msg.length();
+
+        // Ensure we don't exceed buffer size and preserve UTF-8 boundaries
+        if (msg_len > 4095) {
+            msg_len = 4095;
+            // Back up to nearest UTF-8 character boundary
+            while (msg_len > 0 && (msg[msg_len] & 0xC0) == 0x80) {
+                msg_len--;
+            }
+        }
+
+        memcpy(buffer + LWS_PRE, msg.c_str(), msg_len);
+
+        // Debug: Check for invalid UTF-8 sequences
+        bool valid_utf8 = true;
+        for (size_t i = 0; i < msg_len; i++) {
+            unsigned char c = buffer[LWS_PRE + i];
+            if ((c & 0x80) == 0) continue; // ASCII
+            if ((c & 0xE0) == 0xC0) { // 2-byte sequence
+                if (i + 1 >= msg_len || (buffer[LWS_PRE + i + 1] & 0xC0) != 0x80) {
+                    valid_utf8 = false;
+                    std::cerr << "[WebSocket] Invalid UTF-8 at byte " << i << ": 0x"
+                              << std::hex << (int)c << std::dec << std::endl;
+                    break;
+                }
+                i += 1;
+            } else if ((c & 0xF0) == 0xE0) { // 3-byte sequence
+                if (i + 2 >= msg_len || (buffer[LWS_PRE + i + 1] & 0xC0) != 0x80
+                    || (buffer[LWS_PRE + i + 2] & 0xC0) != 0x80) {
+                    valid_utf8 = false;
+                    std::cerr << "[WebSocket] Invalid UTF-8 at byte " << i << ": 0x"
+                              << std::hex << (int)c << std::dec << std::endl;
+                    break;
+                }
+                i += 2;
+            } else if ((c & 0xF8) == 0xF0) { // 4-byte sequence
+                if (i + 3 >= msg_len || (buffer[LWS_PRE + i + 1] & 0xC0) != 0x80
+                    || (buffer[LWS_PRE + i + 2] & 0xC0) != 0x80
+                    || (buffer[LWS_PRE + i + 3] & 0xC0) != 0x80) {
+                    valid_utf8 = false;
+                    std::cerr << "[WebSocket] Invalid UTF-8 at byte " << i << ": 0x"
+                              << std::hex << (int)c << std::dec << std::endl;
+                    break;
+                }
+                i += 3;
+            } else {
+                valid_utf8 = false;
+                std::cerr << "[WebSocket] Invalid UTF-8 byte at " << i << ": 0x"
+                          << std::hex << (int)c << std::dec << std::endl;
+                break;
+            }
+        }
+
+        if (!valid_utf8) {
+            std::cerr << "[WebSocket] Message contains invalid UTF-8, length=" << msg_len << std::endl;
+            std::cerr << "[WebSocket] First 100 chars: ";
+            for (size_t i = 0; i < std::min(msg_len, size_t(100)); i++) {
+                unsigned char c = buffer[LWS_PRE + i];
+                if (c >= 32 && c < 127) std::cerr << c;
+                else std::cerr << "\\x" << std::hex << (int)c << std::dec;
+            }
+            std::cerr << std::endl;
+        }
+
+        lws_write(wsi, buffer + LWS_PRE, msg_len, LWS_WRITE_TEXT);
 
         // Schedule more writes if needed
         if (!session->outgoing_messages.empty())
