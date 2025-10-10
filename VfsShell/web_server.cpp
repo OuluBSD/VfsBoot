@@ -167,7 +167,11 @@ static const char* INDEX_HTML = R"HTML(<!DOCTYPE html>
         ws.onerror = (error) => {
             setStatus(false);
             term.writeln('\r\n\x1b[31m[WebSocket error]\x1b[0m');
+            console.error('WebSocket error:', error);
         };
+
+        // Add debug logging
+        console.log('Attempting WebSocket connection to:', `${protocol}//${window.location.host}/ws`);
 
         ws.onmessage = (event) => {
             term.write(event.data);
@@ -401,24 +405,29 @@ static struct lws_protocols protocols[] = {
 };
 
 // Mount table for WebSocket endpoint
-static const struct lws_http_mount mount_ws = {
-    /* .mount_next */            nullptr,
-    /* .mountpoint */            "/ws",
-    /* .origin */                nullptr,
-    /* .def */                   nullptr,
-    /* .protocol */              "ws-terminal",
-    /* .cgienv */                nullptr,
-    /* .extra_mimetypes */       nullptr,
-    /* .interpret */             nullptr,
-    /* .cgi_timeout */           0,
-    /* .cache_max_age */         0,
-    /* .auth_mask */             0,
-    /* .cache_reusable */        0,
-    /* .cache_revalidate */      0,
-    /* .cache_intermediaries */  0,
-    /* .origin_protocol */       LWSMPRO_CALLBACK,
-    /* .mountpoint_len */        0,
-    /* .basic_auth_login_file */ nullptr,
+static struct lws_http_mount mount_ws = {
+    nullptr,            // mount_next
+    "/ws",              // mountpoint
+    nullptr,            // origin
+    nullptr,            // def
+    "ws-terminal",      // protocol
+    nullptr,            // cgienv
+    nullptr,            // extra_mimetypes
+    nullptr,            // interpret
+    0,                  // cgi_timeout
+    0,                  // cache_max_age
+    0,                  // auth_mask
+    0,                  // cache_reusable:1
+    0,                  // cache_revalidate:1
+    0,                  // cache_intermediaries:1
+    0,                  // cache_no:1
+    LWSMPRO_CALLBACK,   // origin_protocol
+    3,                  // mountpoint_len ("/ws" = 3 chars)
+    nullptr,            // basic_auth_login_file
+    nullptr,            // cgi_chroot_path
+    nullptr,            // cgi_wd
+    nullptr,            // headers
+    0                   // keepalive_timeout
 };
 
 // Server thread function

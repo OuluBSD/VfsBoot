@@ -72,6 +72,30 @@ This removes all non-English translations and locale detection code. Useful for 
 
 `codex` reads the OpenAI API token from `OPENAI_API_KEY` and falls back to `~/openai-key.txt`. Store the key as a single line in that file if you do not want to export the environment variable.
 
+## Web Server (Browser-Based Terminal)
+
+VfsBoot includes a built-in HTTP/WebSocket server that provides a full-featured terminal interface in your web browser:
+
+```sh
+./codex --web-server                # Start on default port 8080
+./codex --web-server --port 9090   # Custom port
+```
+
+Features:
+- **xterm.js terminal emulation** with full ANSI color support and cursor control
+- **Real-time WebSocket communication** for instant command execution
+- **Modern UI** with status indicators and responsive design
+- **Multiple concurrent sessions** supported
+- **Zero configuration** - just open browser to `http://localhost:8080/`
+
+The web interface provides the same VfsShell experience as the CLI, with all commands, overlays, AI integration, and VFS operations available through the browser terminal.
+
+**Technical details:**
+- Built with [libwebsockets](https://libwebsockets.org/) for lightweight HTTP/WebSocket support
+- Frontend uses [xterm.js](https://xtermjs.org/) for terminal emulation
+- Embedded HTML (no external file dependencies)
+- Production-ready for local development and demos
+
 ## Sample pipeline
 
 ```sh

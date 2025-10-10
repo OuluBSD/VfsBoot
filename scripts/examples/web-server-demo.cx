@@ -1,0 +1,33 @@
+#!/usr/bin/env -S ../codex --script
+# web-server-demo.cx - Demonstrate web server capabilities
+# Usage: ./scripts/examples/web-server-demo.cx
+
+echo ==========================================
+echo Web Server Demo
+echo ==========================================
+echo
+echo This demo shows VfsBoot web server features
+echo
+echo Starting web server on port 9191...
+echo
+echo NOTE: This is a demonstration script.
+echo To actually start the web server, run:
+echo
+echo   ./codex --web-server --port 9191
+echo
+echo Then open your browser to:
+echo   http://localhost:9191/
+echo
+echo Features you can try:
+echo   - Type commands in the browser terminal
+echo   - Use ls, tree, mkdir to explore VFS
+echo   - Run ai commands for AI interaction
+echo   - Create files with echo and cat
+echo   - Try sample.run to build C++ code
+echo
+echo The web interface provides full VfsShell
+echo functionality with xterm.js terminal emulation
+echo and real-time WebSocket communication.
+echo
+echo Press Ctrl+C in the web server terminal to stop.
+echo ==========================================

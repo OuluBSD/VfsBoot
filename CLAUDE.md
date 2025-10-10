@@ -77,6 +77,18 @@ All nodes (directories, files, AST nodes) inherit from `VfsNode` base class.
 
 **AI Bridge**: `ai <prompt>` posts to OpenAI/Llama; `tools` echoes command surface
 
+**Web Server** (Browser-Based Terminal):
+- Start web server: `./codex --web-server [--port 8080]`
+- Opens HTTP/WebSocket server with xterm.js terminal in browser
+- Features:
+  - Full terminal emulation with ANSI color support
+  - Real-time command execution via WebSockets
+  - Responsive design with modern UI
+  - Multiple concurrent sessions supported
+- Built with libwebsockets for lightweight performance
+- Default port: 8080 (customizable with `--port`)
+- Access via browser: `http://localhost:8080/`
+
 **Overlay System**: Multiple persistent VFS overlays with `overlay.mount`, `overlay.save`, `overlay.list`, `overlay.unmount`, `overlay.use`, `overlay.policy`
 
 **Planner System** (Fully Integrated):
