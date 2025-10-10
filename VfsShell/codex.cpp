@@ -8382,12 +8382,14 @@ int main(int argc, char** argv){
         return 1;
     };
 
-    const string usage_text = string("usage: ") + argv[0] + " [--solution <pkg|asm>] [--daemon <port>] [--quiet] [script [-]]";
+    const string usage_text = string("usage: ") + argv[0] + " [--solution <pkg|asm>] [--daemon <port>] [--web-server] [--port <port>] [--quiet] [script [-]]";
 
     std::string script_path;
     std::string solution_arg;
     bool fallback_after_script = false;
     int daemon_port = -1;
+    bool web_server_mode = false;
+    int web_server_port = 8080;  // Default port
     bool quiet_mode = false;
 
     auto looks_like_solution_hint = [](const std::string& arg){
@@ -8404,6 +8406,15 @@ int main(int argc, char** argv){
         if(arg == "--daemon" || arg == "-d"){
             if(i + 1 >= argc) return usage("--daemon requires a port number");
             daemon_port = std::stoi(argv[++i]);
+            continue;
+        }
+        if(arg == "--web-server" || arg == "-w"){
+            web_server_mode = true;
+            continue;
+        }
+        if(arg == "--port" || arg == "-p"){
+            if(i + 1 >= argc) return usage("--port requires a port number");
+            web_server_port = std::stoi(argv[++i]);
             continue;
         }
         if(arg == "--quiet" || arg == "-q"){
@@ -8534,6 +8545,7 @@ int main(int argc, char** argv){
     std::cout << _(WELCOME) << "\n";
     if(interactive) std::cout << _(DISCUSS_HINT) << "\n";
     string line;
+
     // Daemon mode: run server and exit
     if(daemon_port > 0){
         try {
@@ -11294,6 +11306,61 @@ int main(int argc, char** argv){
 
         return last;
     };
+
+    // Register command callback for web server
+    if(web_server_mode){
+        WebServer::set_command_callback([&](const std::string& command_line) -> std::pair<bool, std::string> {
+            try {
+                auto tokens = tokenize_command_line(command_line);
+                if(tokens.empty()) return {true, ""};
+
+                // Skip comment lines
+                if(!tokens.empty() && !tokens[0].empty() && tokens[0][0] == '#') {
+                    return {true, ""};
+                }
+
+                auto chain = parse_command_chain(tokens);
+                bool last_success = true;
+                std::string combined_output;
+
+                for(const auto& entry : chain){
+                    if(entry.logical == "&&" && !last_success) continue;
+                    if(entry.logical == "||" && last_success) continue;
+
+                    CommandResult res = run_pipeline(entry.pipeline, "");
+                    if(!res.output.empty()){
+                        combined_output += res.output;
+                    }
+                    last_success = res.success;
+
+                    if(res.exit_requested){
+                        // Client requested exit - could handle this specially
+                        break;
+                    }
+                }
+
+                return {last_success, combined_output};
+            } catch(const std::exception& e){
+                return {false, std::string("error: ") + e.what() + "\r\n"};
+            }
+        });
+
+        std::cout << "Starting web server on port " << web_server_port << "...\n";
+        if(!WebServer::start(web_server_port)){
+            std::cerr << "Failed to start web server\n";
+            return 1;
+        }
+        std::cout << "Web server running. Press Ctrl+C to stop.\n";
+        std::cout << "Open browser to: http://localhost:" << web_server_port << "/\n";
+
+        // Keep server running
+        while(WebServer::is_running()){
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        WebServer::stop();
+        return 0;
+    }
 
     while(true){
         TRACE_LOOP("repl.iter", std::string("iter=") + std::to_string(repl_iter));

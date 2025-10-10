@@ -2267,4 +2267,26 @@ private:
     void parseLine(const std::string& line, std::string& current_target);
 };
 
+//
+// Web Server (libwebsockets-based HTTP/WebSocket server)
+//
+namespace WebServer {
+    // Start web server on specified port
+    bool start(int port = 8080);
+
+    // Stop web server
+    void stop();
+
+    // Check if server is running
+    bool is_running();
+
+    // Send output to all connected terminals
+    void send_output(const std::string& output);
+
+    // Set command execution callback for WebSocket terminals
+    // Callback receives: command string, returns: (success, output)
+    using CommandCallback = std::function<std::pair<bool, std::string>(const std::string&)>;
+    void set_command_callback(CommandCallback callback);
+}
+
 #endif
