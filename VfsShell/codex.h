@@ -1310,6 +1310,42 @@ struct ClangArraySubscriptExpr : ClangExpr {
     std::string dump(int indent) const override;
 };
 
+// Preprocessor nodes (Phase 2)
+struct ClangPreprocessor : ClangAstNode {
+    ClangPreprocessor(std::string n, SourceLocation loc, std::string spell)
+        : ClangAstNode(std::move(n), std::move(loc), std::move(spell)) {}
+};
+
+struct ClangMacroDefinition : ClangPreprocessor {
+    std::string macro_name;
+    std::vector<std::string> params;       // Empty if no parameters
+    std::string replacement_text;
+    bool is_function_like;                  // true if macro takes parameters
+
+    ClangMacroDefinition(std::string n, SourceLocation loc, std::string spell)
+        : ClangPreprocessor(std::move(n), std::move(loc), std::move(spell)), is_function_like(false) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangMacroExpansion : ClangPreprocessor {
+    std::string macro_name;
+    SourceLocation definition_location;    // Where macro was defined
+
+    ClangMacroExpansion(std::string n, SourceLocation loc, std::string spell)
+        : ClangPreprocessor(std::move(n), std::move(loc), std::move(spell)) {}
+    std::string dump(int indent) const override;
+};
+
+struct ClangInclusionDirective : ClangPreprocessor {
+    std::string included_file;
+    bool is_angled;                        // true for <file.h>, false for "file.h"
+    std::string resolved_path;             // Full path to included file
+
+    ClangInclusionDirective(std::string n, SourceLocation loc, std::string spell)
+        : ClangPreprocessor(std::move(n), std::move(loc), std::move(spell)), is_angled(false) {}
+    std::string dump(int indent) const override;
+};
+
 //
 // libclang Parser Context and Visitor
 //
@@ -1348,6 +1384,7 @@ private:
     std::shared_ptr<ClangAstNode> handleDeclaration(CXCursor cursor);
     std::shared_ptr<ClangAstNode> handleStatement(CXCursor cursor);
     std::shared_ptr<ClangAstNode> handleExpression(CXCursor cursor);
+    std::shared_ptr<ClangAstNode> handlePreprocessor(CXCursor cursor);  // Phase 2
 };
 
 // Shell commands for parsing
