@@ -2700,6 +2700,12 @@ char type_char(const std::shared_ptr<VfsNode>& node){
 }
 }
 
+
+bool run_ncurses_editor(Vfs& vfs, const std::string& vfs_path, std::vector<std::string>& lines,
+                        bool file_exists, size_t overlay_id) {
+    return false;
+}
+
 Vfs::Vfs() : logic_engine(&tag_registry) {
     TRACE_FN();
     overlay_stack.push_back(Overlay{ "base", root, "", "" });
@@ -8370,7 +8376,6 @@ static void run_daemon_server(int port, Vfs&, std::shared_ptr<Env>, WorkingDirec
     close(server_fd);
 }
 
-#ifndef CODEX_NO_MAIN
 int main(int argc, char** argv){
     TRACE_FN();
     using std::string; using std::shared_ptr;
@@ -11259,7 +11264,7 @@ int main(int argc, char** argv){
             }
 
         } else if(cmd == "edit" || cmd == "ee"){
-            // Simple editor with basic screen buffer functionality
+            // Enhanced editor with UI backend abstraction
             std::string vfs_path;
             bool has_filename = !inv.args.empty();
             
@@ -11309,195 +11314,12 @@ int main(int argc, char** argv){
                     lines.push_back("");
                 }
                 
-                // Show the editor interface immediately - simple approach
-                std::cout << "\033[2J\033[H"; // Clear screen
-                std::cout << "\033[34;1mVfsShell Text Editor - " << vfs_path << "\033[0m" << std::endl;
-                std::cout << "\033[34m" << std::string(60, '=') << "\033[0m" << std::endl;
-                
-                // Display content with line numbers
-                for(size_t i = 0; i < lines.size(); ++i) {
-                    std::cout << std::right << std::setw(3) << (i + 1) << ": " << lines[i] << std::endl;
-                }
-                
-                // If there are fewer than 10 lines, show some tildes for empty space
-                for(size_t i = lines.size(); i < 10 && i < 20; ++i) {
-                    std::cout << std::right << std::setw(3) << (i + 1) << ": ~" << std::endl;
-                }
-                
-                std::cout << "\033[34m" << std::string(60, '=') << "\033[0m" << std::endl;
-                std::cout << "\033[33mStatus: " << lines.size() << " lines | ";
-                if (!file_exists) std::cout << "[New File] | ";
-                std::cout << "Type :wq to save&quit, :q to quit, :help for commands\033[0m" << std::endl;
-                std::cout << std::endl;
-                
-                bool editor_active = true;
-                bool file_modified = false;
-                
-                while(editor_active) {
-                    std::cout << "Editor> ";
-                    std::cout.flush();
-                    
-                    std::string command;
-                    if(!std::getline(std::cin, command)) {
-                        break; // EOF
-                    }
-                    
-                    // Process editor commands - simpler approach
-                    if(command == ":q") {
-                        editor_active = false;
-                    } else if(command == ":wq" || command == ":x") {
-                        // Write and quit
-                        std::ostringstream oss;
-                        for(size_t i = 0; i < lines.size(); ++i) {
-                            oss << lines[i];
-                            if(i < lines.size() - 1) oss << "\n";
-                        }
-                        std::string new_content = oss.str();
-                        
-                        // Write to VFS
-                        vfs.write(vfs_path, new_content, cwd.primary_overlay);
-                        std::cout << "[Saved " << lines.size() << " lines to " << vfs_path << " and exited]\n";
-                        editor_active = false;
-                    } else if(command == ":w") {
-                        // Write only
-                        std::ostringstream oss;
-                        for(size_t i = 0; i < lines.size(); ++i) {
-                            oss << lines[i];
-                            if(i < lines.size() - 1) oss << "\n";
-                        }
-                        std::string new_content = oss.str();
-                        
-                        // Write to VFS
-                        vfs.write(vfs_path, new_content, cwd.primary_overlay);
-                        file_modified = false;
-                        std::cout << "[Saved " << lines.size() << " lines to " << vfs_path << "]\n";
-                    } else if(command == ":help") {
-                        std::cout << "Editor Commands:\n";
-                        std::cout << "  :w          - Write (save) file\n";
-                        std::cout << "  :wq         - Write file and quit\n";
-                        std::cout << "  :q          - Quit without saving\n";
-                        std::cout << "  i<line> <text> - Insert line (e.g., 'i5 hello')\n";
-                        std::cout << "  d<line>     - Delete line (e.g., 'd5')\n";
-                        std::cout << "  c<line> <text> - Change line (e.g., 'c5 new text')\n";
-                        std::cout << "  p           - Print current content\n";
-                        std::cout << "  :help       - Show this help\n";
-                    } else if(command.substr(0, 1) == "i" && command.size() > 1 && std::isdigit(command[1])) {
-                        // Insert line: i<line_num> <text>
-                        size_t pos = 1;
-                        std::string num_str = "";
-                        while(pos < command.size() && std::isdigit(command[pos])) {
-                            num_str += command[pos];
-                            pos++;
-                        }
-                        
-                        if(!num_str.empty()) {
-                            int line_num = std::stoi(num_str);
-                            if(line_num >= 1 && line_num <= static_cast<int>(lines.size() + 1)) {
-                                std::string text = (pos < command.size()) ? command.substr(pos + 1) : "";
-                                lines.insert(lines.begin() + (line_num - 1), text);
-                                file_modified = true;
-                                std::cout << "[Inserted line " << line_num << "]\n";
-                            } else {
-                                std::cout << "[Error: line number out of range]\n";
-                            }
-                        } else {
-                            std::cout << "[Invalid insert command]\n";
-                        }
-                    } else if(command.substr(0, 1) == "d" && command.size() > 1 && std::isdigit(command[1])) {
-                        // Delete line: d<line_num>
-                        size_t pos = 1;
-                        std::string num_str = "";
-                        while(pos < command.size() && std::isdigit(command[pos])) {
-                            num_str += command[pos];
-                            pos++;
-                        }
-                        
-                        if(!num_str.empty()) {
-                            int line_num = std::stoi(num_str);
-                            if(line_num >= 1 && line_num <= static_cast<int>(lines.size())) {
-                                lines.erase(lines.begin() + (line_num - 1));
-                                file_modified = true;
-                                std::cout << "[Deleted line " << line_num << "]\n";
-                                if(line_num <= static_cast<int>(lines.size())) {
-                                    // Refresh display after deletion
-                                    std::cout << "\033[2J\033[H"; // Clear and show current state
-                                    std::cout << "\033[34;1mVfsShell Text Editor - " << vfs_path << "\033[0m" << std::endl;
-                                    std::cout << "\033[34m" << std::string(60, '=') << "\033[0m" << std::endl;
-                                    
-                                    for(size_t i = 0; i < lines.size(); ++i) {
-                                        std::cout << std::right << std::setw(3) << (i + 1) << ": " << lines[i] << std::endl;
-                                    }
-                                    
-                                    // Show more empty lines if needed
-                                    for(size_t i = lines.size(); i < 10 && i < 20; ++i) {
-                                        std::cout << std::right << std::setw(3) << (i + 1) << ": ~" << std::endl;
-                                    }
-                                    
-                                    std::cout << "\033[34m" << std::string(60, '=') << "\033[0m" << std::endl;
-                                    std::cout << "\033[33mStatus: " << lines.size() << " lines | ";
-                                    if (!file_exists && !file_modified) std::cout << "[New File] | ";
-                                    if (file_modified) std::cout << "[Modified] | ";
-                                    std::cout << "Type :wq to save&quit, :q to quit, :help for commands\033[0m" << std::endl;
-                                    std::cout << std::endl;
-                                }
-                            } else {
-                                std::cout << "[Error: line number out of range]\n";
-                            }
-                        } else {
-                            std::cout << "[Invalid delete command]\n";
-                        }
-                    } else if(command.substr(0, 1) == "c" && command.size() > 1 && std::isdigit(command[1])) {
-                        // Change line: c<line_num> <text>
-                        size_t pos = 1;
-                        std::string num_str = "";
-                        while(pos < command.size() && std::isdigit(command[pos])) {
-                            num_str += command[pos];
-                            pos++;
-                        }
-                        
-                        if(!num_str.empty()) {
-                            int line_num = std::stoi(num_str);
-                            if(line_num >= 1 && line_num <= static_cast<int>(lines.size())) {
-                                std::string text = (pos < command.size()) ? command.substr(pos + 1) : "";
-                                lines[line_num - 1] = text;
-                                file_modified = true;
-                                std::cout << "[Changed line " << line_num << "]\n";
-                            } else {
-                                std::cout << "[Error: line number out of range]\n";
-                            }
-                        } else {
-                            std::cout << "[Invalid change command]\n";
-                        }
-                    } else if(command == "p") {
-                        // Print current content
-                        std::cout << "\033[2J\033[H"; // Clear and show current state
-                        std::cout << "\033[34;1mVfsShell Text Editor - " << vfs_path << "\033[0m" << std::endl;
-                        std::cout << "\033[34m" << std::string(60, '=') << "\033[0m" << std::endl;
-                        
-                        for(size_t i = 0; i < lines.size(); ++i) {
-                            std::cout << std::right << std::setw(3) << (i + 1) << ": " << lines[i] << std::endl;
-                        }
-                        
-                        // Show more empty lines if needed
-                        for(size_t i = lines.size(); i < 10 && i < 20; ++i) {
-                            std::cout << std::right << std::setw(3) << (i + 1) << ": ~" << std::endl;
-                        }
-                        
-                        std::cout << "\033[34m" << std::string(60, '=') << "\033[0m" << std::endl;
-                        std::cout << "\033[33mStatus: " << lines.size() << " lines | ";
-                        if (!file_exists && !file_modified) std::cout << "[New File] | ";
-                        if (file_modified) std::cout << "[Modified] | ";
-                        std::cout << "Type :wq to save&quit, :q to quit, :help for commands\033[0m" << std::endl;
-                        std::cout << std::endl;
-                    } else if(command.empty()) {
-                        // Do nothing, just continue
-                    } else {
-                        std::cout << "[Unknown command. Type :help for options]\n";
-                    }
-                }
-                
-                std::cout << "\033[2J\033[H"; // Clear screen on exit
-                std::cout << "Editor closed. Return to shell.\n";
+                // Use appropriate editor based on compile-time flags
+#ifdef CODEX_UI_NCURSES
+                result.success = run_ncurses_editor(vfs, vfs_path, lines, file_exists, cwd.primary_overlay);
+#else
+                result.success = run_simple_editor(vfs, vfs_path, lines, file_exists, cwd.primary_overlay);
+#endif
             }
 
         } else if(cmd == "help"){
@@ -11699,4 +11521,6 @@ int main(int argc, char** argv){
     if(history_dirty) save_history(history);
     return 0;
 }
-#endif // CODEX_NO_MAIN
+
+// ============================================================================
+

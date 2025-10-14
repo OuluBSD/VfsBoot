@@ -307,6 +307,12 @@ check_dependencies() {
         missing_hints+=("  Usually provided by glibc - check your system installation")
     fi
 
+    # Check for ncurses development libraries
+    if ! pkg-config --exists ncurses 2>/dev/null; then
+        missing_deps+=(\"ncurses development libraries\")
+        missing_hints+=(\"  Install: emerge sys-libs/ncurses\")
+    fi
+
     # Report missing dependencies
     if [ ${#missing_deps[@]} -gt 0 ]; then
         echo -e "${RED}✗ Missing dependencies:${NC}"

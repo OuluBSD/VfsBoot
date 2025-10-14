@@ -5,6 +5,16 @@ LIBCLANG_LDFLAGS := -L/usr/lib/llvm/21/lib64 -lclang
 CXXFLAGS ?= -std=gnu++17 -O2 -Wall -Wextra -pedantic $(shell pkg-config --cflags libsvn_delta libsvn_subr) $(LIBCLANG_CFLAGS)
 LDFLAGS ?= -lblake3 $(shell pkg-config --libs libsvn_delta libsvn_subr) $(LIBCLANG_LDFLAGS) -lwebsockets -lpthread
 
+# Check for ncurses
+NCURSES_CFLAGS := $(shell pkg-config --cflags ncurses 2>/dev/null || echo "")
+NCURSES_LDFLAGS := $(shell pkg-config --libs ncurses 2>/dev/null || echo "-lncurses")
+
+# Add ncurses flags if available
+ifneq ($(NCURSES_CFLAGS),)
+    CXXFLAGS += $(NCURSES_CFLAGS) -DCODEX_UI_NCURSES
+    LDFLAGS += $(NCURSES_LDFLAGS)
+endif
+
 VFSSHELL_SRC := VfsShell/codex.cpp VfsShell/snippet_catalog.cpp VfsShell/utils.cpp VfsShell/clang_parser.cpp VfsShell/web_server.cpp
 VFSSHELL_HDR := VfsShell/codex.h VfsShell/snippet_catalog.h VfsShell/utils.h
 VFSSHELL_BIN := codex

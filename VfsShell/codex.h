@@ -28,6 +28,9 @@
 #include <unordered_set>
 #include <unordered_map>
 
+// UI backend abstraction
+#include "ui_backend.h"
+
 // SVN diff library for binary deltas
 #include <svn_delta.h>
 #include <svn_pools.h>
@@ -96,6 +99,9 @@ namespace i18n {
 // Forward declarations
 //
 struct Vfs;
+
+bool run_ncurses_editor(Vfs& vfs, const std::string& vfs_path, std::vector<std::string>& lines,
+                        bool file_exists, size_t overlay_id);
 
 //
 // Tag Registry (enumerated tags for memory efficiency)

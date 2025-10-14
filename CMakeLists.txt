@@ -61,6 +61,14 @@ target_link_libraries(codex PRIVATE
     dl
 )
 
+# Check for ncurses library
+find_package(Curses QUIET)
+if(CURSES_FOUND)
+    target_compile_definitions(codex PRIVATE CODEX_UI_NCURSES)
+    target_link_libraries(codex PRIVATE ${CURSES_LIBRARIES})
+    target_include_directories(codex PRIVATE ${CURSES_INCLUDE_DIRS})
+endif()
+
 # Optional: Enable tracing
 option(ENABLE_TRACE "Enable CODEX_TRACE logging" OFF)
 if(ENABLE_TRACE)
