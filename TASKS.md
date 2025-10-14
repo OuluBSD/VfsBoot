@@ -171,6 +171,7 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 ## Upcoming: less important
 
 ### Shell UX Improvements
+- arrows up and down doesn seem to loop history in web browser CLI
 - in sub-CLI loops, ctrl+c should exit the loop (like in bash etc)
 	- in case of runnin scripts in "run <script>" ctrl+z should exit the script runner (just like in bash etc)
 - **Customizable shell prompt prefix with colors**:
