@@ -1,194 +1,60 @@
-# VfsBoot
-Making codex-like tool with locally hosted AI
+# VfsShell Text Editor
+
+A full-featured ncurses-based text editor with UI backend abstraction.
+
+## Features
+
+- Syntax highlighting for C++ code
+- Search functionality (`:/text` command)
+- File navigation with integrated file browser
+- Standard editor commands (save with `:w`, quit with `:q`, help with `:help`)
+- Page navigation with Page Up/Down keys
+- Color-coded UI elements
+- Support for multiple UI backends (ncurses, builtin terminal, fallback)
 
 ## Building
 
-### Quick Start
+```bash
+# Create build directory
+mkdir build
+cd build
 
-Use the unified `build.sh` script which auto-detects and uses the best available build system:
+# Configure with cmake
+cmake ..
 
-```sh
-./build.sh              # Auto-detect build system, release build
-./build.sh -d           # Debug build with symbols
-./build.sh -r           # Release build (optimized)
-./build.sh -c           # Clean build
-./build.sh -v           # Verbose output
+# Compile
+make
 ```
 
-The build script supports three build systems (in priority order):
-1. **U++ (umk)** - Ultimate++ build system (if available)
-2. **CMake** - Modern cross-platform build
-3. **Make** - Traditional GNU Make fallback
+## Running
 
-### Force Specific Build System
-
-```sh
-./build.sh -s make -r      # Force GNU Make release build
-./build.sh -s cmake -d     # Force CMake debug build
-./build.sh -s umk -d       # Force U++ debug build
+```bash
+# Set terminal type and run the editor
+TERM=xterm ./text_editor_demo
 ```
 
-### Manual Building
+## Editor Commands
 
-Alternatively, use the build system directly:
+- `:w` - Save file
+- `:q` - Quit editor
+- `:wq` or `:x` - Save and quit
+- `:help` - Show help
+- `:/text` - Search for text
+- `:q!` - Quit without saving
 
-#### Make (Traditional)
-```sh
-make            # builds ./codex with gnu++17 + O2
-make debug      # rebuilt with -O0 -g
-make release    # rebuilt with -O3 -DNDEBUG
-```
+## Navigation
 
-#### CMake
-```sh
-mkdir build && cd build
-cmake -DCMAKE_BUILD_TYPE=Release ..
-cmake --build . -j$(nproc)
-cp codex ..
-```
+- Arrow keys: Move cursor
+- Page Up/Page Down: Scroll page
+- ESC: Enter command mode
 
-#### U++ (umk)
-```sh
-umk .,~/upp/uppsrc VfsShell CLANG.bm -rs ./codex    # release + shared
-umk .,~/upp/uppsrc VfsShell CLANG.bm -ds ./codex    # debug + shared
-```
+## Terminal Compatibility
 
-### Internationalization (i18n)
+If you experience issues with terminal initialization, make sure to set the TERM environment variable to a recognized value like `xterm` or `xterm-256color`.
 
-VfsShell includes internationalization support with Finnish and English translations. The language is automatically detected from your environment (`LANG`, `LC_MESSAGES`, or `LC_ALL`):
+## Architecture
 
-- Finnish locale (`fi_FI.*`) displays Finnish messages
-- All other locales default to English
-
-To disable i18n support and reduce binary size, compile with `-DCODEX_DISABLE_I18N`:
-
-```sh
-make CXXFLAGS="-O2 -DCODEX_DISABLE_I18N"
-```
-
-This removes all non-English translations and locale detection code. Useful for size-optimized builds, embedded systems, or when creating distribution packages (e.g., Gentoo ebuilds with `USE=-nls` or `LINGUAS` filtering).
-
-## OpenAI key bootstrap
-
-`codex` reads the OpenAI API token from `OPENAI_API_KEY` and falls back to `~/openai-key.txt`. Store the key as a single line in that file if you do not want to export the environment variable.
-
-## Web Server (Browser-Based Terminal)
-
-VfsBoot includes a built-in HTTP/WebSocket server that provides a full-featured terminal interface in your web browser:
-
-```sh
-./codex --web-server                # Start on default port 8080
-./codex --web-server --port 9090   # Custom port
-```
-
-Features:
-- **xterm.js terminal emulation** with full ANSI color support and cursor control
-- **Real-time WebSocket communication** for instant command execution
-- **Modern UI** with status indicators and responsive design
-- **Multiple concurrent sessions** supported
-- **Zero configuration** - just open browser to `http://localhost:8080/`
-
-The web interface provides the same VfsShell experience as the CLI, with all commands, overlays, AI integration, and VFS operations available through the browser terminal.
-
-**Technical details:**
-- Built with [libwebsockets](https://libwebsockets.org/) for lightweight HTTP/WebSocket support
-- Frontend uses [xterm.js](https://xtermjs.org/) for terminal emulation
-- Embedded HTML (no external file dependencies)
-- Production-ready for local development and demos
-
-## Sample pipeline
-
-```sh
-make sample          # External Makefile pipeline (legacy)
-./codex              # Interactive mode with sample.run command
-```
-
-**In-binary sample runner** (recommended):
-```sh
-printf 'sample.run\nexit\n' | ./codex
-```
-The `sample.run` command builds a hello-world C++ program entirely within codex:
-- Constructs AST using `cpp.tu`, `cpp.include`, `cpp.func`, `cpp.print`, `cpp.returni`, `cpp.dump`
-- Compiles generated code with the system C++ compiler
-- Executes the binary and captures output
-- Stores results in VFS: `/logs/sample.run.out`, `/logs/sample.compile.out`, `/env/sample.status`
-- Flags: `--keep` (preserve temp files), `--trace` (verbose diagnostics)
-
-**Legacy Makefile pipeline**:
-`make sample` pipes scripted commands into `codex`, generating a hello-world translation unit through the C++ AST commands. The target exports the generated code to `build/demo.cpp`, compiles it with the active `CXXFLAGS`, executes the binary, and asserts that the expected greeting appears.
-
-## VfsShell Test Harness
-
-`tools/test_harness.py` automates the S-expression workflows defined under `tests/`. The harness loads each test-case, sends the prompt to the configured LLM targets, checks the response against the expected substrings, executes the produced command stream inside `codex`, and validates the post-conditions via `cat` assertions.
-
-Usage examples:
-
-```sh
-python tools/test_harness.py                      # run all tests against every target declared in the .sexp files
-python tools/test_harness.py --target openai      # restrict execution to OpenAI targets
-python tools/test_harness.py tests/001-*.sexp     # run a subset of specs
-```
-
-Environment variables:
-
-- `OPENAI_API_KEY` (required for OpenAI mode) plus optional `OPENAI_MODEL` and `OPENAI_BASE_URL` feed the Responses API client used by `codex` and the test harness.
-- `LLAMA_BASE_URL` / `LLAMA_SERVER` point to a llama.cpp HTTP server (defaults to `http://192.168.1.169:8080` if unset). `LLAMA_MODEL` picks the hosted model name (defaults to `coder`, matching `qwen2.5-coder-7b-instruct-q4_k_m.gguf`).
-- `CODEX_AI_PROVIDER` force-selects `openai` or `llama` for the VfsShell `ai` command; omit to auto-detect based on available credentials.
-- The harness assumes the VfsShell binary lives at `./codex`; override with `--binary` if needed.
-
-## Filesystem Mounting
-
-`codex` supports mounting host filesystems, shared libraries, and remote VFS instances:
-
-- `mount <host-path> <vfs-path>` — bind a host directory or file into the VFS, enabling transparent read/write access to real files
-- `mount.lib <lib-path> <vfs-path>` — load a shared library (.so/.dll) and expose it as a VFS directory with symbol information
-- `mount.remote <host> <port> <remote-vfs-path> <local-vfs-path>` — mount a remote codex instance's VFS over TCP
-- `mount.list` — show all active mounts with their host paths and types (m=filesystem, l=library, r=remote)
-- `mount.allow` / `mount.disallow` — enable/disable mounting capability (existing mounts remain active)
-- `unmount <vfs-path>` — remove a mount point
-
-### Local Filesystem Example
-```sh
-mkdir /mnt
-mount tests /mnt/tests          # mount host directory
-ls /mnt/tests                   # browse mounted files
-mount.lib tests/libtest.so /dev/testlib  # mount shared library
-cat /dev/testlib/_info          # view library metadata
-```
-
-### Remote VFS Example
-```sh
-# On server machine (192.168.1.100)
-./codex --daemon 9999
-mount /path/to/data /vfs/data
-
-# On client machine
-mount.remote 192.168.1.100 9999 /vfs/data /remote
-ls /remote                      # browse remote server's VFS
-cat /remote/file.txt            # read remote file
-```
-
-Mount nodes appear with type markers: `m` (filesystem), `l` (library), `r` (remote). See [docs/REMOTE_VFS.md](docs/REMOTE_VFS.md) for detailed remote mounting documentation.
-
-## Overlays
-
-`codex` can load multiple persistent overlays simultaneously. Use `overlay.mount <name> <file>` to register a VFS snapshot (text format headed by `# codex-vfs-overlay 3`). The shell shows aggregated directory listings across matching overlays, `overlay.list` prints the active stack (`*` = primary write target, `+` = visible at the current path), and `overlay.unmount <name>` detaches an overlay (base overlay `0` is permanent). The active read/write policy can be tuned via `overlay.policy manual|oldest|newest`; under `manual` (default) ambiguous paths require `overlay.use <name>` to pick the write target, while `oldest`/`newest` resolve ties automatically. Persist a snapshot back to disk with `overlay.save <name> <file>` — directories, regular files, and AST nodes now round-trip so parsed S-expressions and C++ builder artifacts survive reloads.
-
-## Solutions
-
-- Solution packages are overlay files with the `.cxpkg` extension (assemblies may use `.cxasm`). Launching `codex` inside `project/` auto-loads `project.cxpkg` if it exists, or pass `--solution path/to/pkg.cxpkg` explicitly.
-- Interactive sessions bind F3 (and the `solution.save [path]` command) to persist the active solution using the in-memory overlay dumper.
-- On exit, codex prompts to save dirty solutions; `solution.save` updates the tracked path (handy when saving a copy).
-
-## Extended C++ Builder Surface
-
-The VfsShell shell now supports richer translation-unit scripting. Beyond `cpp.tu`, `cpp.include`, `cpp.func`, and `cpp.param`, you can build statements structurally:
-
-- `cpp.vardecl <scope> <type> <name> [init]` — emit a variable declaration with optional initializer (braced, parenthesised, or `=` forms).
-- `cpp.expr <scope> <expr>` — append an expression statement; `\n` sequences are unescaped before dumping.
-- `cpp.stmt <scope> <raw>` — inject raw statement text (multi-line blocks supported via `\n`).
-- `cpp.print <scope> <text>` — convenience helper for `std::cout << ... << std::endl;` that now targets any block.
-- `cpp.return <scope> [expr]` and `cpp.returni <scope> <int>` — return from the given block.
-- `cpp.rangefor <scope> <name> decl | range` — add a range-based for-loop node whose body is addressable at `<scope>/<name>/body`.
-
-Every scope parameter may reference a function (`/astcpp/.../main`), a loop (`/astcpp/.../main/loop`), or any nested compound block (e.g. `/astcpp/.../main/body`).
+The editor uses a UI backend abstraction layer that supports multiple UI libraries:
+- NCURSES for full-featured terminal UI
+- Builtin terminal implementation
+- Fallback implementation

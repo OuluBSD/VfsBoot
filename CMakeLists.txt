@@ -1,131 +1,79 @@
-cmake_minimum_required(VERSION 3.12)
-project(VfsBoot VERSION 1.0 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.10)
+project(VfsBootTextEditor)
 
-# C++17 standard
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS ON)  # Allow GNU extensions
 
-# Build type
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
-endif()
-
-# Compiler flags
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -pedantic")
-set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
-
-# pkg-config for SVN libraries
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(SVN_DELTA REQUIRED libsvn_delta)
-pkg_check_modules(SVN_SUBR REQUIRED libsvn_subr)
-
-# BLAKE3 library
-find_library(BLAKE3_LIBRARY blake3 REQUIRED)
-
-# Source files
-set(VFSSHELL_SOURCES
-    VfsShell/codex.cpp
-    VfsShell/snippet_catalog.cpp
-    VfsShell/utils.cpp
-)
-
-# Harness sources
-set(HARNESS_SOURCES
-    harness/scenario.cpp
-    harness/runner.cpp
-)
-
-# Main executable
-add_executable(codex ${VFSSHELL_SOURCES})
+# Find required packages
+find_package(Curses REQUIRED)
 
 # Include directories
-target_include_directories(codex PRIVATE
-    ${SVN_DELTA_INCLUDE_DIRS}
-    ${SVN_SUBR_INCLUDE_DIRS}
-)
+include_directories(${CURSES_INCLUDE_DIRS})
 
-# Compiler definitions
-target_compile_definitions(codex PRIVATE
-    ${SVN_DELTA_CFLAGS_OTHER}
-    ${SVN_SUBR_CFLAGS_OTHER}
+# Define an option to enable ncurses
+option(USE_NCURSES "Enable ncurses support" ON)
+
+# Compiler definitions based on options
+if(USE_NCURSES AND CURSES_FOUND)
+    add_definitions(-DCODEX_UI_NCURSES)
+endif()
+
+# Create a library for the editor functions
+add_library(editor_functions editor_functions.cpp)
+
+# Text editor demo executable
+add_executable(text_editor_demo 
+    demo_text_editor.cpp
+    VfsShell/ui_backend.h
+    VfsShell/file_browser.h
 )
 
 # Link libraries
-target_link_libraries(codex PRIVATE
-    ${BLAKE3_LIBRARY}
-    ${SVN_DELTA_LIBRARIES}
-    ${SVN_SUBR_LIBRARIES}
-    pthread
-    dl
-)
-
-# Check for ncurses library
-find_package(Curses QUIET)
 if(CURSES_FOUND)
-    target_compile_definitions(codex PRIVATE CODEX_UI_NCURSES)
-    target_link_libraries(codex PRIVATE ${CURSES_LIBRARIES})
-    target_include_directories(codex PRIVATE ${CURSES_INCLUDE_DIRS})
+    target_link_libraries(text_editor_demo ${CURSES_LIBRARIES})
+    target_link_libraries(editor_functions ${CURSES_LIBRARIES})
 endif()
 
-# Optional: Enable tracing
-option(ENABLE_TRACE "Enable CODEX_TRACE logging" OFF)
-if(ENABLE_TRACE)
-    target_compile_definitions(codex PRIVATE CODEX_TRACE)
+# UI backend test
+add_executable(test_ui_backend 
+    test_ui_backend.cpp
+    VfsShell/ui_backend.h
+)
+
+if(CURSES_FOUND)
+    target_link_libraries(test_ui_backend ${CURSES_LIBRARIES})
 endif()
 
-# Installation
-install(TARGETS codex DESTINATION bin)
+# Simple UI abstraction demo
+add_executable(demo_ui_abstraction 
+    demo_ui_abstraction.cpp
+    VfsShell/ui_backend.h
+)
 
-# Print configuration
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "C++ compiler: ${CMAKE_CXX_COMPILER}")
-message(STATUS "C++ flags: ${CMAKE_CXX_FLAGS}")
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    message(STATUS "Debug flags: ${CMAKE_CXX_FLAGS_DEBUG}")
-else()
-    message(STATUS "Release flags: ${CMAKE_CXX_FLAGS_RELEASE}")
+if(CURSES_FOUND)
+    target_link_libraries(demo_ui_abstraction ${CURSES_LIBRARIES})
 endif()
 
-# Planner harness executables (compile with CODEX_NO_MAIN to exclude main())
-add_executable(planner_demo harness/demo.cpp ${VFSSHELL_SOURCES} ${HARNESS_SOURCES})
-add_executable(planner_train harness/train.cpp ${VFSSHELL_SOURCES} ${HARNESS_SOURCES})
-
-# Include directories for harness binaries
-target_include_directories(planner_demo PRIVATE
-    ${SVN_DELTA_INCLUDE_DIRS}
-    ${SVN_SUBR_INCLUDE_DIRS}
-)
-target_include_directories(planner_train PRIVATE
-    ${SVN_DELTA_INCLUDE_DIRS}
-    ${SVN_SUBR_INCLUDE_DIRS}
+# Additional test executables
+add_executable(test_ncurses 
+    test_ncurses.cpp
 )
 
-# Compiler definitions for harness binaries (add CODEX_NO_MAIN)
-target_compile_definitions(planner_demo PRIVATE
-    CODEX_NO_MAIN
-    ${SVN_DELTA_CFLAGS_OTHER}
-    ${SVN_SUBR_CFLAGS_OTHER}
-)
-target_compile_definitions(planner_train PRIVATE
-    CODEX_NO_MAIN
-    ${SVN_DELTA_CFLAGS_OTHER}
-    ${SVN_SUBR_CFLAGS_OTHER}
+if(CURSES_FOUND)
+    target_link_libraries(test_ncurses ${CURSES_LIBRARIES})
+endif()
+
+add_executable(test_ncurses_editor 
+    test_ncurses_editor.cpp
 )
 
-# Link libraries for harness binaries
-target_link_libraries(planner_demo PRIVATE
-    ${BLAKE3_LIBRARY}
-    ${SVN_DELTA_LIBRARIES}
-    ${SVN_SUBR_LIBRARIES}
-    pthread
-    dl
-)
-target_link_libraries(planner_train PRIVATE
-    ${BLAKE3_LIBRARY}
-    ${SVN_DELTA_LIBRARIES}
-    ${SVN_SUBR_LIBRARIES}
-    pthread
-    dl
-)
+if(CURSES_FOUND)
+    target_link_libraries(test_ncurses_editor ${CURSES_LIBRARIES})
+endif()
+
+# Set compiler flags
+target_compile_options(text_editor_demo PRIVATE -Wall -Wextra)
+target_compile_options(test_ui_backend PRIVATE -Wall -Wextra)
+target_compile_options(demo_ui_abstraction PRIVATE -Wall -Wextra)
+target_compile_options(test_ncurses PRIVATE -Wall -Wextra)
+target_compile_options(test_ncurses_editor PRIVATE -Wall -Wextra)

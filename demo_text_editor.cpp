@@ -1,32 +1,153 @@
-// ========================================================================
-// Enhanced Editor Implementation with UI Backend Abstraction
-// ========================================================================
-
+// Complete Text Editor Demo using VfsShell UI Backend Abstraction
+#include <iostream>
 #include <vector>
 #include <string>
-#include <iostream>
+#include <fstream>
+#include <sstream>
 
+// Include our UI backend abstraction
+#include "VfsShell/ui_backend.h"
+#include "VfsShell/file_browser.h"
+
+// Mock VFS structure for demonstration
+struct MockVfs {
+    void write(const std::string& path, const std::string& content, size_t overlay_id) {
+        std::cout << "[Mock VFS] Writing " << content.length() << " chars to " << path 
+                  << " (overlay " << overlay_id << ")" << std::endl;
+        
+        // In a real implementation, this would write to the actual VFS
+        // For demo, we'll just show the content being written
+        std::cout << "--- Content written ---" << std::endl;
+        std::cout << content << std::endl;
+        std::cout << "--- End of content ---" << std::endl;
+    }
+    
+    std::string read(const std::string& path, size_t overlay_id) {
+        std::cout << "[Mock VFS] Reading from " << path 
+                  << " (overlay " << overlay_id << ")" << std::endl;
+                  
+        // For demo purposes, return some sample content if it's a .cpp file
+        if (path.substr(path.length() - 4) == ".cpp" || path.substr(path.length() - 2) == ".h") {
+            return "// Sample C++ file\n#include <iostream>\n\nint main() {\n    std::cout << \"Hello, World!\" << std::endl;\n    return 0;\n}";
+        } else if (path.substr(path.length() - 4) == ".txt") {
+            return "This is a sample text file.\nYou can edit this in the text editor.\n";
+        }
+        return "";
+    }
+    
+    bool exists(const std::string& path, size_t overlay_id) {
+        std::cout << "[Mock VFS] Checking if " << path 
+                  << " exists (overlay " << overlay_id << ")" << std::endl;
+        // For demo, assume the file exists if it's not a specific test case
+        return true;
+    }
+};
+
+// Function to load file content into lines vector
+void load_file_content(const std::string& content, std::vector<std::string>& lines) {
+    lines.clear();
+    std::istringstream iss(content);
+    std::string line;
+    while (std::getline(iss, line)) {
+        lines.push_back(line);
+    }
+    
+    // If file is empty or doesn't exist, add one empty line
+    if (lines.empty()) {
+        lines.push_back("");
+    }
+}
+
+// Include editor functions
+bool run_ncurses_editor(MockVfs& vfs, const std::string& vfs_path, std::vector<std::string>& lines, 
+                       bool file_exists, size_t overlay_id);
+
+int main() {
+    std::cout << "=== VfsShell Complete Text Editor Demo ===" << std::endl;
+    
+#ifdef CODEX_UI_NCURSES
+    std::cout << "Compiled with NCURSES backend" << std::endl;
+#elif defined(CODEX_UI_BUILTIN)
+    std::cout << "Compiled with BUILTIN terminal backend" << std::endl;
+#else
+    std::cout << "Compiled with FALLBACK backend" << std::endl;
+#endif
+    
+    std::cout << "Starting text editor demo..." << std::endl;
+    std::cout << "Press any key to continue to editor..." << std::endl;
+    std::cin.get();
+    
+    // Create and run editor
+    MockVfs vfs;
+    
+    // Option 1: Use file browser to select a file
+    FileBrowser browser;
+    std::string filepath;
+    
+    ui_init();
+    ui_clear();
+    ui_print_at(0, 0, "VfsShell Text Editor");
+    ui_print_at(1, 0, "===================");
+    ui_print_at(3, 0, "A) Use file browser to select a file");
+    ui_print_at(4, 0, "B) Enter file path manually");
+    ui_print_at(5, 0, "Q) Quit");
+    ui_print_at(7, 0, "Choose an option (A/B/Q): ");
+    ui_refresh();
+    
+    int ch = ui_getch();
+    ui_end();
+    
+    if (ch == 'A' || ch == 'a') {
+        // Use file browser
+        if (browser.browse()) {
+            filepath = "/demo/selected_file.cpp"; // In a real implementation, this would be the selected file
+        } else {
+            std::cout << "No file selected. Using default." << std::endl;
+            filepath = "/demo/default_file.cpp";
+        }
+    } else if (ch == 'B' || ch == 'b') {
+        std::cout << "Enter file path: ";
+        std::getline(std::cin, filepath);
+        if (filepath.empty()) {
+            filepath = "/demo/default_file.cpp";
+        }
+    } else {
+        std::cout << "Quitting demo." << std::endl;
+        return 0;
+    }
+    
+    // Load file content
+    std::vector<std::string> lines;
+    bool file_exists = vfs.exists(filepath, 0);
+    std::string content = vfs.read(filepath, 0);
+    load_file_content(content, lines);
+    
+    // Run the editor
+    run_ncurses_editor(vfs, filepath, lines, file_exists, 0);
+    
+    std::cout << "Demo completed successfully!" << std::endl;
+    std::cout << "Would you like to see the final content? (Y/N): ";
+    char response;
+    std::cin >> response;
+    if (response == 'Y' || response == 'y') {
+        std::cout << "\n--- Final Content ---" << std::endl;
+        for (size_t i = 0; i < lines.size(); ++i) {
+            std::cout << (i + 1) << ": " << lines[i] << std::endl;
+        }
+        std::cout << "--- End of Content ---" << std::endl;
+    }
+    
+    std::cout << "\nText editor demo finished." << std::endl;
+    return 0;
+}
+
+// NCURSES editor implementation (copy from editor_functions.cpp)
 #ifdef CODEX_UI_NCURSES
 #include <ncurses.h>
-#endif
 #include <iomanip>
 #include <sstream>
 #include <unistd.h>
 
-// Define the Vfs structure
-struct Vfs {
-    void write(const std::string& path, const std::string& content, size_t overlay_id) {
-        // Mock implementation for demo purposes
-    }
-};
-
-// Forward declarations for editor functions
-bool run_ncurses_editor(Vfs& vfs, const std::string& vfs_path, std::vector<std::string>& lines, 
-                       bool file_exists, size_t overlay_id);
-bool run_simple_editor(Vfs& vfs, const std::string& vfs_path, std::vector<std::string>& lines, 
-                      bool file_exists, size_t overlay_id);
-
-#ifdef CODEX_UI_NCURSES
 // Helper function to determine if a word is a C++ keyword
 bool is_cpp_keyword(const std::string& word) {
     static const char* keywords[] = {
@@ -51,8 +172,7 @@ bool is_cpp_keyword(const std::string& word) {
     return false;
 }
 
-// NCURSES-based editor implementation
-bool run_ncurses_editor(Vfs& vfs, const std::string& vfs_path, std::vector<std::string>& lines, 
+bool run_ncurses_editor(MockVfs& vfs, const std::string& vfs_path, std::vector<std::string>& lines, 
                        bool file_exists, size_t overlay_id) {
     // Initialize ncurses
     initscr();
@@ -127,7 +247,7 @@ bool run_ncurses_editor(Vfs& vfs, const std::string& vfs_path, std::vector<std::
                     // Check for comment start
                     if (!in_string && !in_comment && ch == '/' && next_ch == '/') {
                         in_comment = true;
-                        attron(COLOR_PAIR(7)); // Comment color (we'll add this pair)
+                        attron(COLOR_PAIR(7)); // Comment color
                     }
                     // Check for string start/end
                     else if (!in_comment && ch == '"') {
@@ -163,32 +283,29 @@ bool run_ncurses_editor(Vfs& vfs, const std::string& vfs_path, std::vector<std::
                 // For demonstration purposes, let's also highlight keywords
                 // by re-printing them in keyword color
                 std::string line_content = lines[line_idx];
-                int line_start = 5; // Start position for text
+                col = 5; // Reset position
                 std::string word = "";
-                bool word_start_found = false;
                 
                 // We'll do a second pass to highlight keywords
                 for (size_t j = 0; j <= line_content.length(); j++) {
                     char ch = (j < line_content.length()) ? line_content[j] : ' '; // Add space at end to catch last word
                     
                     if (isalpha(ch) || ch == '_') {
-                        if (!word_start_found) {
-                            word_start_found = true;
-                        }
                         word += ch;
                     } else {
-                        if (!word.empty() && word_start_found) {
+                        if (!word.empty()) {
                             if (is_cpp_keyword(word)) {
                                 // Find the keyword in the line and highlight it
                                 size_t pos = line_content.find(word, j - word.length());
                                 if (pos != std::string::npos) {
+                                    attroff(COLOR_PAIR(0)); // Turn off any previous color
                                     attron(COLOR_PAIR(5)); // Keyword color
-                                    mvprintw(screen_row, line_start + pos, "%s", word.c_str());
+                                    mvprintw(screen_row, 5 + pos, "%s", word.c_str());
                                     attroff(COLOR_PAIR(5));
+                                    attron(COLOR_PAIR(0)); // Reset to default
                                 }
                             }
                             word = "";
-                            word_start_found = false;
                         }
                     }
                 }
@@ -530,199 +647,3 @@ bool run_ncurses_editor(Vfs& vfs, const std::string& vfs_path, std::vector<std::
     return true;
 }
 #endif
-
-// Simple terminal-based editor (fallback implementation)
-bool run_simple_editor(Vfs& vfs, const std::string& vfs_path, std::vector<std::string>& lines, 
-                      bool file_exists, size_t overlay_id) {
-    // Show the editor interface immediately - simple approach
-    std::cout << "\033[2J\033[H"; // Clear screen
-    std::cout << "\033[34;1mVfsShell Text Editor - " << vfs_path << "\033[0m" << std::endl;
-    std::cout << "\033[34m" << std::string(60, '=') << "\033[0m" << std::endl;
-    
-    // Display content with line numbers
-    for(size_t i = 0; i < lines.size(); ++i) {
-        std::cout << std::right << std::setw(3) << (i + 1) << ": " << lines[i] << std::endl;
-    }
-    
-    // If there are fewer than 10 lines, show some tildes for empty space
-    for(size_t i = lines.size(); i < 10 && i < 20; ++i) {
-        std::cout << std::right << std::setw(3) << (i + 1) << ": ~" << std::endl;
-    }
-    
-    std::cout << "\033[34m" << std::string(60, '=') << "\033[0m" << std::endl;
-    std::cout << "\033[33mStatus: " << lines.size() << " lines | ";
-    if (!file_exists) std::cout << "[New File] | ";
-    std::cout << "Type :wq to save&quit, :q to quit, :help for commands\033[0m" << std::endl;
-    std::cout << std::endl;
-    
-    bool editor_active = true;
-    bool file_modified = false;
-    
-    while(editor_active) {
-        std::cout << "Editor> ";
-        std::cout.flush();
-        
-        std::string command;
-        if(!std::getline(std::cin, command)) {
-            break; // EOF
-        }
-        
-        // Process editor commands - simpler approach
-        if(command == ":q") {
-            editor_active = false;
-        } else if(command == ":wq" || command == ":x") {
-            // Write and quit
-            std::ostringstream oss;
-            for(size_t i = 0; i < lines.size(); ++i) {
-                oss << lines[i];
-                if(i < lines.size() - 1) oss << "\n";
-            }
-            std::string new_content = oss.str();
-            
-            // Write to VFS
-            vfs.write(vfs_path, new_content, overlay_id);
-            std::cout << "[Saved " << lines.size() << " lines to " << vfs_path << " and exited]\n";
-            editor_active = false;
-        } else if(command == ":w") {
-            // Write only
-            std::ostringstream oss;
-            for(size_t i = 0; i < lines.size(); ++i) {
-                oss << lines[i];
-                if(i < lines.size() - 1) oss << "\n";
-            }
-            std::string new_content = oss.str();
-            
-            // Write to VFS
-            vfs.write(vfs_path, new_content, overlay_id);
-            file_modified = false;
-            std::cout << "[Saved " << lines.size() << " lines to " << vfs_path << "]\n";
-        } else if(command == ":help") {
-            std::cout << "Editor Commands:\n";
-            std::cout << "  :w          - Write (save) file\n";
-            std::cout << "  :wq         - Write file and quit\n";
-            std::cout << "  :q          - Quit without saving\n";
-            std::cout << "  i<line> <text> - Insert line (e.g., 'i5 hello')\n";
-            std::cout << "  d<line>     - Delete line (e.g., 'd5')\n";
-            std::cout << "  c<line> <text> - Change line (e.g., 'c5 new text')\n";
-            std::cout << "  p           - Print current content\n";
-            std::cout << "  :help       - Show this help\n";
-        } else if(command.substr(0, 1) == "i" && command.size() > 1 && std::isdigit(command[1])) {
-            // Insert line: i<line_num> <text>
-            size_t pos = 1;
-            std::string num_str = "";
-            while(pos < command.size() && std::isdigit(command[pos])) {
-                num_str += command[pos];
-                pos++;
-            }
-            
-            if(!num_str.empty()) {
-                int line_num = std::stoi(num_str);
-                if(line_num >= 1 && line_num <= static_cast<int>(lines.size() + 1)) {
-                    std::string text = (pos < command.size()) ? command.substr(pos + 1) : "";
-                    lines.insert(lines.begin() + (line_num - 1), text);
-                    file_modified = true;
-                    std::cout << "[Inserted line " << line_num << "]\n";
-                } else {
-                    std::cout << "[Error: line number out of range]\n";
-                }
-            } else {
-                std::cout << "[Invalid insert command]\n";
-            }
-        } else if(command.substr(0, 1) == "d" && command.size() > 1 && std::isdigit(command[1])) {
-            // Delete line: d<line_num>
-            size_t pos = 1;
-            std::string num_str = "";
-            while(pos < command.size() && std::isdigit(command[pos])) {
-                num_str += command[pos];
-                pos++;
-            }
-            
-            if(!num_str.empty()) {
-                int line_num = std::stoi(num_str);
-                if(line_num >= 1 && line_num <= static_cast<int>(lines.size())) {
-                    lines.erase(lines.begin() + (line_num - 1));
-                    file_modified = true;
-                    std::cout << "[Deleted line " << line_num << "]\n";
-                    if(line_num <= static_cast<int>(lines.size())) {
-                        // Refresh display after deletion
-                        std::cout << "\033[2J\033[H"; // Clear and show current state
-                        std::cout << "\033[34;1mVfsShell Text Editor - " << vfs_path << "\033[0m" << std::endl;
-                        std::cout << "\033[34m" << std::string(60, '=') << "\033[0m" << std::endl;
-                        
-                        for(size_t i = 0; i < lines.size(); ++i) {
-                            std::cout << std::right << std::setw(3) << (i + 1) << ": " << lines[i] << std::endl;
-                        }
-                        
-                        // Show more empty lines if needed
-                        for(size_t i = lines.size(); i < 10 && i < 20; ++i) {
-                            std::cout << std::right << std::setw(3) << (i + 1) << ": ~" << std::endl;
-                        }
-                        
-                        std::cout << "\033[34m" << std::string(60, '=') << "\033[0m" << std::endl;
-                        std::cout << "\033[33mStatus: " << lines.size() << " lines | ";
-                        if (!file_exists && !file_modified) std::cout << "[New File] | ";
-                        if (file_modified) std::cout << "[Modified] | ";
-                        std::cout << "Type :wq to save&quit, :q to quit, :help for commands\033[0m" << std::endl;
-                        std::cout << std::endl;
-                    }
-                } else {
-                    std::cout << "[Error: line number out of range]\n";
-                }
-            } else {
-                std::cout << "[Invalid delete command]\n";
-            }
-        } else if(command.substr(0, 1) == "c" && command.size() > 1 && std::isdigit(command[1])) {
-            // Change line: c<line_num> <text>
-            size_t pos = 1;
-            std::string num_str = "";
-            while(pos < command.size() && std::isdigit(command[pos])) {
-                num_str += command[pos];
-                pos++;
-            }
-            
-            if(!num_str.empty()) {
-                int line_num = std::stoi(num_str);
-                if(line_num >= 1 && line_num <= static_cast<int>(lines.size())) {
-                    std::string text = (pos < command.size()) ? command.substr(pos + 1) : "";
-                    lines[line_num - 1] = text;
-                    file_modified = true;
-                    std::cout << "[Changed line " << line_num << "]\n";
-                } else {
-                    std::cout << "[Error: line number out of range]\n";
-                }
-            } else {
-                std::cout << "[Invalid change command]\n";
-            }
-        } else if(command == "p") {
-            // Print current content
-            std::cout << "\033[2J\033[H"; // Clear and show current state
-            std::cout << "\033[34;1mVfsShell Text Editor - " << vfs_path << "\033[0m" << std::endl;
-            std::cout << "\033[34m" << std::string(60, '=') << "\033[0m" << std::endl;
-            
-            for(size_t i = 0; i < lines.size(); ++i) {
-                std::cout << std::right << std::setw(3) << (i + 1) << ": " << lines[i] << std::endl;
-            }
-            
-            // Show more empty lines if needed
-            for(size_t i = lines.size(); i < 10 && i < 20; ++i) {
-                std::cout << std::right << std::setw(3) << (i + 1) << ": ~" << std::endl;
-            }
-            
-            std::cout << "\033[34m" << std::string(60, '=') << "\033[0m" << std::endl;
-            std::cout << "\033[33mStatus: " << lines.size() << " lines | ";
-            if (!file_exists && !file_modified) std::cout << "[New File] | ";
-            if (file_modified) std::cout << "[Modified] | ";
-            std::cout << "Type :wq to save&quit, :q to quit, :help for commands\033[0m" << std::endl;
-            std::cout << std::endl;
-        } else if(command.empty()) {
-            // Do nothing, just continue
-        } else {
-            std::cout << "[Unknown command. Type :help for options]\n";
-        }
-    }
-    
-    std::cout << "\033[2J\033[H"; // Clear screen on exit
-    std::cout << "Editor closed. Return to shell.\n";
-    
-    return true;
-}
