@@ -46,3 +46,5 @@ struct VfsNode;
 bool run_ncurses_editor(Vfs& vfs, const std::string& vfs_path,
                         std::vector<std::string>& lines,
                         bool file_exists, size_t overlay_id);
+
+void vfs_add(Vfs& vfs, const std::string& path, std::shared_ptr<VfsNode> node, size_t overlayId);

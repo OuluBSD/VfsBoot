@@ -1,5 +1,8 @@
 #include "VfsShell.h"
 
+WINDOW* stdscr;
+
+
 void help(){
     TRACE_FN();
     std::cout <<
@@ -3663,5 +3666,6 @@ bool run_ncurses_editor(Vfs& vfs, const std::string& vfs_path, std::vector<std::
     return true;
 }
 #endif
+
 
 #endif // CODEX_NO_MAIN

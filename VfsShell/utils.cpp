@@ -41,7 +41,6 @@ std::string join_path(const std::string& base, const std::string& leaf){
 }
 
 // Note: normalize_path needs Vfs::splitPath, so we include codex.h here
-#include "codex.h"
 
 std::string normalize_path(const std::string& cwd, const std::string& operand){
     auto stack = (operand.empty() || operand[0]!='/') ? Vfs::splitPath(cwd.empty() ? "/" : cwd)

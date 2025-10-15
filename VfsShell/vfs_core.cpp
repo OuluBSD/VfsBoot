@@ -31,11 +31,12 @@ char type_char(const std::shared_ptr<VfsNode>& node){
 }
 
 
-
+#ifndef CODEX_UI_NCURSES
 bool run_ncurses_editor(Vfs& vfs, const std::string& vfs_path, std::vector<std::string>& lines,
                         bool file_exists, size_t overlay_id) {
     return false;
 }
+#endif
 
 Vfs::Vfs() : logic_engine(&tag_registry) {
     TRACE_FN();

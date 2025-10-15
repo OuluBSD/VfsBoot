@@ -79,5 +79,10 @@ struct RawTerminalMode {
 bool terminal_available();
 void redraw_prompt_line(const std::string& prompt, const std::string& buffer, size_t cursor);
 std::string complete_input(Vfs& vfs, const std::string& buffer, size_t cursor, const std::string& cwd_path, bool& show_list);
+void load_history(std::vector<std::string>& history);
+bool read_line_with_history(Vfs& vfs, const std::string& prompt, std::string& out, const std::vector<std::string>& history, const std::string& cwd_path);
+std::vector<std::string> tokenize_command_line(const std::string& line);
+void save_history(const std::vector<std::string>& history);
+std::vector<CommandChainEntry> parse_command_chain(const std::vector<std::string>& tokens);
 
 #endif

@@ -585,3 +585,6 @@ void cmd_parse_generate(Vfs& vfs, const std::vector<std::string>& args);
 void save_overlay_to_file(Vfs& vfs, size_t overlayId, const std::string& hostPath);
 void update_directory_context(Vfs& vfs, WorkingDirectory& cwd, const std::string& absPath);
 
+const char* policy_label(WorkingDirectory::ConflictPolicy policy);
+std::optional<WorkingDirectory::ConflictPolicy> parse_policy(const std::string& name);
+void adjust_context_after_unmount(Vfs& vfs, WorkingDirectory& cwd, size_t removedId);

@@ -26,7 +26,7 @@ library(LINUX) websockets;
 
 library(LINUX) pthread;
 
-library(LINUX) ncurses;
+library(LINUX) "ncurses tinfo";
 
 include(LINUX) /usr/include/subversion-1;
 
@@ -36,8 +36,8 @@ include(LINUX) /usr/lib/llvm/21/include;
 
 file
 	VfsShell.h,
-	codex.h,
-	codex.cpp,
+	ui_backend.h,
+	ui_backend_qt_example.h,
 	vfs_common.h,
 	vfs_common.cpp,
 	tag_system.h,

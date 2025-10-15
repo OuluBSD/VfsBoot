@@ -113,3 +113,8 @@ struct CppTranslationUnit : CppNode {
     std::map<std::string, std::shared_ptr<VfsNode>>& children() override { return ch; }
     std::string dump(int) const override;
 };
+
+std::shared_ptr<CppTranslationUnit> expect_tu(std::shared_ptr<VfsNode> n);
+std::shared_ptr<CppCompound> expect_block(std::shared_ptr<VfsNode> n);
+void cpp_dump_to_vfs(Vfs& vfs, size_t overlayId, const std::string& tuPath, const std::string& filePath);
+std::shared_ptr<CppFunction> expect_fn(std::shared_ptr<VfsNode> n);
