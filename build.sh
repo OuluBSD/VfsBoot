@@ -427,10 +427,26 @@ run_static_analysis() {
 
     # Define source files to analyze
     local sources=(
-        "VfsShell/codex.cpp"
+        "VfsShell/vfs_common.cpp"
+        "VfsShell/tag_system.cpp"
+        "VfsShell/logic_engine.cpp"
+        "VfsShell/vfs_core.cpp"
+        "VfsShell/vfs_mount.cpp"
+        "VfsShell/sexp.cpp"
+        "VfsShell/cpp_ast.cpp"
+        "VfsShell/clang_parser.cpp"
+        "VfsShell/planner.cpp"
+        "VfsShell/ai_bridge.cpp"
+        "VfsShell/context_builder.cpp"
+        "VfsShell/make.cpp"
+        "VfsShell/hypothesis.cpp"
+        "VfsShell/scope_store.cpp"
+        "VfsShell/feedback.cpp"
+        "VfsShell/shell_commands.cpp"
+        "VfsShell/repl.cpp"
+        "VfsShell/main.cpp"
         "VfsShell/snippet_catalog.cpp"
         "VfsShell/utils.cpp"
-        "VfsShell/clang_parser.cpp"
         "VfsShell/web_server.cpp"
     )
 
