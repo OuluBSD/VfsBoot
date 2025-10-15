@@ -3038,62 +3038,68 @@ int main(int argc, char** argv){
 
         } else if(cmd == "edit" || cmd == "ee"){
             // Enhanced editor with UI backend abstraction
-            std::string vfs_path;
-            bool has_filename = !inv.args.empty();
-            
-            if (has_filename) {
-                vfs_path = normalize_path(cwd.path, inv.args[0]);
+            // Check if we're in web server mode (no terminal available)
+            if(web_server_mode) {
+                result.success = false;
+                result.output = "Interactive editor not available in web server mode. Use a text editor through the web interface or terminal.\n";
             } else {
-                // No filename provided, start with an untitled buffer
-                std::cout << "VfsShell Text Editor (no file specified)\n";
-                std::cout << "Enter filename to save to later (or use :q to quit without saving):\n";
-                std::cout << "Filename: ";
-                std::getline(std::cin, vfs_path);
-                if (vfs_path.empty()) {
-                    std::cout << "No filename provided. Editor closed.\n";
-                    result.success = false;
+                std::string vfs_path;
+                bool has_filename = !inv.args.empty();
+                
+                if (has_filename) {
+                    vfs_path = normalize_path(cwd.path, inv.args[0]);
                 } else {
-                    // Normalize path if provided
-                    vfs_path = normalize_path(cwd.path, vfs_path);
-                }
-            }
-            
-            if (!vfs_path.empty()) {
-                // Read existing content if file exists
-                std::string content;
-                bool file_exists = true;
-                try {
-                    content = vfs.read(vfs_path, std::nullopt);
-                } catch(...) {
-                    file_exists = false;
-                    content = ""; // New file
+                    // No filename provided, start with an untitled buffer
+                    std::cout << "VfsShell Text Editor (no file specified)\n";
+                    std::cout << "Enter filename to save to later (or use :q to quit without saving):\n";
+                    std::cout << "Filename: ";
+                    std::getline(std::cin, vfs_path);
+                    if (vfs_path.empty()) {
+                        std::cout << "No filename provided. Editor closed.\n";
+                        result.success = false;
+                    } else {
+                        // Normalize path if provided
+                        vfs_path = normalize_path(cwd.path, vfs_path);
+                    }
                 }
                 
-                // Split content into lines
-                std::vector<std::string> lines;
-                std::istringstream iss(content);
-                std::string line;
-                while(std::getline(iss, line)) {
-                    lines.push_back(line);
-                }
-                
-                // If file was empty but we have one empty line, clear it
-                if(content.empty() && lines.size() == 1 && lines[0].empty()) {
-                    lines.clear();
-                }
-                
-                // If no lines, start with one empty line
-                if(lines.empty()) {
-                    lines.push_back("");
-                }
-                
+                if (!vfs_path.empty()) {
+                    // Read existing content if file exists
+                    std::string content;
+                    bool file_exists = true;
+                    try {
+                        content = vfs.read(vfs_path, std::nullopt);
+                    } catch(...) {
+                        file_exists = false;
+                        content = ""; // New file
+                    }
+                    
+                    // Split content into lines
+                    std::vector<std::string> lines;
+                    std::istringstream iss(content);
+                    std::string line;
+                    while(std::getline(iss, line)) {
+                        lines.push_back(line);
+                    }
+                    
+                    // If file was empty but we have one empty line, clear it
+                    if(content.empty() && lines.size() == 1 && lines[0].empty()) {
+                        lines.clear();
+                    }
+                    
+                    // If no lines, start with one empty line
+                    if(lines.empty()) {
+                        lines.push_back("");
+                    }
+                    
 #ifdef CODEX_UI_NCURSES
-                // Use ncurses-based editor
-                result.success = run_ncurses_editor(vfs, vfs_path, lines, file_exists, cwd.primary_overlay);
+                    // Use ncurses-based editor
+                    result.success = run_ncurses_editor(vfs, vfs_path, lines, file_exists, cwd.primary_overlay);
 #else
-                // Use simple terminal-based editor (fallback)
-                result.success = run_simple_editor(vfs, vfs_path, lines, file_exists, cwd.primary_overlay);
+                    // Use simple terminal-based editor (fallback)
+                    result.success = run_simple_editor(vfs, vfs_path, lines, file_exists, cwd.primary_overlay);
 #endif
+                }
             }
 
         } else if(cmd == "help"){
