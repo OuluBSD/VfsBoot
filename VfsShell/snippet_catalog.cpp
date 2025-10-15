@@ -1,14 +1,4 @@
-#include "snippet_catalog.h"
-
-#include <algorithm>
-#include <cstdlib>
-#include <filesystem>
-#include <fstream>
-#include <mutex>
-#include <optional>
-#include <sstream>
-#include <unordered_map>
-#include <vector>
+#include "VfsShell.h"
 
 namespace snippets {
 namespace {

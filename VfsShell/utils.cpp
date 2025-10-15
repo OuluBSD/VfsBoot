@@ -1,18 +1,4 @@
-#include "utils.h"
-#include <cctype>
-#include <sstream>
-#include <array>
-#include <cstdio>
-#include <thread>
-#include <chrono>
-#include <mutex>
-#include <atomic>
-#include <iostream>
-#include <cstdlib>
-
-#ifdef CODEX_TRACE
-#include "codex.h"
-#endif
+#include "VfsShell.h"
 
 // String utilities
 std::string trim_copy(const std::string& s){
@@ -84,6 +70,14 @@ std::string path_basename(const std::string& path){
     return path.substr(pos+1);
 }
 
+std::string path_dirname(const std::string& path){
+    if(path.empty() || path=="/") return "/";
+    auto pos = path.find_last_of('/');
+    if(pos==std::string::npos) return ".";
+    if(pos==0) return "/";
+    return path.substr(0, pos);
+}
+
 // Exec utilities
 std::string exec_capture(const std::string& cmd, const std::string& desc){
 #ifdef CODEX_TRACE
@@ -140,4 +134,84 @@ bool has_cmd(const std::string& c){
     std::string cmd = "command -v "+c+" >/dev/null 2>&1";
     int r = system(cmd.c_str());
     return r==0;
+}
+
+size_t count_lines(const std::string& s){
+    if(s.empty()) return 0;
+    size_t n = std::count(s.begin(), s.end(), '\n');
+    if(s.back() != '\n') ++n;
+    return n;
+}
+
+LineSplit split_lines(const std::string& s){
+    LineSplit result;
+    std::string current;
+    bool last_was_newline = false;
+    for(char c : s){
+        if(c == '\n'){
+            result.lines.push_back(current);
+            current.clear();
+            last_was_newline = true;
+        } else {
+            current.push_back(c);
+            last_was_newline = false;
+        }
+    }
+    if(!current.empty()){
+        result.lines.push_back(current);
+    }
+    result.trailing_newline = last_was_newline;
+    return result;
+}
+
+size_t parse_size_arg(const std::string& s, const char* ctx){
+    if(s.empty()) throw std::runtime_error(std::string(ctx) + " must be non-negative integer");
+    size_t idx = 0;
+    while(idx < s.size()){
+        if(!std::isdigit(static_cast<unsigned char>(s[idx])))
+            throw std::runtime_error(std::string(ctx) + " must be non-negative integer");
+        ++idx;
+    }
+    try{
+        return static_cast<size_t>(std::stoull(s));
+    } catch(const std::exception&){
+        throw std::runtime_error(std::string(ctx) + " out of range");
+    }
+}
+
+std::string join_line_range(const LineSplit& split, size_t begin, size_t end){
+    if(begin >= end || begin >= split.lines.size()) return {};
+    end = std::min(end, split.lines.size());
+    std::ostringstream oss;
+    for(size_t idx = begin; idx < end; ++idx){
+        oss << split.lines[idx];
+        bool had_newline = (idx < split.lines.size() - 1) || split.trailing_newline;
+        if(had_newline) oss << '\n';
+    }
+    return oss.str();
+}
+
+long long parse_int_arg(const std::string& s, const char* ctx){
+    if(s.empty()) throw std::runtime_error(std::string(ctx) + " must be integer");
+    size_t idx = 0;
+    if(s[0] == '+' || s[0] == '-'){
+        idx = 1;
+        if(idx == s.size()) throw std::runtime_error(std::string(ctx) + " must be integer");
+    }
+    while(idx < s.size()){
+        if(!std::isdigit(static_cast<unsigned char>(s[idx])))
+            throw std::runtime_error(std::string(ctx) + " must be integer");
+        ++idx;
+    }
+    try{
+        return std::stoll(s);
+    } catch(const std::exception&){
+        throw std::runtime_error(std::string(ctx) + " out of range");
+    }
+}
+
+
+std::mt19937& rng(){
+    static std::mt19937 gen(std::random_device{}());
+    return gen;
 }

@@ -1,7 +1,6 @@
 #ifndef STAGE1_SNIPPET_CATALOG_H
 #define STAGE1_SNIPPET_CATALOG_H
 
-#include <string>
 
 namespace snippets {
 

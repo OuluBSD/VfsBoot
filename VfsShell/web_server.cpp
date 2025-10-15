@@ -1,14 +1,4 @@
-// web_server.cpp - Lightweight HTTP/WebSocket server for VfsBoot
-// Built with libwebsockets for browser-based terminal access
-
-#include "codex.h"
-#include <libwebsockets.h>
-#include <string>
-#include <vector>
-#include <map>
-#include <queue>
-#include <mutex>
-#include <thread>
+#include "VfsShell.h"
 
 // WebSocket session tracking
 struct WebSocketSession {
