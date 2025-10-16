@@ -1,0 +1,372 @@
+VfsBoot Module Dependency Graph
+================================
+
+Legend:
+  [Module] = Header + Implementation
+  ──────> = Direct dependency (includes)
+
+Level 0: Foundation Layer
+═════════════════════════
+
+    ┌──────────────┐         ┌─────────────┐
+    │ vfs_common   │         │ ui_backend  │ (existing)
+    │              │         │             │
+    │ - includes   │         │ - UIBackend │
+    │ - tracing    │         │   interface │
+    │ - i18n       │         └─────────────┘
+    │ - hash utils │
+    └──────────────┘
+
+
+Level 1: Data Structures
+═════════════════════════
+
+    ┌──────────────┐
+    │ tag_system   │
+    │              │
+    │ - TagId      │
+    │ - BitVector  │
+    │ - TagSet     │
+    │ - TagRegistry│
+    │ - TagStorage │
+    └──────┬───────┘
+           │
+           ▼
+    ┌──────────────┐
+    │ vfs_common   │
+    └──────────────┘
+
+
+Level 2: Logic & Core Filesystem
+═════════════════════════════════
+
+    ┌─────────────────┐              ┌──────────────┐
+    │ logic_engine    │              │ vfs_core     │
+    │                 │              │              │
+    │ - LogicFormula  │              │ - VfsNode    │
+    │ - ImplicationRule│             │ - DirNode    │
+    │ - LogicEngine   │              │ - FileNode   │
+    └────────┬────────┘              │ - Vfs        │
+             │                        │ - VfsVisitor │
+             ▼                        └──────┬───────┘
+    ┌──────────────┐                        │
+    │ tag_system   │◄───────────────────────┘
+    └──────────────┘                        │
+                                            ▼
+                                   ┌──────────────┐
+                                   │ tag_system   │
+                                   │ logic_engine │
+                                   └──────────────┘
+
+
+Level 3: VFS Extensions & AI
+═════════════════════════════
+
+    ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+    │ vfs_mount    │     │ sexp         │     │ ai_bridge    │
+    │              │     │              │     │              │
+    │ - MountNode  │     │ - Value      │     │ - call_ai    │
+    │ - LibraryNode│     │ - Env        │     │ - call_openai│
+    │ - RemoteNode │     │ - AstNode    │     │ - call_llama │
+    └──────┬───────┘     │ - Parser     │     └──────┬───────┘
+           │             │ - Builtins   │            │
+           ▼             └──────┬───────┘            ▼
+    ┌──────────────┐           │            ┌──────────────┐
+    │ vfs_core     │◄──────────┘            │ vfs_common   │
+    └──────────────┘                        └──────────────┘
+
+
+Level 4: AST Systems
+═════════════════════
+
+    ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+    │ cpp_ast      │     │ clang_parser │     │ planner      │
+    │              │     │              │     │              │
+    │ - CppNode    │     │ - ClangAstNode│    │ - PlanNode   │
+    │ - CppExpr    │     │ - ClangParser │    │ - PlannerCtx │
+    │ - CppStmt    │     │ - SourceLoc   │    │ - DiscussSess│
+    │ - CppFunction│     └──────┬───────┘     └──────┬───────┘
+    └──────┬───────┘            │                    │
+           │                    │                    │
+           └────────┬───────────┴────────┬───────────┘
+                    ▼                    ▼
+            ┌──────────────┐     ┌──────────────┐
+            │ sexp         │     │ vfs_core     │
+            └──────────────┘     └──────────────┘
+
+
+Level 5: Advanced Features
+═══════════════════════════
+
+    ┌──────────────────┐              ┌──────────────┐
+    │ context_builder  │              │ make         │
+    │                  │              │              │
+    │ - ContextFilter  │              │ - MakeRule   │
+    │ - ContextEntry   │              │ - MakeFile   │
+    │ - ContextBuilder │              └──────┬───────┘
+    │ - ReplacementStgy│                     │
+    └────────┬─────────┘                     ▼
+             │                        ┌──────────────┐
+             └────────┬───────────────┤ vfs_core     │
+                      ▼               └──────────────┘
+              ┌──────────────┐
+              │ tag_system   │
+              │ vfs_core     │
+              └──────────────┘
+
+
+Level 6: Analysis & Testing
+════════════════════════════
+
+    ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+    │ hypothesis   │     │ scope_store  │     │ feedback     │
+    │              │     │              │     │              │
+    │ - Hypothesis │     │ - BinaryDiff │     │ - Metrics    │
+    │ - HypothTester│    │ - FeatureMask│     │ - RulePatch  │
+    │ - ActionTest │     │ - ScopeStore │     │ - FeedbackLoop│
+    └──────┬───────┘     └──────┬───────┘     └──────┬───────┘
+           │                    │                    │
+           ▼                    │                    ▼
+    ┌──────────────┐            │            ┌──────────────┐
+    │context_builder│           │            │ logic_engine │
+    └──────────────┘            │            │ vfs_core     │
+                                │            └──────────────┘
+                                ▼
+                        ┌──────────────┐
+                        │ vfs_core     │
+                        │context_builder│
+                        └──────────────┘
+
+
+Level 7: Interface Layer
+═════════════════════════
+
+    ┌──────────────┐              ┌─────────────────────┐
+    │ web_server   │              │ shell_commands      │
+    │              │              │                     │
+    │ - WebServer  │              │ - All cmd_* funcs   │
+    │   namespace  │              │ - Command dispatch  │
+    │ - start()    │              │ - Tab completion    │
+    │ - stop()     │              └──────────┬──────────┘
+    └──────┬───────┘                         │
+           │                                 ▼
+           ▼                         ┌───────────────────┐
+    ┌──────────────┐                │ All modules below │
+    │ vfs_common   │                │ (orchestration)   │
+    └──────────────┘                └───────────────────┘
+
+
+Level 8: Top Layer
+═══════════════════
+
+    ┌──────────────┐              ┌──────────────┐
+    │ repl         │              │ main.cpp     │
+    │              │              │              │
+    │ - run_repl() │              │ - main()     │
+    │ - Line edit  │              │ - Init VFS   │
+    │ - Tab complete│             │ - Load overlays
+    └──────┬───────┘              │ - Mode select│
+           │                      └──────┬───────┘
+           ▼                             │
+    ┌──────────────┐                     │
+    │shell_commands│◄────────────────────┘
+    └──────────────┘                     │
+                                         ▼
+                                  ┌──────────────┐
+                                  │ repl         │
+                                  │ web_server   │
+                                  └──────────────┘
+
+
+Complete Dependency Matrix
+═══════════════════════════
+
+Module            │ Depends On
+──────────────────┼─────────────────────────────────────────
+vfs_common        │ (none)
+ui_backend        │ (none)
+tag_system        │ vfs_common
+logic_engine      │ tag_system
+vfs_core          │ tag_system, logic_engine, ui_backend
+vfs_mount         │ vfs_core
+sexp              │ vfs_core
+ai_bridge         │ vfs_common
+cpp_ast           │ sexp
+clang_parser      │ sexp, vfs_core
+planner           │ sexp, vfs_core
+context_builder   │ tag_system, vfs_core
+make              │ vfs_core
+hypothesis        │ context_builder
+scope_store       │ vfs_core, context_builder
+feedback          │ logic_engine, vfs_core
+web_server        │ vfs_common
+shell_commands    │ vfs_core, vfs_mount, sexp, cpp_ast,
+                  │ clang_parser, planner, ai_bridge,
+                  │ context_builder, make, hypothesis,
+                  │ scope_store, feedback
+repl              │ shell_commands
+main              │ repl, web_server
+
+
+Include Chain Examples
+══════════════════════
+
+Example 1: Building main.cpp
+─────────────────────────────
+main.cpp includes:
+  → repl.h
+      → shell_commands.h
+          → vfs_core.h
+              → tag_system.h
+                  → vfs_common.h (base)
+              → logic_engine.h
+                  → tag_system.h
+          → vfs_mount.h
+              → vfs_core.h
+          → sexp.h
+              → vfs_core.h
+          → cpp_ast.h
+              → sexp.h
+          → clang_parser.h
+              → sexp.h, vfs_core.h
+          → planner.h
+              → sexp.h, vfs_core.h
+          → ai_bridge.h
+              → vfs_common.h
+          → context_builder.h
+              → tag_system.h, vfs_core.h
+          → make.h
+              → vfs_core.h
+          → hypothesis.h
+              → context_builder.h
+          → scope_store.h
+              → vfs_core.h, context_builder.h
+          → feedback.h
+              → logic_engine.h, vfs_core.h
+  → web_server.h
+      → vfs_common.h
+
+
+Example 2: Building hypothesis.cpp
+───────────────────────────────────
+hypothesis.cpp includes:
+  → hypothesis.h
+      → context_builder.h
+          → tag_system.h
+              → vfs_common.h (base)
+          → vfs_core.h
+              → tag_system.h
+              → logic_engine.h
+                  → tag_system.h
+
+
+Compilation Order (Bottom-Up)
+══════════════════════════════
+
+Batch 1 (parallel):
+  vfs_common.cpp
+  ui_backend.cpp (existing)
+
+Batch 2 (parallel, after Batch 1):
+  tag_system.cpp
+
+Batch 3 (parallel, after Batch 2):
+  logic_engine.cpp
+  vfs_core.cpp
+
+Batch 4 (parallel, after Batch 3):
+  vfs_mount.cpp
+  sexp.cpp
+  ai_bridge.cpp
+
+Batch 5 (parallel, after Batch 4):
+  cpp_ast.cpp
+  clang_parser.cpp
+  planner.cpp
+  make.cpp
+
+Batch 6 (parallel, after Batch 5):
+  context_builder.cpp
+
+Batch 7 (parallel, after Batch 6):
+  hypothesis.cpp
+  scope_store.cpp
+  feedback.cpp
+
+Batch 8 (parallel, after Batch 7):
+  web_server.cpp
+  shell_commands.cpp
+
+Batch 9 (sequential, after Batch 8):
+  repl.cpp
+  main.cpp
+
+
+File Statistics
+═══════════════
+
+Current:
+  codex.h:   2,335 lines
+  codex.cpp: 11,526 lines
+  Total:     13,861 lines
+
+Proposed:
+  20 header files:       ~4,750 lines (avg 238 lines/file)
+  20 implementation files: ~12,600 lines (avg 630 lines/file)
+  Total:                 ~17,350 lines
+
+Size increase: ~3,500 lines (~25%)
+  - Include guards: ~40 lines per header = ~800 lines
+  - Better separation: ~1,500 lines
+  - Documentation: ~1,200 lines
+
+Benefits:
+  - No single file > 1,000 lines
+  - Most files 200-800 lines (human-readable)
+  - Clear module boundaries
+  - Parallel compilation
+  - Easier code navigation
+
+
+Circular Dependency Prevention
+═══════════════════════════════
+
+Potential issues:
+1. VfsNode needs TagStorage, TagStorage needs VfsNode*
+   → Solution: TagStorage uses VfsNode* (forward declaration OK)
+
+2. ContextBuilder needs Vfs, Vfs might use ContextBuilder
+   → Solution: Vfs doesn't depend on ContextBuilder directly
+
+3. Shell commands need everything
+   → Solution: shell_commands is top-level orchestrator
+
+Rules:
+- No circular includes between modules
+- Use forward declarations for pointers
+- Keep dependency graph acyclic (DAG)
+- If cycle detected, introduce interface/factory
+
+
+Build System Changes
+════════════════════
+
+Current Makefile:
+  codex: codex.cpp codex.h ui_backend.h
+      $(CXX) $(CXXFLAGS) -o codex codex.cpp $(LDFLAGS)
+
+Proposed Makefile:
+  SOURCES := $(wildcard VfsShell/*.cpp)
+  OBJECTS := $(SOURCES:.cpp=.o)
+
+  codex: $(OBJECTS)
+      $(CXX) $(CXXFLAGS) -o codex $(OBJECTS) $(LDFLAGS)
+
+  VfsShell/%.o: VfsShell/%.cpp
+      $(CXX) $(CXXFLAGS) -c $< -o $@
+
+  clean:
+      rm -f VfsShell/*.o codex
+
+Parallel build:
+  make -j8  # Compile 8 files simultaneously

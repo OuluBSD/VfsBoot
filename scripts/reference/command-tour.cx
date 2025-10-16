@@ -15,3 +15,32 @@ cpp.print reference/main/body Reference pipeline active
 cpp.returni reference/main/body 0
 cpp.dump reference ../cpp/reference.cpp
 cat ../cpp/reference.cpp
+
+# U++ Assembly Reference Commands
+# Create a new U++ assembly (Ultimate++ project)
+upp.create MyUppApp /tmp/myupp.var
+
+# List U++ packages to verify creation
+upp.list
+
+# Create the assembly file using VFS
+echo /tmp/demo.var "// Demo U++ Assembly
+[Package: DemoApp]
+Path=DemoApp/src
+Primary=true
+Files=
+  main.cpp
+  DemoApp.h
+Dependencies=
+  Core
+"
+
+# Load the assembly file
+upp.load /tmp/demo.var
+
+# Verify the loaded assembly
+upp.list
+
+# The upp.gui command launches an ncurses-based IDE for U++ development
+# (Non-interactive demo - would launch GUI in normal mode)
+# upp.gui

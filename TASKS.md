@@ -1,6 +1,13 @@
 # Tasks Tracker
 Note: sexp is for AI and shell script is for human user (+ ai called via sexp). This follows the classic codex behaviour.
 
+## U++ compatibility
+- Support U++ assembly file: e.g. ~/.config/u++/theide/MyApps.var
+	- have active workspace for assembly file
+	- workspace has active primary package and it's dependency packages
+	- have ncurses gui with: main code editor area, package list at top left and file list (of package) at bottom left. have menu bar too
+
+	
 ## Upcoming: web browser gui: important
 - **Phase 1 COMPLETE** - Basic terminal working ✅
   - ✅ libwebsockets-based HTTP/WebSocket server
