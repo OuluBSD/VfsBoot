@@ -1,0 +1,60 @@
+# U++ Assembly (.var files) Reference Script
+# Demonstrates the full U++ assembly workflow in VfsShell
+
+# Create a new U++ assembly
+upp.create MyUppApp /tmp/myupp.var
+
+# Verify the assembly was created
+upp.list
+
+# Show the GUI interface (non-interactive version)
+# upp.gui
+
+# Create a more complex assembly with dependencies
+echo /tmp/complex.var "// Complex U++ Assembly File
+[Package: MyApp]
+Path=MyApp/src
+Primary=true
+Files=
+  main.cpp
+  MyApp.h
+  MyApp.cpp
+Dependencies=
+  CtrlCore
+  Core
+
+[Package: CtrlCore]
+Path=upp/CtrlCore
+Dependencies=
+  Core
+
+[Package: Core]
+Path=upp/Core
+Dependencies=
+  std
+
+[Package: std]
+Path=system/std
+Files=
+  string.h
+  vector.h
+  iostream.h
+"
+
+# Load the complex assembly
+upp.load /tmp/complex.var
+
+# List packages to verify loading
+upp.list
+
+# Create another assembly to test multiple workspaces
+upp.create AnotherApp /tmp/another.var
+
+# List to show multiple assemblies
+upp.list
+
+# This demonstrates the core U++ assembly functionality:
+# - upp.create: Create new U++ assembly with primary package
+# - upp.load: Load existing .var assembly file
+# - upp.list: List packages in current assembly
+# - upp.gui: Launch the U++ assembly IDE GUI

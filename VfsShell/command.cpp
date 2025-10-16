@@ -462,7 +462,8 @@ std::vector<std::string> get_all_commands(){
         "hypothesis.duplicates", "hypothesis.logging", "hypothesis.pattern",
         "cpp.tu", "cpp.include", "cpp.func", "cpp.param", "cpp.print",
         "cpp.returni", "cpp.return", "cpp.expr", "cpp.vardecl", "cpp.stmt",
-        "cpp.rangefor", "cpp.dump", "make", "sample.run", "help", "quit", "exit"
+        "cpp.rangefor", "cpp.dump", "make", "sample.run", "help", "quit", "exit",
+        "upp.load", "upp.create", "upp.list", "upp.scan", "upp.load.host", "upp.gui"
     };
 }
 

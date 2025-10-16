@@ -77,5 +77,6 @@
 #include "command.h"
 #include "editor_functions.h"
 #include "ui_backend.h"
+#include "upp_assembly.h"
 
 #endif

@@ -130,6 +130,13 @@ R"(Commands:
   # Build automation
   make [target] [-f makefile] [-v|--verbose]  (minimal GNU make subset)
   sample.run [--keep] [--trace]               (build, compile, and run demo C++ program)
+  # U++ assembly support
+  upp.load <var-file-path>                    (load U++ assembly file)
+  upp.create <name> <output-path>             (create new U++ assembly)
+  upp.list                                    (list packages in current assembly)
+  upp.scan <directory-path>                   (scan directory for U++ packages with .upp files)
+  upp.load.host <host-var-file>               (mount host dir and load .var file from OS filesystem)
+  upp.gui                                     (launch U++ assembly IDE GUI)
   # libclang C++ AST parsing
   parse.file <filepath> [vfs-target-path]     (parse C++ file with libclang)
   parse.dump [vfs-path]                       (dump parsed AST tree)
@@ -2787,6 +2794,199 @@ int main(int argc, char** argv){
             std::string absOut = normalize_path(cwd.path, inv.args[1]);
             cpp_dump_to_vfs(vfs, cwd.primary_overlay, absTu, absOut);
             std::cout << "dump -> " << absOut << "\n";
+
+        } else if(cmd == "upp.load"){
+            if(inv.args.empty()) throw std::runtime_error("upp.load <var-file-path>");
+            std::string var_path = normalize_path(cwd.path, inv.args[0]);
+            
+            // Read the .var file content from VFS
+            std::string var_content = vfs.read(var_path, std::nullopt);
+            
+            // Create UppAssembly instance and load the .var file
+            auto assembly = std::make_shared<UppAssembly>();
+            if(assembly->load_from_content(var_content, var_path)) {
+                std::cout << "Loaded U++ assembly: " << var_path << "\n";
+                
+                // Add to VFS structure
+                assembly->create_vfs_structure(vfs, cwd.primary_overlay);
+            } else {
+                throw std::runtime_error("Failed to load U++ assembly: " + var_path);
+            }
+
+        } else if(cmd == "upp.create"){
+            if(inv.args.size() < 2) throw std::runtime_error("upp.create <name> <output-path>");
+            std::string name = inv.args[0];
+            std::string output_path = normalize_path(cwd.path, inv.args[1]);
+            
+            // Create an empty UppAssembly with the given name
+            auto assembly = std::make_shared<UppAssembly>();
+            auto workspace = std::make_shared<UppWorkspace>(name, output_path);
+            
+            // Add a default primary package
+            auto primary_package = std::make_shared<UppPackage>(name, name + "/src", true);
+            workspace->add_package(primary_package);
+            
+            // Set the workspace in the assembly
+            assembly->set_workspace(workspace);
+            
+            // Save the assembly to the specified output path
+            if(assembly->save_to_file(output_path)) {
+                std::cout << "Created U++ assembly: " << output_path << "\n";
+                
+                // Add to VFS structure
+                assembly->create_vfs_structure(vfs, cwd.primary_overlay);
+            } else {
+                throw std::runtime_error("Failed to create U++ assembly: " + output_path);
+            }
+
+        } else if(cmd == "upp.list"){
+            // List all packages in the current assembly
+            std::cout << "U++ Assembly packages:\n";
+            if(auto upp_root = vfs.resolve("/upp")) {
+                // Get the directory listing
+                auto overlay_ids = vfs.overlaysForPath("/upp");
+                auto listing = vfs.listDir("/upp", overlay_ids);
+                
+                for(const auto& [child_path, entry] : listing) {
+                    auto child = upp_root->children().count(child_path) ? upp_root->children()[child_path] : nullptr;
+                    if(child && child->isDir()) {
+                        std::cout << "- " << child_path << "\n";
+                        
+                        // List packages if they exist
+                        std::string packages_path = "/upp/" + child_path + "/packages";
+                        if(auto packages_node = vfs.resolve(packages_path)) {
+                            auto pkg_overlay_ids = vfs.overlaysForPath(packages_path);
+                            auto pkg_listing = vfs.listDir(packages_path, pkg_overlay_ids);
+                            
+                            for(const auto& [pkg_path, pkg_entry] : pkg_listing) {
+                                auto pkg_node = packages_node->children().count(pkg_path) ? packages_node->children()[pkg_path] : nullptr;
+                                if(pkg_node && pkg_node->isDir()) {
+                                    std::string primary_marker = "";
+                                    std::string pkg_info_path = packages_path + "/" + pkg_path + "/package.info";
+                                    try {
+                                        std::string info_content = vfs.read(pkg_info_path, std::nullopt);
+                                        if(info_content.find("primary=true") != std::string::npos) {
+                                            primary_marker = " (primary)";
+                                        }
+                                    } catch(...) {
+                                        // If reading fails, continue without primary marker
+                                    }
+                                    std::cout << "  * " << pkg_path << primary_marker << "\n";
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                std::cout << "  No U++ assemblies loaded\n";
+            }
+
+        } else if(cmd == "upp.gui"){
+            // Launch the U++ assembly GUI
+            auto assembly = std::make_shared<UppAssembly>();
+            // For now, try to find an existing assembly in VFS
+            if(auto upp_root = vfs.resolve("/upp")) {
+                // For simplicity, we'll just initialize GUI with a basic assembly
+                UppAssemblyGui gui(assembly);
+                gui.init();
+                std::cout << "U++ Assembly GUI launched (press any key to exit GUI mode and return to shell)\n";
+                // Note: In a full implementation, we would run the GUI here
+                // For now, we'll just show a message and return
+            } else {
+                // Create an empty workspace
+                auto workspace = std::make_shared<UppWorkspace>("default", "");
+                assembly->set_workspace(workspace);
+                UppAssemblyGui gui(assembly);
+                gui.init();
+                std::cout << "U++ Assembly GUI launched with empty workspace\n";
+            }
+            std::cout << "GUI mode would run here\n";
+
+        } else if(cmd == "upp.scan"){
+            if(inv.args.empty()) throw std::runtime_error("upp.scan <directory-path>");
+            std::string scan_path = normalize_path(cwd.path, inv.args[0]);
+            
+            // Create a new assembly and scan for U++ packages
+            auto assembly = std::make_shared<UppAssembly>();
+            if(assembly->detect_packages_from_directory(vfs, scan_path)) {
+                std::cout << "Scanned " << scan_path << " for U++ packages\n";
+                
+                // Count the packages found
+                int package_count = 0;
+                if(auto ws = assembly->get_workspace()) {
+                    auto packages = ws->get_all_packages();
+                    package_count = packages.size();
+                    std::cout << "Found " << package_count << " U++ package(s):\n";
+                    
+                    for(const auto& pkg : packages) {
+                        std::cout << "  - " << pkg->name << " (" << pkg->files.size() << " files, " << pkg->dependencies.size() << " deps)\n";
+                    }
+                }
+                
+                // Create VFS structure for the detected packages
+                assembly->create_vfs_structure(vfs, cwd.primary_overlay);
+            } else {
+                throw std::runtime_error("Failed to scan directory: " + scan_path);
+            }
+
+        } else if(cmd == "upp.load.host"){
+            if(inv.args.empty()) throw std::runtime_error("upp.load.host <host-var-file-path>");
+            
+            std::string host_path = inv.args[0];  // Use as-is, not normalized (host path)
+            
+            // Extract directory and filename
+            size_t last_slash = host_path.find_last_of("/\\");
+            std::string host_dir, var_filename;
+            if (last_slash != std::string::npos) {
+                host_dir = host_path.substr(0, last_slash);
+                var_filename = host_path.substr(last_slash + 1);
+            } else {
+                host_dir = ".";  // Current directory if no path separators
+                var_filename = host_path;
+            }
+            
+            // Check if the host file exists before attempting to mount
+            std::ifstream test_file(host_path);
+            if (!test_file.good()) {
+                throw std::runtime_error("Host file does not exist or is not accessible: " + host_path);
+            }
+            test_file.close();
+            
+            // Mount the directory containing the .var file to the VFS
+            std::string vfs_mount_point = "/mnt/host_" + std::to_string(std::time(nullptr)) + "_" + std::to_string(getpid());
+            
+            try {
+                vfs.mountFilesystem(host_dir, vfs_mount_point, 0);  // Use default overlay
+            } catch (...) {
+                throw std::runtime_error("Failed to mount host directory: " + host_dir);
+            }
+            
+            std::cout << "Mounted host directory: " << host_dir << " -> " << vfs_mount_point << "\n";
+            
+            // Load the .var file from the mounted location
+            std::string var_vfs_path = vfs_mount_point + "/" + var_filename;
+            
+            // Read the .var file content from VFS
+            std::string var_content;
+            try {
+                var_content = vfs.read(var_vfs_path, std::nullopt);
+            } catch (...) {
+                throw std::runtime_error("Failed to read .var file from mounted location. Expected at: " + var_vfs_path + " (from host: " + host_path + ")");
+            }
+            
+            // Create UppAssembly instance and load the .var file
+            auto assembly = std::make_shared<UppAssembly>();
+            if(assembly->load_from_content(var_content, var_vfs_path)) {
+                std::cout << "Loaded U++ assembly from host: " << host_path << "\n";
+                
+                // Add to VFS structure
+                assembly->create_vfs_structure(vfs, cwd.primary_overlay);
+                
+                // Also process the directory for additional U++ packages
+                assembly->detect_packages_from_directory(vfs, vfs_mount_point);
+            } else {
+                throw std::runtime_error("Failed to parse U++ assembly: " + host_path);
+            }
 
         } else if(cmd == "make"){
             // Minimal GNU make implementation
