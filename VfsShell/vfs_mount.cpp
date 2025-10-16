@@ -2,8 +2,24 @@
 
 // ====== Mount Nodes ======
 
+// Helper function to determine node kind based on host path
+VfsNode::Kind determineMountNodeKind(const std::string& host_path) {
+    namespace fs = std::filesystem;
+    try {
+        if(fs::is_directory(host_path)) {
+            return VfsNode::Kind::Dir;    // Use Dir kind for directories (so they can have children)
+        } else if(fs::is_regular_file(host_path)) {
+            return VfsNode::Kind::File;   // Use File kind for regular files
+        } else {
+            return VfsNode::Kind::Mount;  // Default to Mount for other types
+        }
+    } catch(...) {
+        return VfsNode::Kind::Mount;  // Default to Mount if we can't determine the type
+    }
+}
+
 MountNode::MountNode(std::string n, std::string hp)
-    : VfsNode(std::move(n), Kind::Mount), host_path(std::move(hp)) {}
+    : VfsNode(std::move(n), determineMountNodeKind(hp)), host_path(std::move(hp)) {}
 
 bool MountNode::isDir() const {
     namespace fs = std::filesystem;
