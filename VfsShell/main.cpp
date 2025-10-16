@@ -2930,9 +2930,13 @@ int main(int argc, char** argv){
             }
 
         } else if(cmd == "upp.load.host"){
+            std::cout << "DEBUG: upp.load.host command called with path: " << (inv.args.empty() ? "(empty)" : inv.args[0]) << std::endl;
+            std::cout.flush();
             if(inv.args.empty()) throw std::runtime_error("upp.load.host <host-var-file-path>");
             
             std::string host_path = inv.args[0];  // Use as-is, not normalized (host path)
+            std::cout << "Processing host path: " << host_path << std::endl;
+            std::cout.flush();
             
             // Extract directory and filename
             size_t last_slash = host_path.find_last_of("/\\");
@@ -2945,33 +2949,88 @@ int main(int argc, char** argv){
                 var_filename = host_path;
             }
             
+            std::cout << "Host directory: " << host_dir << ", filename: " << var_filename << std::endl;
+            std::cout.flush();
+            
             // Check if the host file exists before attempting to mount
             std::ifstream test_file(host_path);
             if (!test_file.good()) {
+                std::cout << "File does not exist or is not accessible" << std::endl;
+                std::cout.flush();
                 throw std::runtime_error("Host file does not exist or is not accessible: " + host_path);
             }
             test_file.close();
             
+            std::cout << "Host file exists, proceeding with mount" << std::endl;
+            std::cout.flush();
+            
             // Mount the directory containing the .var file to the VFS
             std::string vfs_mount_point = "/mnt/host_" + std::to_string(std::time(nullptr)) + "_" + std::to_string(getpid());
             
+            std::cout << "Attempting to mount: " << host_dir << " -> " << vfs_mount_point << std::endl;
+            std::cout.flush();
+            
             try {
-                vfs.mountFilesystem(host_dir, vfs_mount_point, 0);  // Use default overlay
+                vfs.mountFilesystem(host_dir, vfs_mount_point, cwd.primary_overlay);  // Use same overlay as shell
+                std::cout << "Mount operation completed successfully" << std::endl;
+                std::cout.flush();
+            } catch (const std::exception& e) {
+                std::cout << "Mount failed with exception: " << e.what() << std::endl;
+                std::cout.flush();
+                throw std::runtime_error("Failed to mount host directory: " + host_dir + " - Exception: " + e.what());
             } catch (...) {
-                throw std::runtime_error("Failed to mount host directory: " + host_dir);
+                std::cout << "Mount failed with unknown exception" << std::endl;
+                std::cout.flush();
+                throw std::runtime_error("Failed to mount host directory: " + host_dir + " - Unknown exception");
             }
             
             std::cout << "Mounted host directory: " << host_dir << " -> " << vfs_mount_point << "\n";
+            std::cout.flush();
+            
+            // Give the mount system time to initialize
+            usleep(300000); // 300ms delay
             
             // Load the .var file from the mounted location
             std::string var_vfs_path = vfs_mount_point + "/" + var_filename;
+            
+            std::cout << "Attempting to read file at: " << var_vfs_path << std::endl;
+            std::cout.flush();
+            
+            // Debug: Try to list the mount point to see what's there
+            try {
+                auto overlay_ids = vfs.overlaysForPath(vfs_mount_point);
+                auto dir_listing = vfs.listDir(vfs_mount_point, overlay_ids);
+                std::cout << "Directory listing at mount point (" << dir_listing.size() << " entries):\n";
+                std::cout.flush();
+                for (const auto& [entry_name, entry] : dir_listing) {
+                    std::cout << "  - " << entry_name;
+                    if (entry.types.count('d') > 0) std::cout << " (dir)";
+                    if (entry.types.count('f') > 0) std::cout << " (file)";
+                    std::cout << "\n";
+                    std::cout.flush();
+                }
+            } catch (const std::exception& e) {
+                std::cout << "Could not list mount point directory - Exception: " << e.what() << "\n";
+                std::cout.flush();
+            } catch (...) {
+                std::cout << "Could not list mount point directory - Unknown exception\n";
+                std::cout.flush();
+            }
             
             // Read the .var file content from VFS
             std::string var_content;
             try {
                 var_content = vfs.read(var_vfs_path, std::nullopt);
+                std::cout << "Successfully read .var file content (" << var_content.length() << " bytes)\n";
+                std::cout.flush();
+            } catch (const std::exception& e) {
+                std::cout << "Failed to read .var file - Exception: " << e.what() << "\n";
+                std::cout.flush();
+                throw std::runtime_error("Failed to read .var file from mounted location. Expected at: " + var_vfs_path + " (from host: " + host_path + ") - Exception: " + e.what());
             } catch (...) {
-                throw std::runtime_error("Failed to read .var file from mounted location. Expected at: " + var_vfs_path + " (from host: " + host_path + ")");
+                std::cout << "Failed to read .var file - Unknown exception\n";
+                std::cout.flush();
+                throw std::runtime_error("Failed to read .var file from mounted location. Expected at: " + var_vfs_path + " (from host: " + host_path + ") - Unknown exception");
             }
             
             // Create UppAssembly instance and load the .var file
