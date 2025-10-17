@@ -328,6 +328,8 @@ int main(int argc, char** argv){
         std::cout << "note: auto-load plan.vfs failed: " << e.what() << "\n";
     }
 
+    
+
     std::cout << i18n::get(MsgId::WELCOME) << "\n";
     if(interactive) std::cout << i18n::get(MsgId::DISCUSS_HINT) << "\n";
     string line;
@@ -3464,6 +3466,97 @@ int main(int argc, char** argv){
 
         WebServer::stop();
         return 0;
+    }
+
+    // Load .vfshrc initialization file if present (first current directory, then home directory)
+    try{
+        bool vfshrc_loaded = false;
+        
+        // First check current directory for .vfshrc
+        std::filesystem::path local_vfshrc_path = ".vfshrc";
+        if(std::filesystem::exists(local_vfshrc_path) && std::filesystem::is_regular_file(local_vfshrc_path)){
+            std::cout << "loading .vfshrc configuration...\n";
+            // Read and execute the local .vfshrc file
+            std::ifstream vfshrc_stream(local_vfshrc_path);
+            std::string vfshrc_line;
+            while(std::getline(vfshrc_stream, vfshrc_line)){
+                auto trimmed = trim_copy(vfshrc_line);
+                if(trimmed.empty() || trimmed[0] == '#') continue; // Skip empty lines and comments
+                
+                try{
+                    auto tokens = tokenize_command_line(vfshrc_line);
+                    if(tokens.empty()) continue;
+                    
+                    auto chain = parse_command_chain(tokens);
+                    bool last_success = true;
+                    
+                    for(const auto& entry : chain){
+                        if(entry.logical == "&&" && !last_success) continue;
+                        if(entry.logical == "||" && last_success) continue;
+                        
+                        CommandResult res = run_pipeline(entry.pipeline, "");
+                        if(!res.output.empty()){
+                            std::cout << res.output;
+                            std::cout.flush();
+                        }
+                        last_success = res.success;
+                        
+                        if(res.exit_requested){
+                            break;
+                        }
+                    }
+                } catch(const std::exception& e){
+                    std::cout << "warning: .vfshrc error: " << e.what() << "\n";
+                }
+            }
+            vfshrc_loaded = true;
+        }
+        
+        // If not loaded from current directory, check home directory
+        if(!vfshrc_loaded){
+            const char* home = std::getenv("HOME");
+            if(home != nullptr){
+                std::filesystem::path home_vfshrc_path = std::string(home) + "/.vfshrc";
+                if(std::filesystem::exists(home_vfshrc_path) && std::filesystem::is_regular_file(home_vfshrc_path)){
+                    std::cout << "loading ~/.vfshrc configuration...\n";
+                    // Read and execute the home .vfshrc file
+                    std::ifstream vfshrc_stream(home_vfshrc_path);
+                    std::string vfshrc_line;
+                    while(std::getline(vfshrc_stream, vfshrc_line)){
+                        auto trimmed = trim_copy(vfshrc_line);
+                        if(trimmed.empty() || trimmed[0] == '#') continue; // Skip empty lines and comments
+                        
+                        try{
+                            auto tokens = tokenize_command_line(vfshrc_line);
+                            if(tokens.empty()) continue;
+                            
+                            auto chain = parse_command_chain(tokens);
+                            bool last_success = true;
+                            
+                            for(const auto& entry : chain){
+                                if(entry.logical == "&&" && !last_success) continue;
+                                if(entry.logical == "||" && last_success) continue;
+                                
+                                CommandResult res = run_pipeline(entry.pipeline, "");
+                                if(!res.output.empty()){
+                                    std::cout << res.output;
+                                    std::cout.flush();
+                                }
+                                last_success = res.success;
+                                
+                                if(res.exit_requested){
+                                    break;
+                                }
+                            }
+                        } catch(const std::exception& e){
+                            std::cout << "warning: ~/.vfshrc error: " << e.what() << "\n";
+                        }
+                    }
+                }
+            }
+        }
+    } catch(const std::exception& e){
+        std::cout << "note: loading .vfshrc failed: " << e.what() << "\n";
     }
 
     while(true){

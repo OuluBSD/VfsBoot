@@ -1,0 +1,5 @@
+# VfsShell initialization file
+echo "Loading .vfshrc configuration..."
+pwd && echo "Shell initialized in current directory"
+ls / && echo "Root filesystem listing complete"
+echo "Welcome to VfsShell! Type 'help' for available commands."
