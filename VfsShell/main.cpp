@@ -1,5 +1,6 @@
 #include "VfsShell.h"
 #include <filesystem>
+#include <unistd.h>
 
 WINDOW* stdscr;
 
@@ -336,7 +337,89 @@ int main(int argc, char** argv){
         std::cout << "note: auto-load plan.vfs failed: " << e.what() << "\n";
     }
 
-    
+    // Auto-mount directories from UPP environment variable
+    try {
+        if(const char* upp_env = std::getenv("UPP")) {
+            std::string upp_paths = std::string(upp_env);
+            std::istringstream iss(upp_paths);
+            std::string path;
+            while(std::getline(iss, path, ':')) {
+                if(!path.empty()) {
+                    try {
+                        // Check if the path exists and is a directory
+                        if(!std::filesystem::exists(path)) {
+                            std::cout << "UPP directory does not exist: " << path << "\n";
+                            continue;
+                        }
+                        
+                        if(!std::filesystem::is_directory(path)) {
+                            std::cout << "UPP path is not a directory: " << path << "\n";
+                            continue;
+                        }
+                        
+                        // Create a unique mount point
+                        std::string vfs_mount_point = "/mnt/host_" + std::to_string(std::time(nullptr)) + "_" + std::to_string(getpid());
+                        
+                        // Mount the directory to the VFS
+                        vfs.mountFilesystem(path, vfs_mount_point, cwd.primary_overlay);
+                        std::cout << "auto-mounted UPP directory: " << path << " -> " << vfs_mount_point << "\n";
+                        
+                        // Give the mount system time to initialize
+                        usleep(300000); // 300ms delay
+                        
+                        // Recursively scan for .var files and load them
+                        std::function<void(const std::string&)> scan_for_var_files = 
+                            [&](const std::string& current_vfs_path) {
+                                try {
+                                    auto overlay_ids = vfs.overlaysForPath(current_vfs_path);
+                                    auto listing = vfs.listDir(current_vfs_path, overlay_ids);
+                                    
+                                    for(const auto& [entry_name, entry] : listing) {
+                                        std::string full_entry_path = current_vfs_path + "/" + entry_name;
+                                        
+                                        // Check if it's a directory
+                                        if(entry.types.count('d') > 0) {
+                                            // Recursively scan subdirectories
+                                            scan_for_var_files(full_entry_path);
+                                        }
+                                        // Check if it's a .var file
+                                        else if(entry_name.length() > 4 && entry_name.substr(entry_name.length() - 4) == ".var") {
+                                            std::string var_file_path = full_entry_path;
+                                            try {
+                                                std::string var_content = vfs.read(var_file_path, std::nullopt);
+                                                auto assembly = std::make_shared<UppAssembly>();
+                                                if(assembly->load_from_content(var_content, var_file_path)) {
+                                                    g_startup_assemblies.push_back(assembly);
+                                                    std::cout << "Loaded startup assembly: " << var_file_path << " (from UPP: " << path << ")\n";
+                                                    
+                                                    // Add to VFS structure
+                                                    assembly->create_vfs_structure(vfs, cwd.primary_overlay);
+                                                } else {
+                                                    std::cout << "Failed to load startup assembly: " << var_file_path << "\n";
+                                                }
+                                            } catch(const std::exception& e) {
+                                                std::cout << "Error loading " << var_file_path << ": " << e.what() << "\n";
+                                            }
+                                        }
+                                    }
+                                } catch(const std::exception& e) {
+                                    std::cout << "Failed to list directory " << current_vfs_path << ": " << e.what() << "\n";
+                                }
+                            };
+                        
+                        // Start scanning from the mount point
+                        scan_for_var_files(vfs_mount_point);
+                    } catch(const std::exception& e) {
+                        std::cout << "Failed to process UPP directory: " << path << " - Exception: " << e.what() << "\n";
+                    } catch(...) {
+                        std::cout << "Failed to process UPP directory: " << path << " - Unknown exception\n";
+                    }
+                }
+            }
+        }
+    } catch(const std::exception& e) {
+        std::cout << "note: UPP environment variable processing failed: " << e.what() << "\n";
+    }
 
     std::cout << i18n::get(MsgId::WELCOME) << "\n";
     if(interactive) std::cout << i18n::get(MsgId::DISCUSS_HINT) << "\n";
@@ -3303,8 +3386,8 @@ int main(int argc, char** argv){
             for(const auto& assembly : g_startup_assemblies) {
                 if(auto workspace = assembly->get_workspace()) {
                     if(workspace->name == assembly_name) {
-                        // Load the .var file content
-                        std::string var_file_path = workspace->base_dir;
+                        // Load the .var file content using the assembly_path
+                        std::string var_file_path = workspace->assembly_path;
                         try {
                             std::string var_content = vfs.read(var_file_path, std::nullopt);
                             if(assembly->load_from_content(var_content, var_file_path)) {

@@ -11,3 +11,7 @@ planner_demo
 
 trash/**
 
+.vfsh
+build_output.log
+*.var
+
