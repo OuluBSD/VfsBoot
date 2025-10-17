@@ -15,3 +15,4 @@ trash/**
 build_output.log
 *.var
 
+test_*
