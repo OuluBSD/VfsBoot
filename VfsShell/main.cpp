@@ -144,6 +144,7 @@ R"(Commands:
   # U++ startup support
   upp.startup.load <directory-path> [-H]      (load all .var files from directory, -H treats path as OS filesystem path)
   upp.startup.list                            (list all loaded startup assemblies)
+  upp.startup.open <name>                     (load a named startup assembly)
   # libclang C++ AST parsing
   parse.file <filepath> [vfs-target-path]     (parse C++ file with libclang)
   parse.dump [vfs-path]                       (dump parsed AST tree)
@@ -3290,6 +3291,41 @@ int main(int argc, char** argv){
                         }
                     }
                 }
+            }
+
+        } else if(cmd == "upp.startup.open") {
+            if(inv.args.empty()) throw std::runtime_error("upp.startup.open <name> (open a named startup assembly)");
+            
+            std::string assembly_name = inv.args[0];
+            bool found = false;
+            
+            // Look for the assembly by name
+            for(const auto& assembly : g_startup_assemblies) {
+                if(auto workspace = assembly->get_workspace()) {
+                    if(workspace->name == assembly_name) {
+                        // Load the .var file content
+                        std::string var_file_path = workspace->base_dir;
+                        try {
+                            std::string var_content = vfs.read(var_file_path, std::nullopt);
+                            if(assembly->load_from_content(var_content, var_file_path)) {
+                                std::cout << "Opened startup assembly: " << assembly_name << " (" << var_file_path << ")\n";
+                                
+                                // Add to VFS structure
+                                assembly->create_vfs_structure(vfs, cwd.primary_overlay);
+                                found = true;
+                                break;
+                            } else {
+                                throw std::runtime_error("Failed to load startup assembly: " + var_file_path);
+                            }
+                        } catch(const std::exception& e) {
+                            throw std::runtime_error("Error opening " + var_file_path + ": " + e.what());
+                        }
+                    }
+                }
+            }
+            
+            if(!found) {
+                throw std::runtime_error("Startup assembly not found: " + assembly_name);
             }
 
         } else if(cmd == "make"){
