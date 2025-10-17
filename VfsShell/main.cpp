@@ -1,6 +1,10 @@
 #include "VfsShell.h"
+#include <filesystem>
 
 WINDOW* stdscr;
+
+// Global storage for loaded startup assemblies
+std::vector<std::shared_ptr<UppAssembly>> g_startup_assemblies;
 
 
 void help(){
@@ -131,12 +135,15 @@ R"(Commands:
   make [target] [-f makefile] [-v|--verbose]  (minimal GNU make subset)
   sample.run [--keep] [--trace]               (build, compile, and run demo C++ program)
   # U++ assembly support
-  upp.load <var-file-path>                    (load U++ assembly file)
+  upp.load <var-file-path> [-H]               (load U++ assembly file, -H treats path as OS filesystem path)
   upp.create <name> <output-path>             (create new U++ assembly)
   upp.list                                    (list packages in current assembly)
   upp.scan <directory-path>                   (scan directory for U++ packages with .upp files)
   upp.load.host <host-var-file>               (mount host dir and load .var file from OS filesystem)
   upp.gui                                     (launch U++ assembly IDE GUI)
+  # U++ startup support
+  upp.startup.load <directory-path> [-H]      (load all .var files from directory, -H treats path as OS filesystem path)
+  upp.startup.list                            (list all loaded startup assemblies)
   # libclang C++ AST parsing
   parse.file <filepath> [vfs-target-path]     (parse C++ file with libclang)
   parse.dump [vfs-path]                       (dump parsed AST tree)
@@ -2798,21 +2805,96 @@ int main(int argc, char** argv){
             std::cout << "dump -> " << absOut << "\n";
 
         } else if(cmd == "upp.load"){
-            if(inv.args.empty()) throw std::runtime_error("upp.load <var-file-path>");
-            std::string var_path = normalize_path(cwd.path, inv.args[0]);
+            // Parse flags first
+            bool use_host_path = false;  // default behavior: treat as VFS path without -H flag
+            std::string path_arg;
             
-            // Read the .var file content from VFS
-            std::string var_content = vfs.read(var_path, std::nullopt);
+            for(const auto& arg : inv.args) {
+                if(arg == "-H") {
+                    use_host_path = true;  // with -H flag: treat as host OS path
+                } else if(arg != "-H") {
+                    path_arg = arg;  // store the actual path argument
+                }
+            }
             
-            // Create UppAssembly instance and load the .var file
-            auto assembly = std::make_shared<UppAssembly>();
-            if(assembly->load_from_content(var_content, var_path)) {
-                std::cout << "Loaded U++ assembly: " << var_path << "\n";
+            if(path_arg.empty()) throw std::runtime_error("upp.load <var-file-path> [-H] (use -H for host OS path)");
+            
+            // If -H flag is provided, use host OS path behavior
+            if(use_host_path) {
+                std::string host_path = path_arg;
                 
-                // Add to VFS structure
-                assembly->create_vfs_structure(vfs, cwd.primary_overlay);
+                // Extract directory and filename
+                size_t last_slash = host_path.find_last_of("/\\");
+                std::string host_dir, var_filename;
+                if (last_slash != std::string::npos) {
+                    host_dir = host_path.substr(0, last_slash);
+                    var_filename = host_path.substr(last_slash + 1);
+                } else {
+                    host_dir = ".";  // Current directory if no path separators
+                    var_filename = host_path;
+                }
+                
+                // Check if the host file exists before attempting to mount
+                std::ifstream test_file(host_path);
+                if (!test_file.good()) {
+                    throw std::runtime_error("Host file does not exist or is not accessible: " + host_path);
+                }
+                test_file.close();
+                
+                // Mount the directory containing the .var file to the VFS
+                std::string vfs_mount_point = "/mnt/host_" + std::to_string(std::time(nullptr)) + "_" + std::to_string(getpid());
+                
+                try {
+                    vfs.mountFilesystem(host_dir, vfs_mount_point, cwd.primary_overlay);  // Use same overlay as shell
+                } catch (const std::exception& e) {
+                    throw std::runtime_error("Failed to mount host directory: " + host_dir + " - Exception: " + e.what());
+                } catch (...) {
+                    throw std::runtime_error("Failed to mount host directory: " + host_dir + " - Unknown exception");
+                }
+                
+                // Give the mount system time to initialize
+                usleep(300000); // 300ms delay
+                
+                // Load the .var file from the mounted location
+                std::string var_vfs_path = vfs_mount_point + "/" + var_filename;
+                
+                // Read the .var file content from VFS
+                std::string var_content;
+                try {
+                    var_content = vfs.read(var_vfs_path, std::nullopt);
+                } catch (const std::exception& e) {
+                    throw std::runtime_error("Failed to read .var file from mounted location. Expected at: " + var_vfs_path + " (from host: " + host_path + ") - Exception: " + e.what());
+                } catch (...) {
+                    throw std::runtime_error("Failed to read .var file from mounted location. Expected at: " + var_vfs_path + " (from host: " + host_path + ") - Unknown exception");
+                }
+                
+                // Create UppAssembly instance and load the .var file
+                auto assembly = std::make_shared<UppAssembly>();
+                if(assembly->load_from_content(var_content, var_vfs_path)) {
+                    std::cout << "Loaded U++ assembly from host: " << host_path << "\n";
+                    
+                    // Add to VFS structure
+                    assembly->create_vfs_structure(vfs, cwd.primary_overlay);
+                } else {
+                    throw std::runtime_error("Failed to parse U++ assembly: " + host_path);
+                }
             } else {
-                throw std::runtime_error("Failed to load U++ assembly: " + var_path);
+                // Without -H flag: treat as VFS path, load directly
+                std::string var_path = normalize_path(cwd.path, path_arg);
+                
+                // Read the .var file content from VFS
+                std::string var_content = vfs.read(var_path, std::nullopt);
+                
+                // Create UppAssembly instance and load the .var file
+                auto assembly = std::make_shared<UppAssembly>();
+                if(assembly->load_from_content(var_content, var_path)) {
+                    std::cout << "Loaded U++ assembly: " << var_path << "\n";
+                    
+                    // Add to VFS structure
+                    assembly->create_vfs_structure(vfs, cwd.primary_overlay);
+                } else {
+                    throw std::runtime_error("Failed to load U++ assembly: " + var_path);
+                }
             }
 
         } else if(cmd == "upp.create"){
@@ -3047,6 +3129,167 @@ int main(int argc, char** argv){
                 assembly->detect_packages_from_directory(vfs, vfs_mount_point);
             } else {
                 throw std::runtime_error("Failed to parse U++ assembly: " + host_path);
+            }
+
+        } else if(cmd == "upp.startup.load"){
+            // Parse flags first
+            bool use_host_path = false;  // default behavior: treat as VFS path without -H flag
+            std::string path_arg;
+            
+            for(const auto& arg : inv.args) {
+                if(arg == "-H") {
+                    use_host_path = true;  // with -H flag: treat as host OS path
+                } else if(arg != "-H") {
+                    path_arg = arg;  // store the actual path argument
+                }
+            }
+            
+            if(path_arg.empty()) throw std::runtime_error("upp.startup.load <directory-path> [-H] (use -H for host OS path)");
+            
+            // If -H flag is provided, use host OS path behavior
+            if(use_host_path) {
+                std::string host_dir_path = path_arg;
+                
+                // Check if the host directory exists
+                std::filesystem::path host_path{host_dir_path};
+                if (!std::filesystem::exists(host_path)) {
+                    throw std::runtime_error("Host directory does not exist: " + host_dir_path);
+                }
+                
+                if (!std::filesystem::is_directory(host_path)) {
+                    throw std::runtime_error("Path is not a directory: " + host_dir_path);
+                }
+                
+                // Mount the directory to the VFS
+                std::string vfs_mount_point = "/mnt/host_" + std::to_string(std::time(nullptr)) + "_" + std::to_string(getpid());
+                
+                try {
+                    vfs.mountFilesystem(host_dir_path, vfs_mount_point, cwd.primary_overlay);  // Use same overlay as shell
+                } catch (const std::exception& e) {
+                    throw std::runtime_error("Failed to mount host directory: " + host_dir_path + " - Exception: " + e.what());
+                } catch (...) {
+                    throw std::runtime_error("Failed to mount host directory: " + host_dir_path + " - Unknown exception");
+                }
+                
+                // Give the mount system time to initialize
+                usleep(300000); // 300ms delay
+                
+                // Use the mounted path to scan for .var files
+                std::string mounted_dir_path = vfs_mount_point;
+                
+                // Scan directory for .var files
+                std::vector<std::string> var_files;
+                try {
+                    auto overlay_ids = vfs.overlaysForPath(mounted_dir_path);
+                    auto listing = vfs.listDir(mounted_dir_path, overlay_ids);
+                    
+                    for(const auto& [entry_name, entry] : listing){
+                        // Check if it's a .var file
+                        if(entry_name.length() > 4 && entry_name.substr(entry_name.length() - 4) == ".var"){
+                            var_files.push_back(join_path(mounted_dir_path, entry_name));
+                        }
+                    }
+                } catch(const std::exception& e) {
+                    throw std::runtime_error("Failed to list directory " + mounted_dir_path + ": " + e.what());
+                }
+                
+                if(var_files.empty()){
+                    std::cout << "No .var files found in " << mounted_dir_path << " (mounted from host: " << host_dir_path << ")\n";
+                    return result;
+                }
+                
+                // Load each .var file
+                for(const auto& var_file : var_files){
+                    try {
+                        std::string var_content = vfs.read(var_file, std::nullopt);
+                        auto assembly = std::make_shared<UppAssembly>();
+                        if(assembly->load_from_content(var_content, var_file)) {
+                            g_startup_assemblies.push_back(assembly);
+                            std::cout << "Loaded startup assembly: " << var_file << " (from host: " << host_dir_path << ")\n";
+                            
+                            // Add to VFS structure
+                            assembly->create_vfs_structure(vfs, cwd.primary_overlay);
+                        } else {
+                            std::cout << "Failed to load startup assembly: " << var_file << "\n";
+                        }
+                    } catch(const std::exception& e) {
+                        std::cout << "Error loading " << var_file << ": " << e.what() << "\n";
+                    }
+                }
+            } else {
+                // Without -H flag: treat as VFS path, load directly
+                std::string dir_path = normalize_path(cwd.path, path_arg);
+                
+                // Check if directory exists
+                auto dir_hits = vfs.resolveMulti(dir_path);
+                if(dir_hits.empty()) throw std::runtime_error("Directory not found: " + dir_path);
+                
+                bool is_dir = false;
+                for(const auto& hit : dir_hits){
+                    if(hit.node->isDir()){
+                        is_dir = true;
+                        break;
+                    }
+                }
+                if(!is_dir) throw std::runtime_error("Not a directory: " + dir_path);
+                
+                // Scan directory for .var files
+                std::vector<std::string> var_files;
+                try {
+                    auto overlay_ids = vfs.overlaysForPath(dir_path);
+                    auto listing = vfs.listDir(dir_path, overlay_ids);
+                    
+                    for(const auto& [entry_name, entry] : listing){
+                        // Check if it's a .var file
+                        if(entry_name.length() > 4 && entry_name.substr(entry_name.length() - 4) == ".var"){
+                            var_files.push_back(join_path(dir_path, entry_name));
+                        }
+                    }
+                } catch(const std::exception& e) {
+                    throw std::runtime_error("Failed to list directory " + dir_path + ": " + e.what());
+                }
+                
+                if(var_files.empty()){
+                    std::cout << "No .var files found in " << dir_path << "\n";
+                    return result;
+                }
+                
+                // Load each .var file
+                for(const auto& var_file : var_files){
+                    try {
+                        std::string var_content = vfs.read(var_file, std::nullopt);
+                        auto assembly = std::make_shared<UppAssembly>();
+                        if(assembly->load_from_content(var_content, var_file)) {
+                            g_startup_assemblies.push_back(assembly);
+                            std::cout << "Loaded startup assembly: " << var_file << "\n";
+                            
+                            // Add to VFS structure
+                            assembly->create_vfs_structure(vfs, cwd.primary_overlay);
+                        } else {
+                            std::cout << "Failed to load startup assembly: " << var_file << "\n";
+                        }
+                    } catch(const std::exception& e) {
+                        std::cout << "Error loading " << var_file << ": " << e.what() << "\n";
+                    }
+                }
+            }
+
+        } else if(cmd == "upp.startup.list"){
+            if(g_startup_assemblies.empty()){
+                std::cout << "No startup assemblies loaded\n";
+            } else {
+                std::cout << "Startup assemblies (" << g_startup_assemblies.size() << "):\n";
+                for(size_t i = 0; i < g_startup_assemblies.size(); ++i){
+                    auto assembly = g_startup_assemblies[i];
+                    if(auto workspace = assembly->get_workspace()){
+                        std::cout << "  " << i << ": " << workspace->name << " (" << workspace->base_dir << ")\n";
+                        auto packages = workspace->get_all_packages();
+                        for(const auto& pkg : packages){
+                            std::string primary_marker = pkg->is_primary ? " (primary)" : "";
+                            std::cout << "    - " << pkg->name << primary_marker << "\n";
+                        }
+                    }
+                }
             }
 
         } else if(cmd == "make"){
