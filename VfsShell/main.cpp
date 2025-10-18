@@ -7,6 +7,9 @@ WINDOW* stdscr;
 // Global storage for loaded startup assemblies
 std::vector<std::shared_ptr<UppAssembly>> g_startup_assemblies;
 
+// Global reference to the currently active assembly
+std::shared_ptr<UppAssembly> g_current_assembly = nullptr;
+
 
 void help(){
     TRACE_FN();
@@ -3008,45 +3011,131 @@ int main(int argc, char** argv){
             }
 
         } else if(cmd == "upp.list"){
-            // List all packages in the current assembly
+            // List packages in the current assembly
             std::cout << "U++ Assembly packages:\n";
-            if(auto upp_root = vfs.resolve("/upp")) {
-                // Get the directory listing
-                auto overlay_ids = vfs.overlaysForPath("/upp");
-                auto listing = vfs.listDir("/upp", overlay_ids);
-                
-                for(const auto& [child_path, entry] : listing) {
-                    auto child = upp_root->children().count(child_path) ? upp_root->children()[child_path] : nullptr;
-                    if(child && child->isDir()) {
-                        std::cout << "- " << child_path << "\n";
+            if(g_current_assembly) {
+                // Get the workspace from the current assembly
+                auto workspace = g_current_assembly->get_workspace();
+                if(workspace) {
+                    // List all packages in the current assembly's workspace
+                    auto all_packages = workspace->get_all_packages();
+                    if(all_packages.empty()) {
+                        std::cout << "  No packages found in current assembly\n";
+                        // Try to detect packages from the directories specified in UPP paths
+                        // First, let's check what paths are in the .var file
+                        std::vector<std::string> search_paths;
                         
-                        // List packages if they exist
-                        std::string packages_path = "/upp/" + child_path + "/packages";
-                        if(auto packages_node = vfs.resolve(packages_path)) {
-                            auto pkg_overlay_ids = vfs.overlaysForPath(packages_path);
-                            auto pkg_listing = vfs.listDir(packages_path, pkg_overlay_ids);
-                            
-                            for(const auto& [pkg_path, pkg_entry] : pkg_listing) {
-                                auto pkg_node = packages_node->children().count(pkg_path) ? packages_node->children()[pkg_path] : nullptr;
-                                if(pkg_node && pkg_node->isDir()) {
-                                    std::string primary_marker = "";
-                                    std::string pkg_info_path = packages_path + "/" + pkg_path + "/package.info";
-                                    try {
-                                        std::string info_content = vfs.read(pkg_info_path, std::nullopt);
-                                        if(info_content.find("primary=true") != std::string::npos) {
-                                            primary_marker = " (primary)";
+                        // Try to get the UPP paths from the .var file content
+                        try {
+                            // Look for UPP= line in the .var file
+                            std::string var_file_path = workspace->assembly_path;
+                            if (!var_file_path.empty()) {
+                                std::string var_content = vfs.read(var_file_path, std::nullopt);
+                                std::istringstream stream(var_content);
+                                std::string line;
+                                
+                                while (std::getline(stream, line)) {
+                                    // Look for UPP= line (handle both "UPP=" and "UPP =" formats)
+                                    if (line.length() >= 3 && line.substr(0, 3) == "UPP") {
+                                        // Find the equals sign
+                                        size_t eq_pos = line.find('=');
+                                        if (eq_pos != std::string::npos) {
+                                            // Extract the paths from UPP = "path1;path2;..." or UPP="path1;path2;..."
+                                            size_t start_quote = line.find('"', eq_pos);
+                                            size_t end_quote = line.rfind('"');
+                                            if (start_quote != std::string::npos && end_quote != std::string::npos && end_quote > start_quote) {
+                                                std::string paths_str = line.substr(start_quote + 1, end_quote - start_quote - 1);
+                                                
+                                                // Split paths by semicolon
+                                                size_t pos = 0;
+                                                std::string delimiter = ";";
+                                                while ((pos = paths_str.find(delimiter)) != std::string::npos) {
+                                                    std::string path = paths_str.substr(0, pos);
+                                                    // Remove leading/trailing whitespace
+                                                    path.erase(0, path.find_first_not_of(" \t"));
+                                                    path.erase(path.find_last_not_of(" \t") + 1);
+                                                    if (!path.empty()) {
+                                                        search_paths.push_back(path);
+                                                    }
+                                                    paths_str.erase(0, pos + delimiter.length());
+                                                }
+                                                
+                                                // Handle last path
+                                                paths_str.erase(0, paths_str.find_first_not_of(" \t"));
+                                                paths_str.erase(paths_str.find_last_not_of(" \t") + 1);
+                                                if (!paths_str.empty()) {
+                                                    search_paths.push_back(paths_str);
+                                                }
+                                            }
                                         }
-                                    } catch(...) {
-                                        // If reading fails, continue without primary marker
+                                        break;
                                     }
-                                    std::cout << "  * " << pkg_path << primary_marker << "\n";
+                                }
+                            }
+                        } catch (...) {
+                            // If we can't read the .var file, fall back to default paths
+                            search_paths = {
+                                "/home/sblo/MyApps",
+                                "/home/sblo/upp/uppsrc"
+                            };
+                        }
+                        
+                        // If no paths were found, use defaults
+                        if (search_paths.empty()) {
+                            search_paths = {
+                                "/home/sblo/MyApps",
+                                "/home/sblo/upp/uppsrc"
+                            };
+                        }
+                        
+                        // Try to detect packages from the directories
+                        bool found_packages = false;
+                        for(const auto& search_path : search_paths) {
+                            // First, mount the directory to make it accessible through VFS
+                            std::string vfs_mount_point = "/mnt/host_" + std::to_string(std::time(nullptr)) + "_" + 
+                                                         std::to_string(getpid()) + "/" + 
+                                                         search_path.substr(search_path.find_last_of('/') + 1);
+                            
+                            try {
+                                // Mount the host directory to the VFS
+                                vfs.mountFilesystem(search_path, vfs_mount_point, cwd.primary_overlay);
+                                
+                                // Give the mount system time to initialize
+                                usleep(100000); // 100ms delay
+                                
+                                // Now try to detect packages from the mounted directory
+                                if(g_current_assembly->detect_packages_from_directory(vfs, vfs_mount_point)) {
+                                    found_packages = true;
+                                }
+                            } catch (...) {
+                                // If mounting fails, try to detect packages from the original path
+                                if(g_current_assembly->detect_packages_from_directory(vfs, search_path)) {
+                                    found_packages = true;
                                 }
                             }
                         }
+                        
+                        // List all packages in the current assembly
+                        all_packages = workspace->get_all_packages();
+                        if(all_packages.empty()) {
+                            std::cout << "  Still no packages found after scanning directories\n";
+                        } else {
+                            for(const auto& pkg : all_packages) {
+                                std::string primary_marker = pkg->is_primary ? " (primary)" : "";
+                                std::cout << "- " << pkg->name << primary_marker << "\n";
+                            }
+                        }
+                    } else {
+                        for(const auto& pkg : all_packages) {
+                            std::string primary_marker = pkg->is_primary ? " (primary)" : "";
+                            std::cout << "- " << pkg->name << primary_marker << "\n";
+                        }
                     }
+                } else {
+                    std::cout << "  Current assembly has no workspace\n";
                 }
             } else {
-                std::cout << "  No U++ assemblies loaded\n";
+                std::cout << "  No active assembly. Use 'upp.startup.open <name>' to set an active assembly\n";
             }
 
         } else if(cmd == "upp.gui"){
@@ -3395,6 +3484,10 @@ int main(int argc, char** argv){
                                 
                                 // Add to VFS structure
                                 assembly->create_vfs_structure(vfs, cwd.primary_overlay);
+                                
+                                // Set this as the current assembly
+                                g_current_assembly = assembly;
+                                
                                 found = true;
                                 break;
                             } else {

@@ -237,9 +237,11 @@ bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& ba
     
     // List all directories in the base path to find potential packages
     try {
+        // First, try to list through VFS
         auto overlay_ids = vfs.overlaysForPath(base_path);
         auto dir_listing = vfs.listDir(base_path, overlay_ids);
         
+        // Process entries found through VFS
         for (const auto& [entry_name, entry] : dir_listing) {
             // Only process directories
             if (entry.types.count('d') > 0) {  // 'd' indicates directory
