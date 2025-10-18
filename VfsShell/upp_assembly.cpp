@@ -231,8 +231,33 @@ bool UppAssembly::parse_var_content(const std::string& content, const std::strin
 }
 
 bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& base_path) {
-    if (!workspace) {
-        workspace = std::make_shared<UppWorkspace>("detected", base_path);
+    // Create a new workspace with a generic name based on the given path
+    size_t last_slash = base_path.find_last_of('/');
+    std::string workspace_name = "workspace";
+    if (last_slash != std::string::npos && last_slash < base_path.length() - 1) {
+        workspace_name = base_path.substr(last_slash + 1);
+    }
+    workspace = std::make_shared<UppWorkspace>(workspace_name, base_path);
+    
+    // First, check if the provided base_path itself is a U++ package
+    std::string base_upp_file_path = base_path + "/" + workspace_name + ".upp";
+    bool base_package_found = false;
+    
+    try {
+        // Try to read the .upp file from the base path to see if it's a U++ package
+        std::string upp_content = vfs.read(base_upp_file_path, std::nullopt);
+        
+        // If we successfully read the .upp file, this is a valid U++ package
+        auto base_pkg = std::make_shared<UppPackage>(workspace_name, base_path, true); // Mark as primary initially
+        
+        // Parse the .upp file to get more information
+        parse_upp_file_content(upp_content, *base_pkg);
+        
+        workspace->add_package(base_pkg);
+        base_package_found = true;
+    } catch (...) {
+        // The base path is not a direct U++ package, so search within it
+        // This is fine, we'll look for packages inside instead
     }
     
     // List all directories in the base path to find potential packages
@@ -260,16 +285,65 @@ bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& ba
                     // Parse the .upp file to get more information
                     parse_upp_file_content(upp_content, *pkg);
                     
+                    // If this package is the same as the base package, maintain it as primary
+                    bool is_primary_pkg = (base_package_found && entry_name == workspace_name);
+                    if (is_primary_pkg) {
+                        pkg->is_primary = true;
+                    }
+                    
                     workspace->add_package(pkg);
                     
-                    // For now, make the first detected package the primary one
-                    if (workspace->primary_package.empty()) {
+                    // If no primary package is set yet and this isn't the base package, 
+                    // set the first detected package as primary
+                    if (!base_package_found && workspace->primary_package.empty()) {
                         pkg->is_primary = true;
                         workspace->primary_package = pkg->name;
                     }
                 } catch (...) {
                     // If there's no .upp file, this is not a U++ package, continue
                     continue;
+                }
+            }
+        }
+        
+        // If we still don't have any packages and the base_path wasn't a package, 
+        // try to treat the base path as a package directory with a different name approach
+        if (workspace->packages.empty()) {
+            // Try to find any .upp file in the base directory
+            auto base_dir_listing = vfs.listDir(base_path, overlay_ids);
+            for (const auto& [entry_name, entry] : base_dir_listing) {
+                if (entry.types.count('-') > 0) { // If it's a file (indicated by '-')
+                    if (entry_name.length() > 4 && entry_name.substr(entry_name.length() - 4) == ".upp") {
+                        std::string pkg_name = entry_name.substr(0, entry_name.length() - 4); // Remove .upp extension
+                        
+                        // Check if this package name matches directory name
+                        std::string pkg_dir_path = base_path + "/" + pkg_name;
+                        try {
+                            // Try to read the .upp file
+                            std::string upp_file_path = base_path + "/" + entry_name;
+                            std::string upp_content = vfs.read(upp_file_path, std::nullopt);
+                            
+                            // Verify that the corresponding directory exists
+                            auto dir_listing_check = vfs.listDir(pkg_dir_path, overlay_ids);
+                            
+                            // If directory exists, treat as valid package
+                            auto pkg = std::make_shared<UppPackage>(pkg_name, pkg_dir_path);
+                            
+                            // Parse the .upp file to get more information
+                            parse_upp_file_content(upp_content, *pkg);
+                            
+                            workspace->add_package(pkg);
+                            
+                            // Make the first detected package primary
+                            if (workspace->primary_package.empty()) {
+                                pkg->is_primary = true;
+                                workspace->primary_package = pkg->name;
+                            }
+                        } catch (...) {
+                            // Skip if the directory doesn't exist or other issues occur
+                            continue;
+                        }
+                    }
                 }
             }
         }

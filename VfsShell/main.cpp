@@ -159,7 +159,8 @@ R"(Commands:
   upp.startup.list                            (list all loaded startup assemblies)
   upp.startup.open <name>                     (load a named startup assembly)
   # U++ workspace support
-  upp.wksp.open <name>                        (open a named workspace)
+  upp.wksp.open <pkg-name>                    (open a package from the list as workspace)
+  upp.wksp.open -p <path>                     (open a U++ package as workspace from path)
   upp.wksp.close                              (close current workspace)
   upp.wksp.pkg.list                           (list packages in current workspace)
   upp.wksp.pkg.set <package-name>             (set active package in workspace)
@@ -3574,26 +3575,250 @@ int main(int argc, char** argv){
             }
 
         } else if(cmd == "upp.wksp.open") {
-            if(inv.args.empty()) throw std::runtime_error("upp.wksp.open <name> (open a named workspace)");
+            if(inv.args.empty()) throw std::runtime_error("upp.wksp.open <pkg-name> | upp.wksp.open -p <path> (open a package from list or path)");
             
-            std::string workspace_name = inv.args[0];
-            bool found = false;
-            
-            // Look for the workspace by name in startup assemblies
-            for(const auto& assembly : g_startup_assemblies) {
-                if(auto workspace = assembly->get_workspace()) {
-                    if(workspace->name == workspace_name) {
-                        // Set this as the current assembly
-                        g_current_assembly = assembly;
-                        std::cout << "Opened workspace: " << workspace_name << "\n";
-                        found = true;
-                        break;
+            // Check if the first argument is the -p flag for path-based opening
+            if(inv.args[0] == "-p") {
+                if(inv.args.size() < 2) throw std::runtime_error("upp.wksp.open -p <path> (open a U++ package as workspace from path)");
+                
+                std::string package_path = inv.args[1];
+                
+                // Create a new assembly and workspace
+                auto new_assembly = std::make_shared<UppAssembly>();
+                
+                // Try to detect packages from the specified directory
+                if(new_assembly->detect_packages_from_directory(vfs, package_path)) {
+                    // Set this as the current assembly
+                    g_current_assembly = new_assembly;
+                    
+                    // Get the workspace to show which packages were detected
+                    auto workspace = g_current_assembly->get_workspace();
+                    if(workspace) {
+                        std::cout << "Opened workspace: " << workspace->name << "\n";
+                        auto all_packages = workspace->get_all_packages();
+                        if(!all_packages.empty()) {
+                            std::cout << "Found " << all_packages.size() << " package(s):\n";
+                            for(const auto& pkg : all_packages) {
+                                std::string primary_marker = pkg->is_primary ? " (primary)" : "";
+                                std::cout << "  - " << pkg->name << primary_marker << "\n";
+                            }
+                        } else {
+                            std::cout << "No packages found in directory: " << package_path << "\n";
+                        }
+                    } else {
+                        std::cout << "Opened workspace from: " << package_path << "\n";
+                    }
+                } else {
+                    throw std::runtime_error("Failed to open workspace from: " + package_path);
+                }
+            } else {
+                // Primary use case: open by package name from the list
+                std::string package_name = inv.args[0];
+                
+                // Check if we already have an active assembly
+                if(g_current_assembly) {
+                    // Get the workspace from the current assembly
+                    auto workspace = g_current_assembly->get_workspace();
+                    if(workspace) {
+                        // Check if the package exists in the current workspace
+                        auto pkg = workspace->get_package(package_name);
+                        if(pkg) {
+                            // Mark this package as primary in the existing workspace
+                            // Reset primary packages
+                            for(const auto& existing_pkg : workspace->get_all_packages()) {
+                                existing_pkg->is_primary = false;
+                            }
+                            // Set the requested package as primary
+                            pkg->is_primary = true;
+                            workspace->primary_package = package_name;
+                            std::cout << "Opened workspace with package: " << package_name << " (as primary)\n";
+                        } else {
+                            // Package not in current workspace, try to find it in VFS
+                            // Similar to what upp.list does when no packages are found
+                            
+                            // First, let's try to detect packages from standard U++ paths
+                            std::vector<std::string> search_paths = {
+                                "/home/sblo/MyApps",
+                                "/home/sblo/upp/uppsrc"
+                            };
+                            
+                            bool found_package = false;
+                            for(const auto& search_path : search_paths) {
+                                try {
+                                    // Try to detect packages from each search path
+                                    if(g_current_assembly->detect_packages_from_directory(vfs, search_path)) {
+                                        auto workspace = g_current_assembly->get_workspace();
+                                        if(workspace) {
+                                            auto pkg = workspace->get_package(package_name);
+                                            if(pkg) {
+                                                // Mark this package as primary in the existing workspace
+                                                // Reset primary packages
+                                                for(const auto& existing_pkg : workspace->get_all_packages()) {
+                                                    existing_pkg->is_primary = false;
+                                                }
+                                                // Set the requested package as primary
+                                                pkg->is_primary = true;
+                                                workspace->primary_package = package_name;
+                                                std::cout << "Opened workspace with package: " << package_name << " (as primary)\n";
+                                                found_package = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                } catch (...) {
+                                    // If one path fails, continue to the next
+                                    continue;
+                                }
+                            }
+                            
+                            if(!found_package) {
+                                // Package still not found, try to load directly from VFS
+                                // Check if package exists at the standard location in VFS
+                                std::string package_dir_path = "/home/sblo/MyApps/" + package_name;
+                                std::string upp_file_path = package_dir_path + "/" + package_name + ".upp";
+                                
+                                try {
+                                    std::string upp_content = vfs.read(upp_file_path, std::nullopt);
+                                    
+                                    // If we successfully read the .upp file, this is a valid U++ package
+                                    auto pkg = std::make_shared<UppPackage>(package_name, package_dir_path, true); // Mark as primary
+                                    
+                                    // Parse the .upp file to get more information
+                                    g_current_assembly->parse_upp_file_content(upp_content, *pkg);
+                                    
+                                    workspace->add_package(pkg);
+                                    
+                                    // Set the requested package as primary
+                                    pkg->is_primary = true;
+                                    workspace->primary_package = package_name;
+                                    std::cout << "Opened workspace with package: " << package_name << "\n";
+                                    found_package = true;
+                                } catch (...) {
+                                    // Try other standard locations
+                                    package_dir_path = "/home/sblo/upp/uppsrc/" + package_name;
+                                    upp_file_path = package_dir_path + "/" + package_name + ".upp";
+                                    
+                                    try {
+                                        std::string upp_content = vfs.read(upp_file_path, std::nullopt);
+                                        
+                                        // If we successfully read the .upp file, this is a valid U++ package
+                                        auto pkg = std::make_shared<UppPackage>(package_name, package_dir_path, true); // Mark as primary
+                                        
+                                        // Parse the .upp file to get more information
+                                        g_current_assembly->parse_upp_file_content(upp_content, *pkg);
+                                        
+                                        workspace->add_package(pkg);
+                                        
+                                        // Set the requested package as primary
+                                        pkg->is_primary = true;
+                                        workspace->primary_package = package_name;
+                                        std::cout << "Opened workspace with package: " << package_name << "\n";
+                                        found_package = true;
+                                    } catch (...) {
+                                        // If not found in standard locations, check in mounted paths
+                                        // Check if the package exists in any currently mounted locations
+                                        // This is a simplified implementation - we'll try to find the package in VFS
+                                        
+                                        // If we still can't find the package, throw an error
+                                        throw std::runtime_error("Package not found: " + package_name + 
+                                            ". Use 'upp.list' to see available packages or 'upp.wksp.open -p <path>' to open from path.");
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // No workspace exists in the current assembly
+                        // Create a new workspace and try to load the package
+                        workspace = std::make_shared<UppWorkspace>("default", "");
+                        g_current_assembly->set_workspace(workspace);
+                        
+                        // Try to find the package in standard locations as above
+                        std::vector<std::string> search_paths = {
+                            "/home/sblo/MyApps",
+                            "/home/sblo/upp/uppsrc"
+                        };
+                        
+                        bool found_package = false;
+                        for(const auto& search_path : search_paths) {
+                            std::string package_dir_path = search_path + "/" + package_name;
+                            std::string upp_file_path = package_dir_path + "/" + package_name + ".upp";
+                            
+                            try {
+                                std::string upp_content = vfs.read(upp_file_path, std::nullopt);
+                                
+                                // If we successfully read the .upp file, this is a valid U++ package
+                                auto pkg = std::make_shared<UppPackage>(package_name, package_dir_path, true); // Mark as primary
+                                
+                                // Parse the .upp file to get more information
+                                g_current_assembly->parse_upp_file_content(upp_content, *pkg);
+                                
+                                workspace->add_package(pkg);
+                                
+                                // Set the requested package as primary
+                                pkg->is_primary = true;
+                                workspace->primary_package = package_name;
+                                std::cout << "Opened workspace with package: " << package_name << "\n";
+                                found_package = true;
+                                break;
+                            } catch (...) {
+                                // If there's no .upp file at this location, continue to next path
+                                continue;
+                            }
+                        }
+                        
+                        if(!found_package) {
+                            throw std::runtime_error("Package not found: " + package_name + 
+                                ". Use 'upp.list' to see available packages or 'upp.wksp.open -p <path>' to open from path.");
+                        }
+                    }
+                } else {
+                    // No active assembly, create a new one and try to load the package
+                    auto new_assembly = std::make_shared<UppAssembly>();
+                    
+                    // We need to locate the package based on the package name
+                    // First, let's try to use the standard U++ package search paths
+                    std::vector<std::string> search_paths = {
+                        "/home/sblo/MyApps",
+                        "/home/sblo/upp/uppsrc"
+                    };
+                    
+                    bool package_found = false;
+                    for(const auto& search_path : search_paths) {
+                        std::string package_dir_path = search_path + "/" + package_name;
+                        std::string upp_file_path = package_dir_path + "/" + package_name + ".upp";
+                        
+                        // Try to read the .upp file to confirm it's a U++ package
+                        try {
+                            std::string upp_content = vfs.read(upp_file_path, std::nullopt);
+                            
+                            // If we successfully read the .upp file, this is a valid U++ package
+                            // Create a workspace with this package
+                            auto workspace = std::make_shared<UppWorkspace>("default", package_dir_path);
+                            
+                            auto pkg = std::make_shared<UppPackage>(package_name, package_dir_path, true); // Mark as primary
+                            
+                            // Parse the .upp file to get more information
+                            new_assembly->parse_upp_file_content(upp_content, *pkg);
+                            
+                            workspace->add_package(pkg);
+                            new_assembly->set_workspace(workspace);
+                            
+                            // Set this as the current assembly
+                            g_current_assembly = new_assembly;
+                            std::cout << "Opened workspace with package: " << package_name << "\n";
+                            package_found = true;
+                            break;
+                        } catch (...) {
+                            // If there's no .upp file at this location, continue to next path
+                            continue;
+                        }
+                    }
+                    
+                    if(!package_found) {
+                        throw std::runtime_error("Package not found: " + package_name + 
+                            ". Use 'upp.list' to see available packages or 'upp.wksp.open -p <path>' to open from path.");
                     }
                 }
-            }
-            
-            if(!found) {
-                throw std::runtime_error("Workspace not found: " + workspace_name);
             }
 
         } else if(cmd == "upp.wksp.close") {
@@ -3620,7 +3845,7 @@ int main(int argc, char** argv){
                     std::cout << "  Current workspace has no packages\n";
                 }
             } else {
-                std::cout << "  No active workspace. Use 'upp.wksp.open <name>' to open a workspace\n";
+                std::cout << "  No active workspace. Use 'upp.wksp.open <path>' to open a workspace\n";
             }
 
         } else if(cmd == "upp.wksp.pkg.set") {
@@ -3650,7 +3875,7 @@ int main(int argc, char** argv){
                     throw std::runtime_error("Current workspace has no packages");
                 }
             } else {
-                throw std::runtime_error("No active workspace. Use 'upp.wksp.open <name>' first");
+                throw std::runtime_error("No active workspace. Use 'upp.wksp.open <path>' first");
             }
 
         } else if(cmd == "upp.wksp.file.list") {
@@ -3724,7 +3949,7 @@ int main(int argc, char** argv){
                     throw std::runtime_error("Current workspace has no packages");
                 }
             } else {
-                throw std::runtime_error("No active workspace. Use 'upp.wksp.open <name>' first");
+                throw std::runtime_error("No active workspace. Use 'upp.wksp.open <path>' first");
             }
 
         } else if(cmd == "make"){
