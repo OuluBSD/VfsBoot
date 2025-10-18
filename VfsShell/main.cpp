@@ -150,16 +150,17 @@ R"(Commands:
   # U++ startup support
   upp.startup.load <directory-path> [-H]      (load all .var files from directory, -H treats path as OS filesystem path)
   upp.startup.list                            (list all loaded startup assemblies)
-  upp.startup.open <name>                     (load a named startup assembly)
+  upp.startup.open <name> [-v]                (load a named startup assembly, -v for verbose)
   # U++ assembly support
   upp.asm.load <var-file-path> [-H]           (load U++ assembly file, -H treats path as OS filesystem path)
   upp.asm.create <name> <output-path>         (create new U++ assembly)
-  upp.asm.list                                (list packages in current assembly)
+  upp.asm.list [-v]                           (list packages in current assembly, -v for all directories)
   upp.asm.scan <directory-path>               (scan directory for U++ packages with .upp files)
   upp.asm.load.host <host-var-file>           (mount host dir and load .var file from OS filesystem)
+  upp.asm.refresh [-v]                        (refresh all packages in active assembly, -v for verbose)
   # U++ workspace support
-  upp.wksp.open <pkg-name>                    (open a package from the list as workspace)
-  upp.wksp.open -p <path>                     (open a U++ package as workspace from path)
+  upp.wksp.open <pkg-name> [-v]               (open a package from the list as workspace)
+  upp.wksp.open -p <path> [-v]                (open a U++ package as workspace from path, -v for verbose)
   upp.wksp.close                              (close current workspace)
   upp.wksp.pkg.list                           (list packages in current workspace)
   upp.wksp.pkg.set <package-name>             (set active package in workspace)
@@ -3081,124 +3082,118 @@ int main(int argc, char** argv){
             }
 
         } else if(cmd == "upp.asm.list"){
+            // Parse flags first
+            bool verbose = false;
+            for(const auto& arg : inv.args) {
+                if(arg == "-v") {
+                    verbose = true;
+                }
+            }
+            
             // List packages in the current assembly
             std::cout << "U++ Assembly packages:\n";
             if(g_current_assembly) {
                 // Get the workspace from the current assembly
                 auto workspace = g_current_assembly->get_workspace();
                 if(workspace) {
-                    // List all packages in the current assembly's workspace
-                    auto all_packages = workspace->get_all_packages();
-                    if(all_packages.empty()) {
-                        std::cout << "  No packages found in current assembly\n";
-                        // Try to detect packages from the directories specified in UPP paths
-                        // First, let's check what paths are in the .var file
-                        std::vector<std::string> search_paths;
-                        
-                        // Try to get the UPP paths from the .var file content
-                        try {
-                            // Look for UPP= line in the .var file
-                            std::string var_file_path = workspace->assembly_path;
-                            if (!var_file_path.empty()) {
-                                std::string var_content = vfs.read(var_file_path, std::nullopt);
-                                std::istringstream stream(var_content);
-                                std::string line;
-                                
-                                while (std::getline(stream, line)) {
-                                    // Look for UPP= line (handle both "UPP=" and "UPP =" formats)
-                                    if (line.length() >= 3 && line.substr(0, 3) == "UPP") {
-                                        // Find the equals sign
-                                        size_t eq_pos = line.find('=');
-                                        if (eq_pos != std::string::npos) {
-                                            // Extract the paths from UPP = "path1;path2;..." or UPP="path1;path2;..."
-                                            size_t start_quote = line.find('"', eq_pos);
-                                            size_t end_quote = line.rfind('"');
-                                            if (start_quote != std::string::npos && end_quote != std::string::npos && end_quote > start_quote) {
-                                                std::string paths_str = line.substr(start_quote + 1, end_quote - start_quote - 1);
-                                                
-                                                // Split paths by semicolon
-                                                size_t pos = 0;
-                                                std::string delimiter = ";";
-                                                while ((pos = paths_str.find(delimiter)) != std::string::npos) {
-                                                    std::string path = paths_str.substr(0, pos);
-                                                    // Remove leading/trailing whitespace
-                                                    path.erase(0, path.find_first_not_of(" \t"));
-                                                    path.erase(path.find_last_not_of(" \t") + 1);
-                                                    if (!path.empty()) {
-                                                        search_paths.push_back(path);
-                                                    }
-                                                    paths_str.erase(0, pos + delimiter.length());
+                    // Get the UPP paths to determine which to show
+                    std::vector<std::string> search_paths;
+                    
+                    // Try to get the UPP paths from the .var file content
+                    try {
+                        // Look for UPP= line in the .var file
+                        std::string var_file_path = workspace->assembly_path;
+                        if (!var_file_path.empty()) {
+                            std::string var_content = vfs.read(var_file_path, std::nullopt);
+                            std::istringstream stream(var_content);
+                            std::string line;
+                            
+                            while (std::getline(stream, line)) {
+                                // Look for UPP= line (handle both "UPP=" and "UPP =" formats)
+                                if (line.length() >= 3 && line.substr(0, 3) == "UPP") {
+                                    // Find the equals sign
+                                    size_t eq_pos = line.find('=');
+                                    if (eq_pos != std::string::npos) {
+                                        // Extract the paths from UPP = "path1;path2;..." or UPP="path1;path2;..."
+                                        size_t start_quote = line.find('"', eq_pos);
+                                        size_t end_quote = line.rfind('"');
+                                        if (start_quote != std::string::npos && end_quote != std::string::npos && end_quote > start_quote) {
+                                            std::string paths_str = line.substr(start_quote + 1, end_quote - start_quote - 1);
+                                            
+                                            // Split paths by semicolon
+                                            size_t pos = 0;
+                                            std::string delimiter = ";";
+                                            while ((pos = paths_str.find(delimiter)) != std::string::npos) {
+                                                std::string path = paths_str.substr(0, pos);
+                                                // Remove leading/trailing whitespace
+                                                path.erase(0, path.find_first_not_of(" \t"));
+                                                path.erase(path.find_last_not_of(" \t") + 1);
+                                                if (!path.empty()) {
+                                                    search_paths.push_back(path);
                                                 }
-                                                
-                                                // Handle last path
-                                                paths_str.erase(0, paths_str.find_first_not_of(" \t"));
-                                                paths_str.erase(paths_str.find_last_not_of(" \t") + 1);
-                                                if (!paths_str.empty()) {
-                                                    search_paths.push_back(paths_str);
-                                                }
+                                                paths_str.erase(0, pos + delimiter.length());
+                                            }
+                                            
+                                            // Handle last path
+                                            paths_str.erase(0, paths_str.find_first_not_of(" \t"));
+                                            paths_str.erase(paths_str.find_last_not_of(" \t") + 1);
+                                            if (!paths_str.empty()) {
+                                                search_paths.push_back(paths_str);
                                             }
                                         }
-                                        break;
                                     }
-                                }
-                            }
-                        } catch (...) {
-                            // If we can't read the .var file, fall back to default paths
-                            search_paths = {
-                                "/home/sblo/MyApps",
-                                "/home/sblo/upp/uppsrc"
-                            };
-                        }
-                        
-                        // If no paths were found, use defaults
-                        if (search_paths.empty()) {
-                            search_paths = {
-                                "/home/sblo/MyApps",
-                                "/home/sblo/upp/uppsrc"
-                            };
-                        }
-                        
-                        // Try to detect packages from the directories
-                        bool found_packages = false;
-                        for(const auto& search_path : search_paths) {
-                            // First, mount the directory to make it accessible through VFS
-                            std::string vfs_mount_point = "/mnt/host_" + std::to_string(std::time(nullptr)) + "_" + 
-                                                         std::to_string(getpid()) + "/" + 
-                                                         search_path.substr(search_path.find_last_of('/') + 1);
-                            
-                            try {
-                                // Mount the host directory to the VFS
-                                vfs.mountFilesystem(search_path, vfs_mount_point, cwd.primary_overlay);
-                                
-                                // Give the mount system time to initialize
-                                usleep(100000); // 100ms delay
-                                
-                                // Now try to detect packages from the mounted directory
-                                if(g_current_assembly->detect_packages_from_directory(vfs, vfs_mount_point)) {
-                                    found_packages = true;
-                                }
-                            } catch (...) {
-                                // If mounting fails, try to detect packages from the original path
-                                if(g_current_assembly->detect_packages_from_directory(vfs, search_path)) {
-                                    found_packages = true;
+                                    break;
                                 }
                             }
                         }
+                    } catch (...) {
+                        // If we can't read the .var file, fall back to default paths
+                        search_paths = {
+                            "/home/sblo/MyApps",
+                            "/home/sblo/upp/uppsrc"
+                        };
+                    }
+                    
+                    // If no paths were found, use defaults
+                    if (search_paths.empty()) {
+                        search_paths = {
+                            "/home/sblo/MyApps",
+                            "/home/sblo/upp/uppsrc"
+                        };
+                    }
+                    
+                    // Get all packages and filter by verbosity
+                    auto all_packages = workspace->get_all_packages();
+                    
+                    if(!verbose && !search_paths.empty()) {
+                        // Filter to only packages that come from the first directory
+                        std::vector<std::shared_ptr<UppPackage>> filtered_packages;
+                        for(const auto& pkg : all_packages) {
+                            // Check if package path starts with the first search path
+                            if(pkg->path.substr(0, search_paths[0].length()) == search_paths[0] &&
+                               pkg->path.length() > search_paths[0].length() && 
+                               pkg->path[search_paths[0].length()] == '/') {
+                                filtered_packages.push_back(pkg);
+                            }
+                        }
                         
-                        // List all packages in the current assembly
-                        all_packages = workspace->get_all_packages();
-                        if(all_packages.empty()) {
-                            std::cout << "  Still no packages found after scanning directories\n";
+                        if(filtered_packages.empty()) {
+                            std::cout << "  No packages found in first directory (" << search_paths[0] << ")\n";
                         } else {
-                            for(const auto& pkg : all_packages) {
+                            for(const auto& pkg : filtered_packages) {
                                 std::string primary_marker = pkg->is_primary ? " (primary)" : "";
                                 std::cout << "- " << pkg->name << primary_marker << "\n";
                             }
                         }
                     } else {
-                        for(const auto& pkg : all_packages) {
-                            std::string primary_marker = pkg->is_primary ? " (primary)" : "";
-                            std::cout << "- " << pkg->name << primary_marker << "\n";
+                        // Show all packages
+                        if(all_packages.empty()) {
+                            std::cout << "  No packages found\n";
+                        } else {
+                            for(const auto& pkg : all_packages) {
+                                std::string primary_marker = pkg->is_primary ? " (primary)" : "";
+                                std::cout << "- " << pkg->name << primary_marker << "\n";
+                            }
                         }
                     }
                 } else {
@@ -3235,7 +3230,7 @@ int main(int argc, char** argv){
             
             // Create a new assembly and scan for U++ packages
             auto assembly = std::make_shared<UppAssembly>();
-            if(assembly->detect_packages_from_directory(vfs, scan_path)) {
+            if(assembly->detect_packages_from_directory(vfs, scan_path, false)) {
                 std::cout << "Scanned " << scan_path << " for U++ packages\n";
                 
                 // Count the packages found
@@ -3369,9 +3364,241 @@ int main(int argc, char** argv){
                 assembly->create_vfs_structure(vfs, cwd.primary_overlay);
                 
                 // Also process the directory for additional U++ packages
-                assembly->detect_packages_from_directory(vfs, vfs_mount_point);
+                assembly->detect_packages_from_directory(vfs, vfs_mount_point, false);
             } else {
                 throw std::runtime_error("Failed to parse U++ assembly: " + host_path);
+            }
+
+        } else if(cmd == "upp.asm.refresh"){
+            // Refresh all packages in active assembly
+            // Parse flags first
+            bool verbose = false;
+            
+            for(const auto& arg : inv.args) {
+                if(arg == "-v") {
+                    verbose = true;
+                }
+            }
+            
+            if(verbose) {
+                std::cout << "Refreshing U++ assembly packages in active assembly..." << std::endl;
+            }
+            
+            if(!g_current_assembly) {
+                throw std::runtime_error("No active assembly. Use 'upp.startup.open <name>' to set an active assembly");
+            }
+            
+            auto workspace = g_current_assembly->get_workspace();
+            if(!workspace) {
+                throw std::runtime_error("Active assembly has no workspace");
+            }
+            
+            // Get the UPP paths from the assembly to find packages
+            std::vector<std::string> upp_paths;
+            
+            // First, get the workspace path to look for .var file content
+            if (!workspace->assembly_path.empty()) {
+                try {
+                    std::string var_content = vfs.read(workspace->assembly_path, std::nullopt);
+                    std::istringstream stream(var_content);
+                    std::string line;
+                    
+                    while (std::getline(stream, line)) {
+                        // Look for UPP= line (handle both "UPP=" and "UPP =" formats)
+                        if (line.length() >= 3 && line.substr(0, 3) == "UPP") {
+                            // Find the equals sign
+                            size_t eq_pos = line.find('=');
+                            if (eq_pos != std::string::npos) {
+                                // Extract the paths from UPP = "path1;path2;..." or UPP="path1;path2;..."
+                                size_t start_quote = line.find('"', eq_pos);
+                                size_t end_quote = line.rfind('"');
+                                if (start_quote != std::string::npos && end_quote != std::string::npos && end_quote > start_quote) {
+                                    std::string paths_str = line.substr(start_quote + 1, end_quote - start_quote - 1);
+                                    
+                                    // Split paths by semicolon
+                                    size_t pos = 0;
+                                    std::string delimiter = ";";
+                                    while ((pos = paths_str.find(delimiter)) != std::string::npos) {
+                                        std::string path = paths_str.substr(0, pos);
+                                        // Remove leading/trailing whitespace
+                                        path.erase(0, path.find_first_not_of(" \t"));
+                                        path.erase(path.find_last_not_of(" \t") + 1);
+                                        if (!path.empty()) {
+                                            upp_paths.push_back(path);
+                                        }
+                                        paths_str.erase(0, pos + delimiter.length());
+                                    }
+                                    
+                                    // Handle last path
+                                    paths_str.erase(0, paths_str.find_first_not_of(" \t"));
+                                    paths_str.erase(paths_str.find_last_not_of(" \t") + 1);
+                                    if (!paths_str.empty()) {
+                                        upp_paths.push_back(paths_str);
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                } catch (...) {
+                    // If we can't read the .var file, use default paths
+                    if (verbose) {
+                        std::cout << "Could not read .var file, using default paths..." << std::endl;
+                    }
+                    upp_paths = {
+                        "/home/sblo/MyApps",
+                        "/home/sblo/upp/uppsrc"
+                    };
+                }
+            }
+            
+            // If no UPP paths were found in the .var file, use defaults
+            if (upp_paths.empty()) {
+                if (verbose) {
+                    std::cout << "No UPP paths found in .var file, using default paths..." << std::endl;
+                }
+                upp_paths = {
+                    "/home/sblo/MyApps",
+                    "/home/sblo/upp/uppsrc"
+                };
+            }
+            
+            // Process each UPP path to find and refresh packages
+            // Add a static counter to make mount points unique across multiple paths
+            static int mount_counter = 0;
+            for(const auto& upp_path : upp_paths) {
+                if (verbose) {
+                    std::cout << "Scanning UPP path: " << upp_path << std::endl;
+                }
+                
+                // Use the detect_packages_from_directory method which handles the mounting internally
+                g_current_assembly->detect_packages_from_directory(vfs, upp_path, verbose);
+                
+                // Now perform our own recursive directory scan to make sure all subdirectories are visited
+                // First, try to mount the directory to make it accessible in VFS
+                std::string vfs_mount_point = "/mnt/host_" + std::to_string(std::time(nullptr)) + "_" + std::to_string(getpid()) + "_" + std::to_string(++mount_counter);
+                
+                try {
+                    // Mount the host directory to allow VFS access
+                    vfs.mountFilesystem(upp_path, vfs_mount_point, cwd.primary_overlay);
+                    
+                    // Give the mount system time to initialize
+                    usleep(100000); // 100ms delay
+                    
+                    // Now scan the mounted path
+                    try {
+                        // Get all overlays for this mounted path
+                        auto overlay_ids = vfs.overlaysForPath(vfs_mount_point);
+                        auto dir_listing = vfs.listDir(vfs_mount_point, overlay_ids);
+                        
+                        // Process subdirectories recursively
+                        std::vector<std::string> subdirs_to_scan;
+                        for(const auto& [entry_name, entry] : dir_listing) {
+                            // Only process directories
+                            if(entry.types.count('d') > 0) {  // 'd' indicates directory
+                                std::string subdir_path = vfs_mount_point + "/" + entry_name;
+                                if (verbose) {
+                                    std::string original_path = upp_path + "/" + entry_name;
+                                    std::cout << "Visiting directory: " << original_path << std::endl;
+                                }
+                                subdirs_to_scan.push_back(subdir_path);
+                            }
+                        }
+                        
+                        // Process subdirectories recursively using a stack
+                        while(!subdirs_to_scan.empty()) {
+                            std::string current_dir = subdirs_to_scan.back();
+                            subdirs_to_scan.pop_back();
+                            
+                            // Convert back to original path for user-friendly output
+                            std::string orig_path = current_dir;
+                            if (current_dir.substr(0, vfs_mount_point.length()) == vfs_mount_point) {
+                                orig_path = upp_path + current_dir.substr(vfs_mount_point.length());
+                            }
+                            
+                            if (verbose) {
+                                std::cout << "Visiting directory: " << orig_path << std::endl;
+                            }
+                            
+                            // Check if this directory contains a .upp file with the same name
+                            size_t last_slash = orig_path.find_last_of('/');
+                            std::string dir_name = (last_slash != std::string::npos) ? 
+                                                  orig_path.substr(last_slash + 1) : orig_path;
+                            std::string upp_file_path = orig_path + "/" + dir_name + ".upp";
+                            
+                            if (verbose) {
+                                std::cout << "Checking for U++ package file: " << upp_file_path << std::endl;
+                            }
+                            
+                            try {
+                                // Try to read the original path in VFS (after mount)
+                                std::string mapped_vfs_path = current_dir + "/" + dir_name + ".upp";
+                                std::string upp_content = vfs.read(mapped_vfs_path, std::nullopt);
+                                
+                                if (verbose) {
+                                    std::cout << "Found U++ package: " << upp_file_path << std::endl;
+                                }
+                                
+                                // Add this package to the assembly if found
+                                auto pkg = std::make_shared<UppPackage>(dir_name, orig_path);
+                                g_current_assembly->parse_upp_file_content(upp_content, *pkg);
+                                if (auto ws = g_current_assembly->get_workspace()) {
+                                    ws->add_package(pkg);
+                                }
+                            } catch (...) {
+                                // If there's no .upp file, continue to next
+                                if (verbose) {
+                                    std::cout << "No U++ package file found in directory: " << orig_path << std::endl;
+                                }
+                            }
+                            
+                            // Add subdirectories of current directory to scan list
+                            try {
+                                auto subdir_overlay_ids = vfs.overlaysForPath(current_dir);
+                                auto subdir_listing = vfs.listDir(current_dir, subdir_overlay_ids);
+                                for(const auto& [subentry_name, subentry] : subdir_listing) {
+                                    // Only process directories
+                                    if(subentry.types.count('d') > 0) {  // 'd' indicates directory
+                                        std::string subsubdir_path = current_dir + "/" + subentry_name;
+                                        std::string original_sub_path = upp_path + subsubdir_path.substr(vfs_mount_point.length());
+                                        if (verbose) {
+                                            std::cout << "Visiting directory: " << original_sub_path << std::endl;
+                                        }
+                                        subdirs_to_scan.push_back(subsubdir_path);
+                                    }
+                                }
+                            } catch (...) {
+                                if (verbose) {
+                                    std::string orig_current = current_dir;
+                                    if (current_dir.substr(0, vfs_mount_point.length()) == vfs_mount_point) {
+                                        orig_current = upp_path + current_dir.substr(vfs_mount_point.length());
+                                    }
+                                    std::cout << "Cannot access subdirectory: " << orig_current << std::endl;
+                                }
+                            }
+                        }
+                    } catch (...) {
+                        if (verbose) {
+                            std::cout << "Could not list mounted directory: " << upp_path << std::endl;
+                        }
+                    }
+                } catch (const std::exception& e) {
+                    if (verbose) {
+                        std::cout << "Could not mount directory to scan subdirectories: " << upp_path << " (error: " << e.what() << "), will use detect_packages_from_directory only" << std::endl;
+                    }
+                    // If we can't mount, just continue to the next path
+                } catch (...) {
+                    if (verbose) {
+                        std::cout << "Could not mount directory to scan subdirectories: " << upp_path << ", will use detect_packages_from_directory only" << std::endl;
+                    }
+                    // If we can't mount, just continue to the next path
+                }
+            }
+            
+            if (verbose) {
+                // Count total packages found
+                auto all_packages = workspace->get_all_packages();
+                std::cout << "Finished refreshing. Total packages found: " << all_packages.size() << std::endl;
             }
 
         } else if(cmd == "upp.startup.load"){
@@ -3536,42 +3763,149 @@ int main(int argc, char** argv){
             }
 
         } else if(cmd == "upp.startup.open") {
-            if(inv.args.empty()) throw std::runtime_error("upp.startup.open <name> (open a named startup assembly)");
+            // Parse flags first
+            bool verbose = false;
+            std::string assembly_name;
             
-            std::string assembly_name = inv.args[0];
-            bool found = false;
-            
-            // Look for the assembly by name
-            for(const auto& assembly : g_startup_assemblies) {
-                if(auto workspace = assembly->get_workspace()) {
-                    if(workspace->name == assembly_name) {
-                        // Load the .var file content using the assembly_path
-                        std::string var_file_path = workspace->assembly_path;
-                        try {
-                            std::string var_content = vfs.read(var_file_path, std::nullopt);
-                            if(assembly->load_from_content(var_content, var_file_path)) {
-                                std::cout << "Opened startup assembly: " << assembly_name << " (" << var_file_path << ")\n";
-                                
-                                // Add to VFS structure
-                                assembly->create_vfs_structure(vfs, cwd.primary_overlay);
-                                
-                                // Set this as the current assembly
-                                g_current_assembly = assembly;
-                                
-                                found = true;
-                                break;
-                            } else {
-                                throw std::runtime_error("Failed to load startup assembly: " + var_file_path);
-                            }
-                        } catch(const std::exception& e) {
-                            throw std::runtime_error("Error opening " + var_file_path + ": " + e.what());
-                        }
+            for(const auto& arg : inv.args) {
+                if(arg == "-v") {
+                    verbose = true;
+                } else if(arg != "-v") {
+                    if(assembly_name.empty()) {
+                        assembly_name = arg;  // store the actual assembly name
+                    } else {
+                        throw std::runtime_error("upp.startup.open <name> [-v] (too many arguments)");
                     }
                 }
             }
             
-            if(!found) {
-                throw std::runtime_error("Startup assembly not found: " + assembly_name);
+            // If verbose flag is set but no assembly name provided, search default locations
+            if(assembly_name.empty() && verbose) {
+                // Default search paths - these are common locations for .var files
+                std::vector<std::string> search_paths = {
+                    "/home/sblo/.config/u++/theide",
+                    "/home/sblo/upp",
+                    "/home/sblo/MyApps"
+                };
+                
+                std::cout << "Verbose mode: No assembly name provided, searching in default locations...\n";
+                
+                bool found = false;
+                for(const auto& search_path : search_paths) {
+                    if(verbose) {
+                        std::cout << "Scanning directory: " << search_path << " for .var files\n";
+                    }
+                
+                    try {
+                        auto overlay_ids = vfs.overlaysForPath(search_path);
+                        auto dir_listing = vfs.listDir(search_path, overlay_ids);
+                        
+                        for(const auto& [entry_name, entry] : dir_listing) {
+                            // Check if it's a .var file
+                            if(entry_name.length() > 4 && entry_name.substr(entry_name.length() - 4) == ".var") {
+                                std::string var_file_path = join_path(search_path, entry_name);
+                                
+                                if(verbose) {
+                                    std::cout << "Found .var file: " << var_file_path << "\n";
+                                }
+                                
+                                try {
+                                    std::string var_content = vfs.read(var_file_path, std::nullopt);
+                                    auto assembly = std::make_shared<UppAssembly>();
+                                    if(assembly->load_from_content(var_content, var_file_path)) {
+                                        g_startup_assemblies.push_back(assembly);
+                                        
+                                        if(verbose) {
+                                            std::cout << "Loaded startup assembly: " << var_file_path << "\n";
+                                            
+                                            // Also try to detect packages from the directory
+                                            std::string base_dir = var_file_path.substr(0, var_file_path.find_last_of('/'));
+                                            assembly->detect_packages_from_directory(vfs, base_dir, verbose);
+                                        } else {
+                                            std::cout << "Loaded startup assembly: " << var_file_path << "\n";
+                                        }
+                                        
+                                        // Add to VFS structure
+                                        assembly->create_vfs_structure(vfs, cwd.primary_overlay);
+                                        
+                                        found = true;
+                                    } else {
+                                        if(verbose) {
+                                            std::cout << "Failed to load startup assembly: " << var_file_path << "\n";
+                                        }
+                                    }
+                                } catch(const std::exception& e) {
+                                    if(verbose) {
+                                        std::cout << "Error loading " << var_file_path << ": " << e.what() << "\n";
+                                    }
+                                }
+                            }
+                        }
+                    } catch(const std::exception& e) {
+                        if(verbose) {
+                            std::cout << "Error scanning directory " << search_path << ": " << e.what() << "\n";
+                        }
+                        continue; // Continue to next search path
+                    }
+                }
+                
+                if(found) {
+                    std::cout << "Scanning completed, loaded new assemblies. Use upp.startup.list to see available assemblies.\n";
+                } else {
+                    std::cout << "No .var files found in default locations.\n";
+                }
+            }
+            // If assembly name is provided, search in loaded assemblies
+            else if(!assembly_name.empty()) {
+                bool found = false;
+                
+                if(verbose) {
+                    std::cout << "Searching for startup assembly: " << assembly_name << " in " << g_startup_assemblies.size() << " loaded assemblies\n";
+                }
+                
+                // Look for the assembly by name
+                for(size_t i = 0; i < g_startup_assemblies.size(); ++i) {
+                    const auto& assembly = g_startup_assemblies[i];
+                    if(auto workspace = assembly->get_workspace()) {
+                        if(verbose) {
+                            std::cout << "Checking assembly " << i << ": " << workspace->name << "\n";
+                        }
+                        if(workspace->name == assembly_name) {
+                            // Load the .var file content using the assembly_path
+                            std::string var_file_path = workspace->assembly_path;
+                            if(verbose) {
+                                std::cout << "Found assembly, loading from: " << var_file_path << "\n";
+                            }
+                            try {
+                                std::string var_content = vfs.read(var_file_path, std::nullopt);
+                                if(assembly->load_from_content(var_content, var_file_path)) {
+                                    std::cout << "Opened startup assembly: " << assembly_name << " (" << var_file_path << ")\n";
+                                    
+                                    // Add to VFS structure
+                                    assembly->create_vfs_structure(vfs, cwd.primary_overlay);
+                                    
+                                    // Set this as the current assembly
+                                    g_current_assembly = assembly;
+                                    
+                                    found = true;
+                                    break;
+                                } else {
+                                    throw std::runtime_error("Failed to load startup assembly: " + var_file_path);
+                                }
+                            } catch(const std::exception& e) {
+                                throw std::runtime_error("Error opening " + var_file_path + ": " + e.what());
+                            }
+                        }
+                    }
+                }
+                
+                if(!found) {
+                    throw std::runtime_error("Startup assembly not found: " + assembly_name);
+                }
+            }
+            // If no arguments provided at all
+            else {
+                throw std::runtime_error("upp.startup.open <name> [-v] (open a named startup assembly, -v for verbose or to scan for .var files in default locations)");
             }
 
         } else if(cmd == "upp.wksp.open") {
@@ -3579,15 +3913,29 @@ int main(int argc, char** argv){
             
             // Check if the first argument is the -p flag for path-based opening
             if(inv.args[0] == "-p") {
-                if(inv.args.size() < 2) throw std::runtime_error("upp.wksp.open -p <path> (open a U++ package as workspace from path)");
+                // Parse flags first
+                bool verbose = false;
+                std::string package_path;
                 
-                std::string package_path = inv.args[1];
+                for(size_t i = 1; i < inv.args.size(); ++i) {  // Start from index 1 to skip "-p"
+                    if(inv.args[i] == "-v") {
+                        verbose = true;
+                    } else if(inv.args[i] != "-v") {
+                        if(package_path.empty()) {
+                            package_path = inv.args[i];  // store the actual path argument
+                        } else {
+                            throw std::runtime_error("upp.wksp.open -p <path> [-v] (too many arguments)");
+                        }
+                    }
+                }
+                
+                if(package_path.empty()) throw std::runtime_error("upp.wksp.open -p <path> [-v] (open a U++ package as workspace from path, -v for verbose)");
                 
                 // Create a new assembly and workspace
                 auto new_assembly = std::make_shared<UppAssembly>();
                 
                 // Try to detect packages from the specified directory
-                if(new_assembly->detect_packages_from_directory(vfs, package_path)) {
+                if(new_assembly->detect_packages_from_directory(vfs, package_path, verbose)) {
                     // Set this as the current assembly
                     g_current_assembly = new_assembly;
                     
@@ -3646,7 +3994,7 @@ int main(int argc, char** argv){
                             for(const auto& search_path : search_paths) {
                                 try {
                                     // Try to detect packages from each search path
-                                    if(g_current_assembly->detect_packages_from_directory(vfs, search_path)) {
+                                    if(g_current_assembly->detect_packages_from_directory(vfs, search_path, false)) {
                                         auto workspace = g_current_assembly->get_workspace();
                                         if(workspace) {
                                             auto pkg = workspace->get_package(package_name);

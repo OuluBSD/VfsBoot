@@ -230,7 +230,7 @@ bool UppAssembly::parse_var_content(const std::string& content, const std::strin
     return true;
 }
 
-bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& base_path) {
+bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& base_path, bool verbose) {
     // Create a new workspace with a generic name based on the given path
     size_t last_slash = base_path.find_last_of('/');
     std::string workspace_name = "workspace";
@@ -238,6 +238,10 @@ bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& ba
         workspace_name = base_path.substr(last_slash + 1);
     }
     workspace = std::make_shared<UppWorkspace>(workspace_name, base_path);
+    
+    if (verbose) {
+        std::cout << "Scanning directory: " << base_path << std::endl;
+    }
     
     // First, check if the provided base_path itself is a U++ package
     std::string base_upp_file_path = base_path + "/" + workspace_name + ".upp";
@@ -255,9 +259,16 @@ bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& ba
         
         workspace->add_package(base_pkg);
         base_package_found = true;
+        
+        if (verbose) {
+            std::cout << "Found U++ package in base directory: " << base_upp_file_path << std::endl;
+        }
     } catch (...) {
         // The base path is not a direct U++ package, so search within it
         // This is fine, we'll look for packages inside instead
+        if (verbose) {
+            std::cout << "Base path is not a U++ package directory, searching subdirectories..." << std::endl;
+        }
     }
     
     // List all directories in the base path to find potential packages
@@ -272,8 +283,16 @@ bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& ba
             if (entry.types.count('d') > 0) {  // 'd' indicates directory
                 std::string package_dir_path = base_path + "/" + entry_name;
                 
+                if (verbose) {
+                    std::cout << "Visiting directory: " << package_dir_path << std::endl;
+                }
+                
                 // Check if this directory contains a .upp file with the same name
                 std::string upp_file_path = package_dir_path + "/" + entry_name + ".upp";
+                
+                if (verbose) {
+                    std::cout << "Checking for U++ package file: " << upp_file_path << std::endl;
+                }
                 
                 try {
                     // Try to read the .upp file to confirm it's a U++ package
@@ -293,6 +312,10 @@ bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& ba
                     
                     workspace->add_package(pkg);
                     
+                    if (verbose) {
+                        std::cout << "Found U++ package: " << upp_file_path << std::endl;
+                    }
+                    
                     // If no primary package is set yet and this isn't the base package, 
                     // set the first detected package as primary
                     if (!base_package_found && workspace->primary_package.empty()) {
@@ -301,6 +324,9 @@ bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& ba
                     }
                 } catch (...) {
                     // If there's no .upp file, this is not a U++ package, continue
+                    if (verbose) {
+                        std::cout << "No U++ package file found in directory: " << package_dir_path << std::endl;
+                    }
                     continue;
                 }
             }
@@ -309,12 +335,20 @@ bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& ba
         // If we still don't have any packages and the base_path wasn't a package, 
         // try to treat the base path as a package directory with a different name approach
         if (workspace->packages.empty()) {
+            if (verbose) {
+                std::cout << "No packages found in subdirectories, checking for .upp files in base directory..." << std::endl;
+            }
+            
             // Try to find any .upp file in the base directory
             auto base_dir_listing = vfs.listDir(base_path, overlay_ids);
             for (const auto& [entry_name, entry] : base_dir_listing) {
                 if (entry.types.count('-') > 0) { // If it's a file (indicated by '-')
                     if (entry_name.length() > 4 && entry_name.substr(entry_name.length() - 4) == ".upp") {
                         std::string pkg_name = entry_name.substr(0, entry_name.length() - 4); // Remove .upp extension
+                        
+                        if (verbose) {
+                            std::cout << "Found U++ package file in base directory: " << base_path + "/" + entry_name << std::endl;
+                        }
                         
                         // Check if this package name matches directory name
                         std::string pkg_dir_path = base_path + "/" + pkg_name;
@@ -334,6 +368,10 @@ bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& ba
                             
                             workspace->add_package(pkg);
                             
+                            if (verbose) {
+                                std::cout << "Added package from base directory: " << pkg_name << std::endl;
+                            }
+                            
                             // Make the first detected package primary
                             if (workspace->primary_package.empty()) {
                                 pkg->is_primary = true;
@@ -341,6 +379,9 @@ bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& ba
                             }
                         } catch (...) {
                             // Skip if the directory doesn't exist or other issues occur
+                            if (verbose) {
+                                std::cout << "Could not process package directory: " << pkg_dir_path << ", skipping..." << std::endl;
+                            }
                             continue;
                         }
                     }
@@ -349,7 +390,14 @@ bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& ba
         }
     } catch (...) {
         // If path doesn't exist or can't be listed, return false
+        if (verbose) {
+            std::cout << "Failed to list directory: " << base_path << std::endl;
+        }
         return false;
+    }
+    
+    if (verbose) {
+        std::cout << "Finished scanning directory: " << base_path << ". Found " << workspace->packages.size() << " packages." << std::endl;
     }
     
     return true;

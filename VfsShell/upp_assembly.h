@@ -88,7 +88,7 @@ public:
     bool build_project(const std::string& build_type = "debug", const std::string& output_path = "");
     
     // Detect packages by scanning directories for .upp files
-    bool detect_packages_from_directory(Vfs& vfs, const std::string& base_path);
+    bool detect_packages_from_directory(Vfs& vfs, const std::string& base_path, bool verbose = false);
     
     // Parse U++ package file (.upp format)
     bool parse_upp_file_content(const std::string& content, UppPackage& pkg);
