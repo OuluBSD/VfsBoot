@@ -2,22 +2,22 @@
 # Learn how to use U++ assemblies in VfsShell
 
 # Step 1: Create a new U++ assembly
-upp.create MyFirstApp /tmp/myfirst.var
+upp.asm.create MyFirstApp /tmp/myfirst.var
 
 # Step 2: Verify the assembly was created
-upp.list
+upp.asm.list
 # You should see "MyFirstApp" with a primary package
 
 # Step 3: Create another assembly to see multiple assemblies
-upp.create SecondApp /tmp/second.var
+upp.asm.create SecondApp /tmp/second.var
 
 # Step 4: List to see both assemblies
-upp.list
+upp.asm.list
 
 # This demonstrates the basic U++ workflow:
-# - upp.create: Creates a new U++ assembly with a primary package
-# - upp.list: Shows all currently loaded assemblies and their packages
-# - upp.load: Loads an existing .var file (assembly definition)
+# - upp.asm.create: Creates a new U++ assembly with a primary package
+# - upp.asm.list: Shows all currently loaded assemblies and their packages
+# - upp.asm.load: Loads an existing .var file (assembly definition)
 # - upp.gui: Opens the U++ IDE interface for development
 
 # The U++ assembly system allows you to manage Ultimate++ projects

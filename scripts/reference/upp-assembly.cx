@@ -2,10 +2,10 @@
 # Demonstrates the full U++ assembly workflow in VfsShell
 
 # Create a new U++ assembly
-upp.create MyUppApp /tmp/myupp.var
+upp.asm.create MyUppApp /tmp/myupp.var
 
 # Verify the assembly was created
-upp.list
+upp.asm.list
 
 # Show the GUI interface (non-interactive version)
 # upp.gui
@@ -42,19 +42,19 @@ Files=
 "
 
 # Load the complex assembly
-upp.load /tmp/complex.var
+upp.asm.load /tmp/complex.var
 
 # List packages to verify loading
-upp.list
+upp.asm.list
 
 # Create another assembly to test multiple workspaces
-upp.create AnotherApp /tmp/another.var
+upp.asm.create AnotherApp /tmp/another.var
 
 # List to show multiple assemblies
-upp.list
+upp.asm.list
 
 # This demonstrates the core U++ assembly functionality:
-# - upp.create: Create new U++ assembly with primary package
-# - upp.load: Load existing .var assembly file
-# - upp.list: List packages in current assembly
+# - upp.asm.create: Create new U++ assembly with primary package
+# - upp.asm.load: Load existing .var assembly file
+# - upp.asm.list: List packages in current assembly
 # - upp.gui: Launch the U++ assembly IDE GUI

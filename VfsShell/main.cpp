@@ -147,17 +147,16 @@ R"(Commands:
   # Build automation
   make [target] [-f makefile] [-v|--verbose]  (minimal GNU make subset)
   sample.run [--keep] [--trace]               (build, compile, and run demo C++ program)
-  # U++ assembly support
-  upp.load <var-file-path> [-H]               (load U++ assembly file, -H treats path as OS filesystem path)
-  upp.create <name> <output-path>             (create new U++ assembly)
-  upp.list                                    (list packages in current assembly)
-  upp.scan <directory-path>                   (scan directory for U++ packages with .upp files)
-  upp.load.host <host-var-file>               (mount host dir and load .var file from OS filesystem)
-  upp.gui                                     (launch U++ assembly IDE GUI)
   # U++ startup support
   upp.startup.load <directory-path> [-H]      (load all .var files from directory, -H treats path as OS filesystem path)
   upp.startup.list                            (list all loaded startup assemblies)
   upp.startup.open <name>                     (load a named startup assembly)
+  # U++ assembly support
+  upp.asm.load <var-file-path> [-H]           (load U++ assembly file, -H treats path as OS filesystem path)
+  upp.asm.create <name> <output-path>         (create new U++ assembly)
+  upp.asm.list                                (list packages in current assembly)
+  upp.asm.scan <directory-path>               (scan directory for U++ packages with .upp files)
+  upp.asm.load.host <host-var-file>           (mount host dir and load .var file from OS filesystem)
   # U++ workspace support
   upp.wksp.open <pkg-name>                    (open a package from the list as workspace)
   upp.wksp.open -p <path>                     (open a U++ package as workspace from path)
@@ -166,6 +165,7 @@ R"(Commands:
   upp.wksp.pkg.set <package-name>             (set active package in workspace)
   upp.wksp.file.list                          (list files in active package)
   upp.wksp.file.set <file-path>               (set active file in editor)
+  upp.gui                                     (launch U++ assembly IDE GUI)
   # libclang C++ AST parsing
   parse.file <filepath> [vfs-target-path]     (parse C++ file with libclang)
   parse.dump [vfs-path]                       (dump parsed AST tree)
@@ -2961,7 +2961,7 @@ int main(int argc, char** argv){
             cpp_dump_to_vfs(vfs, cwd.primary_overlay, absTu, absOut);
             std::cout << "dump -> " << absOut << "\n";
 
-        } else if(cmd == "upp.load"){
+        } else if(cmd == "upp.asm.load"){
             // Parse flags first
             bool use_host_path = false;  // default behavior: treat as VFS path without -H flag
             std::string path_arg;
@@ -2974,7 +2974,7 @@ int main(int argc, char** argv){
                 }
             }
             
-            if(path_arg.empty()) throw std::runtime_error("upp.load <var-file-path> [-H] (use -H for host OS path)");
+            if(path_arg.empty()) throw std::runtime_error("upp.asm.load <var-file-path> [-H] (use -H for host OS path)");
             
             // If -H flag is provided, use host OS path behavior
             if(use_host_path) {
@@ -3054,8 +3054,8 @@ int main(int argc, char** argv){
                 }
             }
 
-        } else if(cmd == "upp.create"){
-            if(inv.args.size() < 2) throw std::runtime_error("upp.create <name> <output-path>");
+        } else if(cmd == "upp.asm.create"){
+            if(inv.args.size() < 2) throw std::runtime_error("upp.asm.create <name> <output-path>");
             std::string name = inv.args[0];
             std::string output_path = normalize_path(cwd.path, inv.args[1]);
             
@@ -3080,7 +3080,7 @@ int main(int argc, char** argv){
                 throw std::runtime_error("Failed to create U++ assembly: " + output_path);
             }
 
-        } else if(cmd == "upp.list"){
+        } else if(cmd == "upp.asm.list"){
             // List packages in the current assembly
             std::cout << "U++ Assembly packages:\n";
             if(g_current_assembly) {
@@ -3229,8 +3229,8 @@ int main(int argc, char** argv){
             }
             std::cout << "GUI mode would run here\n";
 
-        } else if(cmd == "upp.scan"){
-            if(inv.args.empty()) throw std::runtime_error("upp.scan <directory-path>");
+        } else if(cmd == "upp.asm.scan"){
+            if(inv.args.empty()) throw std::runtime_error("upp.asm.scan <directory-path>");
             std::string scan_path = normalize_path(cwd.path, inv.args[0]);
             
             // Create a new assembly and scan for U++ packages
@@ -3256,10 +3256,10 @@ int main(int argc, char** argv){
                 throw std::runtime_error("Failed to scan directory: " + scan_path);
             }
 
-        } else if(cmd == "upp.load.host"){
-            std::cout << "DEBUG: upp.load.host command called with path: " << (inv.args.empty() ? "(empty)" : inv.args[0]) << std::endl;
+        } else if(cmd == "upp.asm.load.host"){
+            std::cout << "DEBUG: upp.asm.load.host command called with path: " << (inv.args.empty() ? "(empty)" : inv.args[0]) << std::endl;
             std::cout.flush();
-            if(inv.args.empty()) throw std::runtime_error("upp.load.host <host-var-file-path>");
+            if(inv.args.empty()) throw std::runtime_error("upp.asm.load.host <host-var-file-path>");
             
             std::string host_path = inv.args[0];  // Use as-is, not normalized (host path)
             std::cout << "Processing host path: " << host_path << std::endl;
@@ -3634,7 +3634,7 @@ int main(int argc, char** argv){
                             std::cout << "Opened workspace with package: " << package_name << " (as primary)\n";
                         } else {
                             // Package not in current workspace, try to find it in VFS
-                            // Similar to what upp.list does when no packages are found
+                            // Similar to what upp.asm.list does when no packages are found
                             
                             // First, let's try to detect packages from standard U++ paths
                             std::vector<std::string> search_paths = {
@@ -3721,7 +3721,7 @@ int main(int argc, char** argv){
                                         
                                         // If we still can't find the package, throw an error
                                         throw std::runtime_error("Package not found: " + package_name + 
-                                            ". Use 'upp.list' to see available packages or 'upp.wksp.open -p <path>' to open from path.");
+                                            ". Use 'upp.asm.list' to see available packages or 'upp.wksp.open -p <path>' to open from path.");
                                     }
                                 }
                             }
@@ -3768,7 +3768,7 @@ int main(int argc, char** argv){
                         
                         if(!found_package) {
                             throw std::runtime_error("Package not found: " + package_name + 
-                                ". Use 'upp.list' to see available packages or 'upp.wksp.open -p <path>' to open from path.");
+                                ". Use 'upp.asm.list' to see available packages or 'upp.wksp.open -p <path>' to open from path.");
                         }
                     }
                 } else {
@@ -3816,7 +3816,7 @@ int main(int argc, char** argv){
                     
                     if(!package_found) {
                         throw std::runtime_error("Package not found: " + package_name + 
-                            ". Use 'upp.list' to see available packages or 'upp.wksp.open -p <path>' to open from path.");
+                            ". Use 'upp.asm.list' to see available packages or 'upp.wksp.open -p <path>' to open from path.");
                     }
                 }
             }

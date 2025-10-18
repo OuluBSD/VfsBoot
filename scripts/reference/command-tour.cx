@@ -18,10 +18,10 @@ cat ../cpp/reference.cpp
 
 # U++ Assembly Reference Commands
 # Create a new U++ assembly (Ultimate++ project)
-upp.create MyUppApp /tmp/myupp.var
+upp.asm.create MyUppApp /tmp/myupp.var
 
 # List U++ packages to verify creation
-upp.list
+upp.asm.list
 
 # Create the assembly file using VFS
 echo /tmp/demo.var "// Demo U++ Assembly
@@ -36,10 +36,10 @@ Dependencies=
 "
 
 # Load the assembly file
-upp.load /tmp/demo.var
+upp.asm.load /tmp/demo.var
 
 # Verify the loaded assembly
-upp.list
+upp.asm.list
 
 # The upp.gui command launches an ncurses-based IDE for U++ development
 # (Non-interactive demo - would launch GUI in normal mode)

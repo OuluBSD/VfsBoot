@@ -1,5 +1,5 @@
 # U++ Host Loading Reference Script
-# Demonstrates the upp.load.host command for loading .var files from host filesystem
+# Demonstrates the upp.asm.load.host command for loading .var files from host filesystem
 
 # First, create a test .var file
 echo /tmp/demo_host_assembly.var "[Package: DemoHostApp]
@@ -21,15 +21,15 @@ mount.allow
 
 # Load the .var file from the host filesystem
 # This command mounts the containing directory and loads the assembly
-upp.load.host /tmp/demo_host_assembly.var
+upp.asm.load.host /tmp/demo_host_assembly.var
 
 # List the loaded packages to verify
-upp.list
+upp.asm.list
 
 # Show that the command is working
-echo "Successfully demonstrated upp.load.host command!"
+echo "Successfully demonstrated upp.asm.load.host command!"
 
-# The upp.load.host command is particularly useful for:
+# The upp.asm.load.host command is particularly useful for:
 # - Loading existing U++ projects stored in host filesystem
 # - Working with TheIDE-created .var files directly
 # - Mounting project directories that contain .var assembly files

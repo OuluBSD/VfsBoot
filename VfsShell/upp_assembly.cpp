@@ -940,8 +940,8 @@ void UppAssemblyGui::display_editor_content(int start_row, int start_col, int he
         }
     } else {
         lines.push_back("// No workspace loaded");
-        lines.push_back("// Create a new workspace with 'upp.create' command");
-        lines.push_back("// Or scan for existing packages with 'upp.scan' command");
+        lines.push_back("// Create a new workspace with 'upp.asm.create' command");
+        lines.push_back("// Or scan for existing packages with 'upp.asm.scan' command");
     }
     
     // Display lines with scrolling

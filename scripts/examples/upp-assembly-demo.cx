@@ -2,10 +2,10 @@
 # Demonstrates complete workflow for U++ development in VfsShell
 
 # Create a new U++ application assembly
-upp.create HelloWorld /tmp/hello.var
+upp.asm.create HelloWorld /tmp/hello.var
 
 # Verify the assembly was created with a primary package
-upp.list
+upp.asm.list
 
 # Create a simple assembly file structure manually
 echo /tmp/webserver.var "// Web Server Assembly for U++
@@ -42,18 +42,18 @@ Path=upp/Core
 "
 
 # Load the more complex assembly
-upp.load /tmp/webserver.var
+upp.asm.load /tmp/webserver.var
 
 # List all assemblies and packages
-upp.list
+upp.asm.list
 
 # Now both HelloWorld and WebServerApp assemblies are available
 # Each with their respective package structures
 
 # This demonstrates the core U++ assembly workflow:
-# 1. upp.create - Initialize new assembly with primary package
-# 2. upp.load - Load existing .var files with complex package structures  
-# 3. upp.list - View loaded assemblies and their packages
+# 1. upp.asm.create - Initialize new assembly with primary package
+# 2. upp.asm.load - Load existing .var files with complex package structures  
+# 3. upp.asm.list - View loaded assemblies and their packages
 # 4. upp.gui - Launch ncurses-based IDE (interactive mode)
 
 # The GUI provides:
