@@ -1,4 +1,5 @@
 #include "VfsShell.h"
+#include "registry.h"
 #include <filesystem>
 #include <unistd.h>
 
@@ -9,6 +10,9 @@ std::vector<std::shared_ptr<UppAssembly>> g_startup_assemblies;
 
 // Global reference to the currently active assembly
 std::shared_ptr<UppAssembly> g_current_assembly = nullptr;
+
+// Global registry instance
+Registry g_registry;
 
 
 void help(){
@@ -67,6 +71,11 @@ R"(Commands:
   tag.list [vfs-path]
   tag.clear <vfs-path>
   tag.has <vfs-path> <tag-name>
+  # Registry (Windows Registry-like key-value store)
+  reg.set <key> <value>        (set registry key value)
+  reg.get <key>                (get registry key value)
+  reg.list [path]              (list registry keys and values)
+  reg.rm <key>                 (remove registry key or value)
   # Logic System (tag theorem proving and inference)
   logic.init                        (load hardcoded implication rules)
   logic.infer <tag> [tag...]        (infer tags via forward chaining)
@@ -267,6 +276,9 @@ int main(int argc, char** argv){
 
     Vfs vfs; auto env = std::make_shared<Env>(); install_builtins(env);
     vfs.mkdir("/src"); vfs.mkdir("/ast"); vfs.mkdir("/env"); vfs.mkdir("/astcpp"); vfs.mkdir("/cpp"); vfs.mkdir("/plan");
+    
+    // Initialize registry
+    g_registry.integrateWithVFS(vfs);
 
     // Initialize feedback pipeline
     MetricsCollector metrics_collector;
@@ -771,6 +783,56 @@ int main(int argc, char** argv){
 
         } else if(cmd == "false"){
             result.success = false;
+
+        // Registry commands
+        } else if(cmd == "reg.set"){
+            if(inv.args.size() < 2){
+                throw std::runtime_error("reg.set <key> <value>");
+            }
+            std::string key_path = inv.args[0];
+            std::string value_data = join_args(inv.args, 1);
+            g_registry.setValue(key_path, value_data);
+            // Sync to VFS
+            g_registry.syncToVFS(vfs);
+
+        } else if(cmd == "reg.get"){
+            if(inv.args.empty()){
+                throw std::runtime_error("reg.get <key>");
+            }
+            std::string key_path = inv.args[0];
+            std::string value = g_registry.getValue(key_path);
+            std::cout << value << "\n";
+
+        } else if(cmd == "reg.list"){
+            std::string path = inv.args.empty() ? "/" : inv.args[0];
+            if(g_registry.exists(path)){
+                // List subkeys
+                auto subkeys = g_registry.listKeys(path);
+                for(const auto& subkey : subkeys){
+                    std::cout << subkey << "/\n";
+                }
+                // List values
+                auto values = g_registry.listValues(path);
+                for(const auto& value : values){
+                    std::cout << value << "\n";
+                }
+            } else {
+                throw std::runtime_error("reg.list: path not found");
+            }
+
+        } else if(cmd == "reg.rm"){
+            if(inv.args.empty()){
+                throw std::runtime_error("reg.rm <key>");
+            }
+            std::string path = inv.args[0];
+            if(g_registry.exists(path)){
+                // Check if it's a key or a value
+                g_registry.removeKey(path);
+                // Sync to VFS
+                g_registry.syncToVFS(vfs);
+            } else {
+                throw std::runtime_error("reg.rm: key not found");
+            }
 
         } else if(cmd == "tail"){
             size_t idx = 0;
