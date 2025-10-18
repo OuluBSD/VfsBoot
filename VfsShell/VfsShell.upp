@@ -83,6 +83,8 @@ file
 	command.h,
 	command.cpp,
 	editor_functions.h,
+	registry.h,
+	registry.cpp,
 	upp_assembly.h,
 	upp_assembly.cpp;
 

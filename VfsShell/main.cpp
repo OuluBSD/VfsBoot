@@ -158,6 +158,13 @@ R"(Commands:
   upp.startup.load <directory-path> [-H]      (load all .var files from directory, -H treats path as OS filesystem path)
   upp.startup.list                            (list all loaded startup assemblies)
   upp.startup.open <name>                     (load a named startup assembly)
+  # U++ workspace support
+  upp.wksp.open <name>                        (open a named workspace)
+  upp.wksp.close                              (close current workspace)
+  upp.wksp.pkg.list                           (list packages in current workspace)
+  upp.wksp.pkg.set <package-name>             (set active package in workspace)
+  upp.wksp.file.list                          (list files in active package)
+  upp.wksp.file.set <file-path>               (set active file in editor)
   # libclang C++ AST parsing
   parse.file <filepath> [vfs-target-path]     (parse C++ file with libclang)
   parse.dump [vfs-path]                       (dump parsed AST tree)
@@ -3564,6 +3571,160 @@ int main(int argc, char** argv){
             
             if(!found) {
                 throw std::runtime_error("Startup assembly not found: " + assembly_name);
+            }
+
+        } else if(cmd == "upp.wksp.open") {
+            if(inv.args.empty()) throw std::runtime_error("upp.wksp.open <name> (open a named workspace)");
+            
+            std::string workspace_name = inv.args[0];
+            bool found = false;
+            
+            // Look for the workspace by name in startup assemblies
+            for(const auto& assembly : g_startup_assemblies) {
+                if(auto workspace = assembly->get_workspace()) {
+                    if(workspace->name == workspace_name) {
+                        // Set this as the current assembly
+                        g_current_assembly = assembly;
+                        std::cout << "Opened workspace: " << workspace_name << "\n";
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            
+            if(!found) {
+                throw std::runtime_error("Workspace not found: " + workspace_name);
+            }
+
+        } else if(cmd == "upp.wksp.close") {
+            // Close the current workspace by setting the current assembly to nullptr
+            g_current_assembly = nullptr;
+            std::cout << "Closed current workspace\n";
+
+        } else if(cmd == "upp.wksp.pkg.list") {
+            // List packages in the current workspace
+            std::cout << "U++ Workspace packages:\n";
+            if(g_current_assembly) {
+                auto workspace = g_current_assembly->get_workspace();
+                if(workspace) {
+                    auto all_packages = workspace->get_all_packages();
+                    if(all_packages.empty()) {
+                        std::cout << "  No packages found in current workspace\n";
+                    } else {
+                        for(const auto& pkg : all_packages) {
+                            std::string primary_marker = pkg->is_primary ? " (primary)" : "";
+                            std::cout << "- " << pkg->name << primary_marker << "\n";
+                        }
+                    }
+                } else {
+                    std::cout << "  Current workspace has no packages\n";
+                }
+            } else {
+                std::cout << "  No active workspace. Use 'upp.wksp.open <name>' to open a workspace\n";
+            }
+
+        } else if(cmd == "upp.wksp.pkg.set") {
+            if(inv.args.empty()) throw std::runtime_error("upp.wksp.pkg.set <package-name> (set active package in workspace)");
+            
+            std::string package_name = inv.args[0];
+            
+            if(g_current_assembly) {
+                auto workspace = g_current_assembly->get_workspace();
+                if(workspace) {
+                    auto pkg = workspace->get_package(package_name);
+                    if(pkg) {
+                        // For now, we'll just mark it as the primary package for activation
+                        // In a real implementation, we'd track the currently active package separately
+                        // Reset primary packages
+                        for(const auto& existing_pkg : workspace->get_all_packages()) {
+                            existing_pkg->is_primary = false;
+                        }
+                        // Set the new package as primary
+                        pkg->is_primary = true;
+                        workspace->primary_package = package_name;
+                        std::cout << "Set active package: " << package_name << "\n";
+                    } else {
+                        throw std::runtime_error("Package not found in workspace: " + package_name);
+                    }
+                } else {
+                    throw std::runtime_error("Current workspace has no packages");
+                }
+            } else {
+                throw std::runtime_error("No active workspace. Use 'upp.wksp.open <name>' first");
+            }
+
+        } else if(cmd == "upp.wksp.file.list") {
+            // List files in the active package of the current workspace
+            std::cout << "U++ Workspace active package files:\n";
+            if(g_current_assembly) {
+                auto workspace = g_current_assembly->get_workspace();
+                if(workspace) {
+                    // Find the primary (active) package
+                    auto primary_pkg = workspace->get_primary_package();
+                    if(primary_pkg) {
+                        if(primary_pkg->files.empty()) {
+                            std::cout << "  No files found in active package '" << primary_pkg->name << "'\n";
+                        } else {
+                            std::cout << "Files in package '" << primary_pkg->name << "':\n";
+                            for(const auto& file : primary_pkg->files) {
+                                std::cout << "- " << file << "\n";
+                            }
+                        }
+                    } else {
+                        std::cout << "  No active package selected. Use 'upp.wksp.pkg.set <package-name>' to select a package.\n";
+                    }
+                } else {
+                    std::cout << "  Current workspace has no packages\n";
+                }
+            } else {
+                std::cout << "  No active workspace. Use 'upp.wksp.open <name>' to open a workspace\n";
+            }
+
+        } else if(cmd == "upp.wksp.file.set") {
+            if(inv.args.empty()) throw std::runtime_error("upp.wksp.file.set <file-path> (set active file in editor)");
+            
+            std::string file_path = inv.args[0];
+            
+            if(g_current_assembly) {
+                auto workspace = g_current_assembly->get_workspace();
+                if(workspace) {
+                    // Find the primary (active) package
+                    auto primary_pkg = workspace->get_primary_package();
+                    if(primary_pkg) {
+                        // Check if the file exists in the active package
+                        bool file_found = false;
+                        for(const auto& pkg_file : primary_pkg->files) {
+                            // Match by filename only (last part after slash)
+                            size_t last_slash = pkg_file.find_last_of("/\\");
+                            std::string filename = (last_slash != std::string::npos) ? 
+                                pkg_file.substr(last_slash + 1) : pkg_file;
+                            
+                            size_t target_last_slash = file_path.find_last_of("/\\");
+                            std::string target_filename = (target_last_slash != std::string::npos) ? 
+                                file_path.substr(target_last_slash + 1) : file_path;
+                            
+                            if(filename == target_filename) {
+                                file_found = true;
+                                break;
+                            }
+                        }
+                        
+                        if(file_found) {
+                            std::cout << "Set active file: " << file_path << "\n";
+                            // In a real implementation, we would set the active file in the editor context
+                            // For now, we just acknowledge the command
+                        } else {
+                            throw std::runtime_error("File not found in active package '" + 
+                                primary_pkg->name + "': " + file_path);
+                        }
+                    } else {
+                        throw std::runtime_error("No active package selected. Use 'upp.wksp.pkg.set <package-name>' first");
+                    }
+                } else {
+                    throw std::runtime_error("Current workspace has no packages");
+                }
+            } else {
+                throw std::runtime_error("No active workspace. Use 'upp.wksp.open <name>' first");
             }
 
         } else if(cmd == "make"){
