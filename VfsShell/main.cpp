@@ -3392,6 +3392,11 @@ int main(int argc, char** argv){
             if(!workspace) {
                 throw std::runtime_error("Active assembly has no workspace");
             }
+
+            // Preserve primary package selection and clear existing packages before refresh
+            std::string original_primary = workspace->primary_package;
+            workspace->packages.clear();
+            workspace->primary_package.clear();
             
             // Get the UPP paths from the assembly to find packages
             std::vector<std::string> upp_paths;
@@ -3471,8 +3476,17 @@ int main(int argc, char** argv){
                     std::cout << "Scanning UPP path: " << upp_path << std::endl;
                 }
                 
-                // Use the detect_packages_from_directory method which handles the mounting internally
-                g_current_assembly->detect_packages_from_directory(vfs, upp_path, verbose);
+                // Use a temporary assembly to detect packages without mutating the active workspace
+                UppAssembly path_assembly;
+                path_assembly.detect_packages_from_directory(vfs, upp_path, verbose);
+                if (auto path_workspace = path_assembly.get_workspace()) {
+                    for (auto& pkg : path_workspace->get_all_packages()) {
+                        if (!workspace->get_package(pkg->name)) {
+                            pkg->is_primary = false;
+                            workspace->add_package(pkg);
+                        }
+                    }
+                }
                 
                 // Now perform our own recursive directory scan to make sure all subdirectories are visited
                 // First, try to mount the directory to make it accessible in VFS
@@ -3539,11 +3553,14 @@ int main(int argc, char** argv){
                                     std::cout << "Found U++ package: " << upp_file_path << std::endl;
                                 }
                                 
-                                // Add this package to the assembly if found
-                                auto pkg = std::make_shared<UppPackage>(dir_name, orig_path);
-                                g_current_assembly->parse_upp_file_content(upp_content, *pkg);
+                                // Add this package to the assembly if found and not already present
                                 if (auto ws = g_current_assembly->get_workspace()) {
-                                    ws->add_package(pkg);
+                                    if (!ws->get_package(dir_name)) {
+                                        auto pkg = std::make_shared<UppPackage>(dir_name, orig_path);
+                                        g_current_assembly->parse_upp_file_content(upp_content, *pkg);
+                                        pkg->is_primary = false;
+                                        ws->add_package(pkg);
+                                    }
                                 }
                             } catch (...) {
                                 // If there's no .upp file, continue to next
@@ -3592,6 +3609,28 @@ int main(int argc, char** argv){
                         std::cout << "Could not mount directory to scan subdirectories: " << upp_path << ", will use detect_packages_from_directory only" << std::endl;
                     }
                     // If we can't mount, just continue to the next path
+                }
+            }
+
+            // Restore primary package selection after refreshing packages
+            bool primary_restored = false;
+            for (auto& entry : workspace->packages) {
+                entry.second->is_primary = false;
+            }
+            if (!original_primary.empty()) {
+                if (auto primary_pkg = workspace->get_package(original_primary)) {
+                    primary_pkg->is_primary = true;
+                    workspace->primary_package = original_primary;
+                    primary_restored = true;
+                }
+            }
+            if (!primary_restored) {
+                if (!workspace->packages.empty()) {
+                    auto first_it = workspace->packages.begin();
+                    first_it->second->is_primary = true;
+                    workspace->primary_package = first_it->first;
+                } else {
+                    workspace->primary_package.clear();
                 }
             }
             
