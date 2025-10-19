@@ -86,7 +86,9 @@ file
 	registry.h,
 	registry.cpp,
 	upp_assembly.h,
-	upp_assembly.cpp;
+	upp_assembly.cpp,
+	upp_builder.h,
+	upp_builder.cpp;
 
 mainconfig
 	"" = "";
