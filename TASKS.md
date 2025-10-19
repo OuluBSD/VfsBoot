@@ -1,6 +1,11 @@
 # Tasks Tracker
 Note: sexp is for AI and shell script is for human user (+ ai called via sexp). This follows the classic codex behaviour.
 
+## Internal U++ Builder (see docs/internal_umk_plan.md)
+- Stand up a minimal in-process `umk` pipeline leveraging `UppToolchain` metadata (compiler/linker, flags, includes). Reuse the shared `BuildGraph` with new command types for compile/link and ensure host paths come via `Vfs::mapToHostPath`.
+- Emit per-translation-unit compile nodes and package-level link nodes when no builder `COMMAND` is provided; retain custom commands as override. Handle output directory selection and dependency ordering inside the workspace.
+- Add regression coverage (scripts/unittst/upp_internal_umk.md) plus documentation describing usage and limitations; track follow-ups for BLITZ/caching, multi-language sources, and remote execution hooks.
+
 ## Immediate Next Moves
 - Harden the C++ AST string escaping and scan dumps for malformed literals.
 - Broaden the λ-syntax (multi-arg lambdas, let-binding sugar) to reduce ceremony in larger programs.
