@@ -50,6 +50,14 @@ std::string package_target(const std::string& name) {
     return "pkg:" + name;
 }
 
+std::string prefer_host_path(Vfs& vfs, const std::string& path) {
+    if(path.empty()) return path;
+    if(auto mapped = vfs.mapToHostPath(path)) {
+        return *mapped;
+    }
+    return path;
+}
+
 void collect_packages(const std::shared_ptr<UppWorkspace>& workspace,
                       const std::string& pkg_name,
                       std::unordered_set<std::string>& visiting,
@@ -78,33 +86,44 @@ void collect_packages(const std::shared_ptr<UppWorkspace>& workspace,
 std::vector<std::string> build_asmlist(const UppWorkspace& workspace,
                                        const UppPackage& pkg,
                                        const WorkspaceBuildOptions& options,
+                                       Vfs& vfs,
                                        const UppBuildMethod* builder) {
     std::unordered_set<std::string> dirs;
+    auto capture = [&](const std::string& raw) {
+        if(raw.empty()) return;
+        auto normalized = prefer_host_path(vfs, raw);
+        dirs.insert(std::filesystem::path(normalized).lexically_normal().string());
+    };
 
-    if(!workspace.base_dir.empty()) dirs.insert(workspace.base_dir);
+    if(!workspace.base_dir.empty()) capture(workspace.base_dir);
 
     if(!workspace.assembly_path.empty()) {
         auto parent = std::filesystem::path(workspace.assembly_path).parent_path();
-        if(!parent.empty()) dirs.insert(parent.string());
+        if(!parent.empty()) capture(parent.string());
     }
 
     if(!pkg.path.empty()) {
-        dirs.insert(std::filesystem::path(pkg.path).parent_path().string());
+        std::filesystem::path pkg_path(pkg.path);
+        if(pkg_path.is_relative() && !workspace.base_dir.empty()) {
+            pkg_path = std::filesystem::path(workspace.base_dir) / pkg_path;
+        }
+        auto parent = pkg_path.parent_path();
+        if(!parent.empty()) capture(parent.lexically_normal().string());
     }
 
     for(const auto& inc : options.extra_includes) {
-        if(!inc.empty()) dirs.insert(inc);
+        capture(inc);
     }
 
     if(builder) {
         for(const auto& inc : builder->splitList("INCLUDES", ';')) {
-            if(!inc.empty()) dirs.insert(inc);
+            capture(inc);
         }
     }
 
     if(const char* upp_env = std::getenv("UPP")) {
         for(const auto& inc : split_env_paths(upp_env)) {
-            if(!inc.empty()) dirs.insert(inc);
+            capture(inc);
         }
     }
 
@@ -126,7 +145,8 @@ std::string umk_flags(const WorkspaceBuildOptions& options, bool verbose) {
 
 std::string default_output_path(const UppWorkspace& workspace,
                                 const UppPackage& pkg,
-                                const WorkspaceBuildOptions& options) {
+                                const WorkspaceBuildOptions& options,
+                                Vfs& vfs) {
     if(!options.output_dir.empty()) {
         std::filesystem::path base(options.output_dir);
         if(base.is_relative()) {
@@ -135,13 +155,13 @@ std::string default_output_path(const UppWorkspace& workspace,
             }
         }
         base /= pkg.name;
-        return base.string();
+        return prefer_host_path(vfs, base.lexically_normal().string());
     }
 
     if(!workspace.base_dir.empty()) {
         std::filesystem::path out_dir = std::filesystem::path(workspace.base_dir) / "out";
         out_dir /= pkg.name;
-        return out_dir.string();
+        return prefer_host_path(vfs, out_dir.lexically_normal().string());
     }
 
     return {};
@@ -164,16 +184,37 @@ std::string render_command_template(const std::string& tpl,
 std::string make_command_for_package(const UppWorkspace& workspace,
                                      const UppPackage& pkg,
                                      const WorkspaceBuildOptions& options,
+                                     Vfs& vfs,
                                      const UppBuildMethod* builder) {
-    auto assembly_dirs = build_asmlist(workspace, pkg, options, builder);
+    auto assembly_dirs = build_asmlist(workspace, pkg, options, vfs, builder);
     std::string assembly_arg = assembly_dirs.empty() ? "." : join_with(assembly_dirs, ',');
     std::string flags = umk_flags(options, options.verbose);
-    std::string output_path = default_output_path(workspace, pkg, options);
+    std::string output_path = default_output_path(workspace, pkg, options, vfs);
+
+    std::filesystem::path pkg_path_fs;
+    if(!pkg.path.empty()) {
+        pkg_path_fs = std::filesystem::path(pkg.path);
+        if(pkg_path_fs.is_relative() && !workspace.base_dir.empty()) {
+            pkg_path_fs = std::filesystem::path(workspace.base_dir) / pkg_path_fs;
+        }
+    }
+
+    std::string package_path;
+    if(!pkg.path.empty()) {
+        std::filesystem::path to_render = pkg_path_fs.empty()
+            ? std::filesystem::path(pkg.path)
+            : pkg_path_fs;
+        package_path = prefer_host_path(vfs, to_render.lexically_normal().string());
+    }
+
+    std::string base_dir = workspace.base_dir.empty()
+        ? ""
+        : prefer_host_path(vfs, workspace.base_dir);
 
     std::map<std::string, std::string> vars = {
         {"assembly", shell_quote(assembly_arg)},
         {"package", shell_quote(pkg.name)},
-        {"package_path", shell_quote(pkg.path)},
+        {"package_path", shell_quote(package_path)},
         {"build_type", shell_quote(options.build_type)},
         {"flags", shell_quote(flags)},
         {"output", output_path.empty() ? "" : shell_quote(output_path)},
@@ -181,20 +222,29 @@ std::string make_command_for_package(const UppWorkspace& workspace,
     };
 
     if(builder) {
+        std::string builder_source = builder->source_path;
+        if(!builder_source.empty()) {
+            builder_source = prefer_host_path(vfs, builder_source);
+        }
         vars["builder"] = shell_quote(builder->id);
-        vars["builder_path"] = builder->source_path.empty()
+        vars["builder_path"] = builder_source.empty()
             ? shell_quote(builder->id)
-            : shell_quote(builder->source_path);
+            : shell_quote(builder_source);
     } else {
         vars["builder"] = "''";
         vars["builder_path"] = "''";
     }
 
     std::string working_dir;
-    if(!workspace.base_dir.empty()) {
-        working_dir = workspace.base_dir;
+    if(!base_dir.empty()) {
+        working_dir = base_dir;
     } else if(!pkg.path.empty()) {
-        working_dir = std::filesystem::path(pkg.path).parent_path().string();
+        auto parent = pkg_path_fs.parent_path();
+        if(parent.empty()) {
+            working_dir = ".";
+        } else {
+            working_dir = prefer_host_path(vfs, parent.lexically_normal().string());
+        }
     } else {
         working_dir = ".";
     }
@@ -210,9 +260,13 @@ std::string make_command_for_package(const UppWorkspace& workspace,
     if(command_body.empty()) {
         std::string builder_arg;
         if(builder) {
-            builder_arg = builder->source_path.empty()
+            std::string builder_source = builder->source_path;
+            if(!builder_source.empty()) {
+                builder_source = prefer_host_path(vfs, builder_source);
+            }
+            builder_arg = builder_source.empty()
                 ? shell_quote(builder->id)
-                : shell_quote(builder->source_path);
+                : shell_quote(builder_source);
         }
         command_body = "umk " + vars["assembly"] + " " + vars["package"];
         if(!builder_arg.empty()) {
@@ -300,10 +354,10 @@ WorkspaceBuildSummary build_workspace(UppAssembly& assembly,
 
         BuildCommand cmd;
         cmd.type = BuildCommand::Type::Shell;
-        cmd.text = make_command_for_package(*workspace, *pkg, options, builder);
+        cmd.text = make_command_for_package(*workspace, *pkg, options, vfs, builder);
         rule.commands.push_back(cmd);
 
-        std::string output_path = default_output_path(*workspace, *pkg, options);
+        std::string output_path = default_output_path(*workspace, *pkg, options, vfs);
         if(!output_path.empty()) {
             rule.outputs.push_back(output_path);
         }

@@ -372,6 +372,43 @@ bool Vfs::isMountAllowed() const {
     return mount_allowed;
 }
 
+std::optional<std::string> Vfs::mapToHostPath(const std::string& vfs_path) const {
+    if(vfs_path.empty() || vfs_path.front() != '/') {
+        return std::nullopt;
+    }
+
+    std::optional<std::string> best_match;
+    size_t best_len = 0;
+
+    for(const auto& mount : mounts) {
+        if(mount.type != MountType::Filesystem) continue;
+        const auto& mount_path = mount.vfs_path;
+        if(mount_path.empty()) continue;
+
+        if(vfs_path == mount_path ||
+           (vfs_path.compare(0, mount_path.size(), mount_path) == 0 &&
+            (vfs_path.size() == mount_path.size() || vfs_path[mount_path.size()] == '/'))) {
+            if(mount_path.size() < best_len) continue;
+
+            std::filesystem::path host_path = mount.host_path;
+            if(vfs_path.size() > mount_path.size()) {
+                auto suffix = vfs_path.substr(mount_path.size());
+                if(!suffix.empty() && suffix.front() == '/') {
+                    suffix.erase(0, 1);
+                }
+                if(!suffix.empty()) {
+                    host_path /= suffix;
+                }
+            }
+
+            best_match = host_path.lexically_normal().string();
+            best_len = mount_path.size();
+        }
+    }
+
+    return best_match;
+}
+
 std::string overlay_suffix(const Vfs& vfs, const std::vector<size_t>& overlays, size_t primary){
     if(overlays.empty()) return {};
     std::ostringstream oss;
