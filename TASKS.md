@@ -1,6 +1,11 @@
 # Tasks Tracker
 Note: sexp is for AI and shell script is for human user (+ ai called via sexp). This follows the classic codex behaviour.
 
+## Immediate Next Moves
+- Harden the C++ AST string escaping and scan dumps for malformed literals.
+- Broaden the λ-syntax (multi-arg lambdas, let-binding sugar) to reduce ceremony in larger programs.
+- Design Stage2 agent goals on top of the VfsShell substrate (richer codegen, persistence, higher-level scripting).
+
 ## U++ compatibility
 - Support U++ assembly file: e.g. ~/.config/u++/theide/MyApps.var
 	- have active workspace for assembly file
