@@ -5,6 +5,166 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+
+namespace {
+
+std::string to_lower_copy(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
+std::string strip_trailing_delimiters(std::string value) {
+    while(!value.empty() && (value.back() == ';' || value.back() == ',')) {
+        value.pop_back();
+    }
+    return trim_copy(value);
+}
+
+std::string decode_upp_string_literal(const std::string& literal) {
+    std::string text = trim_copy(literal);
+    if(text.size() < 2 || text.front() != '"' || text.back() != '"') {
+        return text;
+    }
+
+    std::string result;
+    result.reserve(text.size() - 2);
+    for(size_t i = 1; i + 1 < text.size(); ++i) {
+        char ch = text[i];
+        if(ch == '\\' && i + 1 < text.size() - 1) {
+            char next = text[++i];
+            if(next >= '0' && next <= '7') {
+                std::string digits(1, next);
+                size_t consumed = 1;
+                while(i + 1 < text.size() - 1 &&
+                      consumed < 3 &&
+                      text[i + 1] >= '0' && text[i + 1] <= '7') {
+                    digits.push_back(text[++i]);
+                    ++consumed;
+                }
+                int value = std::strtol(digits.c_str(), nullptr, 8);
+                result.push_back(static_cast<char>(value));
+            } else {
+                switch(next) {
+                    case 'n': result.push_back('\n'); break;
+                    case 'r': result.push_back('\r'); break;
+                    case 't': result.push_back('\t'); break;
+                    case '\\': result.push_back('\\'); break;
+                    case '"': result.push_back('"'); break;
+                    default: result.push_back(next); break;
+                }
+            }
+        } else {
+            result.push_back(ch);
+        }
+    }
+    return result;
+}
+
+std::vector<std::string> split_upp_values(const std::string& input) {
+    std::vector<std::string> tokens;
+    std::string current;
+    bool in_quotes = false;
+    int paren_depth = 0;
+
+    for(char ch : input) {
+        if(ch == '"' && paren_depth >= 0) {
+            in_quotes = !in_quotes;
+            current.push_back(ch);
+        } else if(!in_quotes && ch == '(') {
+            ++paren_depth;
+            current.push_back(ch);
+        } else if(!in_quotes && ch == ')') {
+            if(paren_depth > 0) --paren_depth;
+            current.push_back(ch);
+        } else if(!in_quotes && paren_depth == 0 && (ch == ';' || ch == ',')) {
+            auto token = trim_copy(current);
+            if(!token.empty()) tokens.push_back(token);
+            current.clear();
+        } else {
+            current.push_back(ch);
+        }
+    }
+
+    auto token = trim_copy(current);
+    if(!token.empty()) tokens.push_back(token);
+    return tokens;
+}
+
+std::string clean_value_token(std::string token) {
+    token = strip_trailing_delimiters(token);
+    if(token.empty()) return token;
+
+    if(token.front() == '(') {
+        auto closing = token.find(')');
+        if(closing != std::string::npos) {
+            std::string after = trim_copy(token.substr(closing + 1));
+            if(after.empty()) {
+                token = trim_copy(token.substr(1, closing - 1));
+            } else {
+                token = after;
+            }
+        }
+    }
+
+    if(!token.empty() && token.front() == '"' && token.back() == '"') {
+        return decode_upp_string_literal(token);
+    }
+
+    return token;
+}
+
+void handle_section_entry(const std::string& section,
+                          const std::string& raw_entry,
+                          UppPackage& pkg) {
+    std::string entry = strip_trailing_delimiters(raw_entry);
+    if(entry.empty()) return;
+
+    auto values = split_upp_values(entry);
+    if(values.empty()) return;
+
+    if(section == "description") {
+        pkg.description = decode_upp_string_literal(clean_value_token(values.front()));
+        return;
+    }
+
+    if(section == "file") {
+        for(auto& value : values) {
+            std::string token = clean_value_token(value);
+            if(!token.empty()) {
+                pkg.files.push_back(token);
+            }
+        }
+        return;
+    }
+
+    if(section == "uses" || section == "library" || section == "include") {
+        for(auto& value : values) {
+            std::string token = clean_value_token(value);
+            if(token.empty()) continue;
+            if(section == "library" || section == "include") {
+                pkg.dependencies.push_back(token);
+            } else {
+                if(std::find(pkg.dependencies.begin(), pkg.dependencies.end(), token) == pkg.dependencies.end()) {
+                    pkg.dependencies.push_back(token);
+                }
+            }
+        }
+        return;
+    }
+
+    // For now, other sections (mainconfig, options, etc.) are ignored.
+}
+
+bool is_comment_or_empty(const std::string& trimmed) {
+    if(trimmed.empty()) return true;
+    if(trimmed.rfind("//", 0) == 0) return true;
+    if(trimmed[0] == '#') return true;
+    return false;
+}
+
+} // namespace
 
 // Implementation of UppWorkspace methods
 void UppWorkspace::add_package(std::shared_ptr<UppPackage> pkg) {
@@ -405,176 +565,67 @@ bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& ba
 
 bool UppAssembly::parse_upp_file_content(const std::string& content, UppPackage& pkg) {
     std::istringstream stream(content);
-    std::string line;
-    bool in_file_section = false;
-    bool in_mainconfig_section = false;
-    
-    while (std::getline(stream, line)) {
-        // Skip empty lines
-        if (line.empty()) continue;
-        
-        // Trim leading/trailing whitespace
-        line.erase(0, line.find_first_not_of(" \t\r\n"));
-        line.erase(line.find_last_not_of(" \t\r\n") + 1);
-        
-        // Skip comment lines
-        if (line.length() >= 2 && line.substr(0, 2) == "//") continue;
-        if (line.length() >= 1 && line[0] == '#') continue;
-        
-        // Check for section beginnings
-        if (line.substr(0, 7) == "file\\n\\t") {  // Handle inline file declaration with content
-            in_file_section = true;
-            // Extract files from this line
-            std::string file_line = line.substr(5); // Skip "file\\n\\t"
-            size_t pos = 0;
-            std::string delimiter = ",";
-            
-            while ((pos = file_line.find(delimiter)) != std::string::npos) {
-                std::string file = file_line.substr(0, pos);
-                // Remove whitespace and semicolon
-                file.erase(0, file.find_first_not_of(" \t"));
-                file.erase(file.find_last_not_of(" \t\r\n;") + 1);
-                if (!file.empty()) {
-                    pkg.files.push_back(file);
-                }
-                file_line.erase(0, pos + delimiter.length());
-            }
-            // Handle last file
-            if (!file_line.empty()) {
-                file_line.erase(0, file_line.find_first_not_of(" \t"));
-                file_line.erase(file_line.find_last_not_of(" \t\r\n;") + 1);
-                if (!file_line.empty()) {
-                    pkg.files.push_back(file_line);
-                }
-            }
-        } else if (line.substr(0, 4) == "file" && line.length() > 4 && std::isspace(line[4])) {
-            in_file_section = true;
-            // Extract files from this line until semicolon
-            size_t start = 4; // After "file"
-            size_t semi_pos = line.find(';');
-            if (semi_pos != std::string::npos) {
-                std::string files_part = line.substr(start, semi_pos - start);
-                // Parse individual files separated by commas
-                size_t pos = 0;
-                std::string delimiter = ",";
-                
-                while ((pos = files_part.find(delimiter)) != std::string::npos) {
-                    std::string file = files_part.substr(0, pos);
-                    // Remove leading/trailing whitespace
-                    file.erase(0, file.find_first_not_of(" \t\r\n"));
-                    file.erase(file.find_last_not_of(" \t\r\n") + 1);
-                    if (!file.empty()) {
-                        pkg.files.push_back(file);
-                    }
-                    files_part.erase(0, pos + delimiter.length());
-                }
-                // Handle last file
-                files_part.erase(0, files_part.find_first_not_of(" \t\r\n"));
-                files_part.erase(files_part.find_last_not_of(" \t\r\n;") + 1);
-                if (!files_part.empty()) {
-                    pkg.files.push_back(files_part);
-                }
-            }
-        } else if (line.substr(0, 12) == "description ") {
-            // Extract description - looking for "description "text"; pattern
-            size_t start = line.find('"');
-            if (start != std::string::npos) {
-                size_t end = line.find('"', start + 1);
-                if (end != std::string::npos) {
-                    pkg.description = line.substr(start + 1, end - start - 1);
-                    // Remove escape sequences like \377
-                    size_t escape_pos = pkg.description.find('\\');
-                    while (escape_pos != std::string::npos) {
-                        if (escape_pos + 3 < pkg.description.length() && std::isdigit(pkg.description[escape_pos + 1])) {
-                            pkg.description.erase(escape_pos, 4); // Remove \ddd
-                        } else {
-                            pkg.description.erase(escape_pos, 1); // Remove single backslash
-                        }
-                        escape_pos = pkg.description.find('\\', escape_pos);
-                    }
-                }
-            }
-        } else if (line.substr(0, 7) == "library") {
-            // Extract library dependencies - looking for library(LINUX) libname;
-            size_t paren_pos = line.find('(');
-            size_t end_paren_pos = line.find(')');
-            if (paren_pos != std::string::npos && end_paren_pos != std::string::npos && end_paren_pos > paren_pos) {
-                size_t start_lib = line.find(' ', end_paren_pos);
-                if (start_lib != std::string::npos) {
-                    std::string lib_part = line.substr(start_lib + 1);
-                    // Remove semicolon if present
-                    size_t semi_pos = lib_part.find(';');
-                    if (semi_pos != std::string::npos) {
-                        lib_part = lib_part.substr(0, semi_pos);
-                    }
-                    // Remove quotes if present
-                    if (lib_part[0] == '"') {
-                        size_t end_quote = lib_part.find('"', 1);
-                        if (end_quote != std::string::npos) {
-                            lib_part = lib_part.substr(1, end_quote - 1);
-                        }
-                    }
-                    // Add to dependencies
-                    if (!lib_part.empty()) {
-                        pkg.dependencies.push_back(lib_part);
-                    }
-                }
-            }
-        } else if (line.substr(0, 7) == "include") {
-            // Extract include paths - looking for include(LINUX) path;
-            size_t paren_pos = line.find('(');
-            size_t end_paren_pos = line.find(')');
-            if (paren_pos != std::string::npos && end_paren_pos != std::string::npos && end_paren_pos > paren_pos) {
-                size_t start_inc = line.find(' ', end_paren_pos);
-                if (start_inc != std::string::npos) {
-                    std::string inc_part = line.substr(start_inc + 1);
-                    size_t semi_pos = inc_part.find(';');
-                    if (semi_pos != std::string::npos) {
-                        inc_part = inc_part.substr(0, semi_pos);
-                    }
-                    // Add to dependencies as include path
-                    if (!inc_part.empty()) {
-                        pkg.dependencies.push_back(inc_part);
-                    }
-                }
-            }
-        } else if (line.substr(0, 10) == "mainconfig") {
-            in_mainconfig_section = true;
+    std::string raw_line;
+    std::string current_section;
+
+    while(std::getline(stream, raw_line)) {
+        if(!raw_line.empty() && raw_line.back() == '\r') {
+            raw_line.pop_back();
         }
-        // Handle file continuation lines when in file section
-        else if (in_file_section && line[0] == '\t') {
-            // This is a continuation of the file list
-            std::string file_line = line;
-            size_t pos = 0;
-            std::string delimiter = ",";
-            
-            while ((pos = file_line.find(delimiter)) != std::string::npos) {
-                std::string file = file_line.substr(0, pos);
-                // Remove leading/trailing whitespace and commas
-                file.erase(0, file.find_first_not_of(" \t"));
-                file.erase(file.find_last_not_of(" \t\r\n,") + 1);
-                if (!file.empty() && file != ",") {
-                    pkg.files.push_back(file);
+        std::string trimmed = trim_copy(raw_line);
+        if(is_comment_or_empty(trimmed)) continue;
+
+        bool is_continuation = !raw_line.empty() && (raw_line[0] == ' ' || raw_line[0] == '\t');
+
+        if(!is_continuation) {
+            std::string clause = trimmed;
+            std::string keyword;
+            std::string rest;
+
+            size_t space_pos = clause.find_first_of(" \t");
+            size_t paren_pos = clause.find('(');
+            bool paren_before_space = (paren_pos != std::string::npos) &&
+                                      (space_pos == std::string::npos || paren_pos < space_pos);
+
+            if(paren_before_space) {
+                keyword = clause.substr(0, paren_pos);
+                rest = clause.substr(paren_pos);
+            } else if(space_pos != std::string::npos) {
+                keyword = clause.substr(0, space_pos);
+                rest = clause.substr(space_pos + 1);
+            } else {
+                keyword = clause;
+            }
+
+            keyword = to_lower_copy(trim_copy(keyword));
+            rest = trim_copy(rest);
+
+            if(!rest.empty() && rest.back() == ';') {
+                rest.pop_back();
+                rest = trim_copy(rest);
+            }
+
+            current_section.clear();
+
+            if(keyword == "description" || keyword == "file" || keyword == "uses" ||
+               keyword == "library" || keyword == "include") {
+                current_section = keyword;
+                if(!rest.empty()) {
+                    handle_section_entry(current_section, rest, pkg);
+                    if(keyword == "description") current_section.clear();
                 }
-                file_line.erase(0, pos + delimiter.length());
+            } else {
+                current_section.clear();
             }
-            // Handle last file in the line
-            file_line.erase(0, file_line.find_first_not_of(" \t"));
-            file_line.erase(file_line.find_last_not_of(" \t\r\n,;") + 1);
-            if (!file_line.empty() && file_line != ",") {
-                pkg.files.push_back(file_line);
-            }
-        }
-        // End file section if we encounter a non-indented line that's not a section
-        else if (in_file_section && line[0] != '\t' && 
-                 line.substr(0, 4) != "file" && 
-                 line.substr(0, 7) != "library" && 
-                 line.substr(0, 7) != "include" && 
-                 line.substr(0, 12) != "description " &&
-                 line.substr(0, 10) != "mainconfig") {
-            in_file_section = false;
+        } else if(!current_section.empty()) {
+            handle_section_entry(current_section, trimmed, pkg);
         }
     }
+
+    if(pkg.description.empty()) {
+        pkg.description = pkg.name;
+    }
+
     return true;
 }
 
