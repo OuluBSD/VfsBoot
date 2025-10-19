@@ -1,4 +1,5 @@
 #include "VfsShell.h"
+#include "upp_workspace_build.h"
 #include "registry.h"
 #include <filesystem>
 #include <unistd.h>
@@ -206,6 +207,7 @@ R"(Commands:
   upp.wksp.pkg.set <package-name>             (set active package in workspace)
   upp.wksp.file.list                          (list files in active package)
   upp.wksp.file.set <file-path>               (set active file in editor)
+  upp.wksp.build [options]                    (build active workspace package and dependencies)
   upp.gui                                     (launch U++ assembly IDE GUI)
   # libclang C++ AST parsing
   parse.file <filepath> [vfs-target-path]     (parse C++ file with libclang)
@@ -4379,6 +4381,120 @@ int main(int argc, char** argv){
                 throw std::runtime_error("No active workspace. Use 'upp.wksp.open <path>' first");
             }
 
+        } else if(cmd == "upp.wksp.build") {
+            if(!g_current_assembly) {
+                throw std::runtime_error("No active workspace. Use 'upp.wksp.open' first.");
+            }
+
+            auto print_usage = [](){
+                std::cout << "Usage: upp.wksp.build [options]\n"
+                             "  --builder, -b <name>     Use a specific U++ build method (.bm id)\n"
+                             "  --target,  -t <package>  Build a specific package instead of the primary\n"
+                             "  --build-type <type>      Build configuration (debug|release, default debug)\n"
+                             "  --output,  -o <path>     Output directory for artifacts\n"
+                             "  --include, -I <path>     Additional include/search directory (repeatable)\n"
+                             "  --dry-run                Show commands without executing them\n"
+                             "  --plan                   Display build plan (implies --dry-run)\n"
+                             "  --verbose                Verbose execution (passes -v to builder)\n"
+                             "  --help                   Show this help message\n";
+            };
+
+            WorkspaceBuildOptions build_opts;
+            bool show_plan = false;
+            bool show_help = false;
+
+            for(size_t i = 0; i < inv.args.size(); ++i) {
+                const std::string& arg = inv.args[i];
+                if(arg == "--builder" || arg == "-b") {
+                    if(i + 1 >= inv.args.size()) {
+                        throw std::runtime_error("upp.wksp.build: --builder requires an argument");
+                    }
+                    build_opts.builder_name = inv.args[++i];
+                } else if(arg == "--target" || arg == "-t") {
+                    if(i + 1 >= inv.args.size()) {
+                        throw std::runtime_error("upp.wksp.build: --target requires a package name");
+                    }
+                    build_opts.target_package = inv.args[++i];
+                } else if(arg == "--build-type" || arg == "--mode") {
+                    if(i + 1 >= inv.args.size()) {
+                        throw std::runtime_error("upp.wksp.build: --build-type requires an argument");
+                    }
+                    build_opts.build_type = inv.args[++i];
+                } else if(arg == "--output" || arg == "-o") {
+                    if(i + 1 >= inv.args.size()) {
+                        throw std::runtime_error("upp.wksp.build: --output requires a path");
+                    }
+                    build_opts.output_dir = inv.args[++i];
+                } else if(arg == "--include" || arg == "-I") {
+                    if(i + 1 >= inv.args.size()) {
+                        throw std::runtime_error("upp.wksp.build: --include requires a path");
+                    }
+                    build_opts.extra_includes.push_back(inv.args[++i]);
+                } else if(arg == "--dry-run") {
+                    build_opts.dry_run = true;
+                } else if(arg == "--plan") {
+                    build_opts.dry_run = true;
+                    show_plan = true;
+                } else if(arg == "--verbose") {
+                    build_opts.verbose = true;
+                } else if(arg == "--help" || arg == "-h") {
+                    print_usage();
+                    show_help = true;
+                } else {
+                    throw std::runtime_error("upp.wksp.build: unknown option: " + arg);
+                }
+            }
+
+            if(!show_help) {
+                auto summary = build_workspace(*g_current_assembly, vfs, build_opts);
+
+                std::cout << "upp.wksp.build: builder=" << summary.builder_used
+                          << " type=" << build_opts.build_type
+                          << (build_opts.dry_run ? " [dry-run]" : "")
+                          << "\n";
+
+                if(!summary.package_order.empty()) {
+                    std::cout << "upp.wksp.build: packages (" << summary.package_order.size() << ")\n";
+                    for(const auto& name : summary.package_order) {
+                        std::cout << "  - " << name << "\n";
+                    }
+                }
+
+                if(show_plan) {
+                    std::cout << "upp.wksp.build: plan\n";
+                    for(const auto& name : summary.package_order) {
+                        auto target = "pkg:" + name;
+                        auto it = summary.plan.rules.find(target);
+                        if(it == summary.plan.rules.end()) continue;
+                        std::cout << "  [" << name << "]\n";
+                        for(const auto& cmd_entry : it->second.commands) {
+                            std::cout << "    " << cmd_entry.text << "\n";
+                        }
+                    }
+                }
+
+                if(!summary.result.output.empty()) {
+                    std::cout << summary.result.output;
+                }
+
+                if(summary.result.success) {
+                    if(summary.result.targets_built.empty()) {
+                        std::cout << "upp.wksp.build: target up to date\n";
+                    } else {
+                        std::cout << "upp.wksp.build: built " << summary.result.targets_built.size() << " target(s)\n";
+                    }
+                } else {
+                    if(!summary.result.errors.empty()) {
+                        for(const auto& msg : summary.result.errors) {
+                            std::cout << "upp.wksp.build: error: " << msg << "\n";
+                        }
+                    } else {
+                        std::cout << "upp.wksp.build: build failed\n";
+                    }
+                    result.success = false;
+                }
+            }
+
         } else if(cmd == "make"){
             // Minimal GNU make implementation
             // Usage: make [target] [-f makefile] [-v|--verbose]
@@ -4409,7 +4525,6 @@ int main(int argc, char** argv){
                 throw std::runtime_error("make: Cannot read " + makefile_path);
             }
 
-            // Parse Makefile
             MakeFile makefile;
             try {
                 makefile.parse(makefile_content);
@@ -4418,9 +4533,10 @@ int main(int argc, char** argv){
             }
 
             // If target is "all" and not defined, use first rule
-            if(target == "all" && makefile.rules.find("all") == makefile.rules.end()){
-                if(!makefile.rules.empty()){
-                    target = makefile.rules.begin()->first;
+            if(target == "all" && !makefile.hasRule("all")){
+                std::string fallback = makefile.firstRule();
+                if(!fallback.empty()){
+                    target = fallback;
                 }
             }
 

@@ -43,4 +43,6 @@ private:
     std::string active_;
 };
 
+extern UppBuilderRegistry g_upp_builder_registry;
+
 #endif

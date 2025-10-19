@@ -14,6 +14,7 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 	- handle build flags (GUI, USEMALLOC, etc.) and verbosity switches
 	- allow exporting makefiles and performing clean targets
 	- document BLITZ / advanced optimizations as deferred follow-up
+	- ✅ introduced shared build graph + new `upp.wksp.build` CLI for workspace/package compilation (dry-run + plan)
 
 	
 ## Upcoming: web browser gui: important

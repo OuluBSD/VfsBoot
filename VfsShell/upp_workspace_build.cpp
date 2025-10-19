@@ -1,0 +1,332 @@
+#include "upp_workspace_build.h"
+
+#include "VfsShell.h"
+
+#include <algorithm>
+#include <cstdlib>
+#include <filesystem>
+#include <sstream>
+#include <unordered_set>
+
+extern UppBuilderRegistry g_upp_builder_registry;
+
+namespace {
+
+std::string shell_quote(const std::string& value) {
+    if(value.empty()) return "''";
+    std::string quoted = "'";
+    for(char ch : value) {
+        if(ch == '\'') {
+            quoted += "'\"'\"'";
+        } else {
+            quoted.push_back(ch);
+        }
+    }
+    quoted.push_back('\'');
+    return quoted;
+}
+
+std::vector<std::string> split_env_paths(const std::string& value) {
+    std::vector<std::string> paths;
+    std::stringstream ss(value);
+    std::string item;
+    while(std::getline(ss, item, ':')) {
+        if(!item.empty()) paths.push_back(item);
+    }
+    return paths;
+}
+
+std::string join_with(const std::vector<std::string>& items, char delimiter) {
+    if(items.empty()) return {};
+    std::ostringstream oss;
+    for(size_t i = 0; i < items.size(); ++i) {
+        if(i) oss << delimiter;
+        oss << items[i];
+    }
+    return oss.str();
+}
+
+std::string package_target(const std::string& name) {
+    return "pkg:" + name;
+}
+
+void collect_packages(const std::shared_ptr<UppWorkspace>& workspace,
+                      const std::string& pkg_name,
+                      std::unordered_set<std::string>& visiting,
+                      std::unordered_set<std::string>& visited,
+                      std::vector<std::string>& order) {
+    if(visited.count(pkg_name)) return;
+    if(visiting.count(pkg_name)) {
+        throw std::runtime_error("Circular package dependency detected around '" + pkg_name + "'");
+    }
+
+    visiting.insert(pkg_name);
+    auto pkg = workspace->get_package(pkg_name);
+    if(pkg) {
+        for(const auto& dep : pkg->dependencies) {
+            if(workspace->get_package(dep)) {
+                collect_packages(workspace, dep, visiting, visited, order);
+            }
+        }
+    }
+    visiting.erase(pkg_name);
+
+    visited.insert(pkg_name);
+    order.push_back(pkg_name);
+}
+
+std::vector<std::string> build_asmlist(const UppWorkspace& workspace,
+                                       const UppPackage& pkg,
+                                       const WorkspaceBuildOptions& options,
+                                       const UppBuildMethod* builder) {
+    std::unordered_set<std::string> dirs;
+
+    if(!workspace.base_dir.empty()) dirs.insert(workspace.base_dir);
+
+    if(!workspace.assembly_path.empty()) {
+        auto parent = std::filesystem::path(workspace.assembly_path).parent_path();
+        if(!parent.empty()) dirs.insert(parent.string());
+    }
+
+    if(!pkg.path.empty()) {
+        dirs.insert(std::filesystem::path(pkg.path).parent_path().string());
+    }
+
+    for(const auto& inc : options.extra_includes) {
+        if(!inc.empty()) dirs.insert(inc);
+    }
+
+    if(builder) {
+        for(const auto& inc : builder->splitList("INCLUDES", ';')) {
+            if(!inc.empty()) dirs.insert(inc);
+        }
+    }
+
+    if(const char* upp_env = std::getenv("UPP")) {
+        for(const auto& inc : split_env_paths(upp_env)) {
+            if(!inc.empty()) dirs.insert(inc);
+        }
+    }
+
+    std::vector<std::string> result(dirs.begin(), dirs.end());
+    std::sort(result.begin(), result.end());
+    return result;
+}
+
+std::string umk_flags(const WorkspaceBuildOptions& options, bool verbose) {
+    std::string flags;
+    if(options.build_type == "release") {
+        flags = "-r";
+    } else {
+        flags = "-d";
+    }
+    if(verbose || options.verbose) flags += "v";
+    return flags;
+}
+
+std::string default_output_path(const UppWorkspace& workspace,
+                                const UppPackage& pkg,
+                                const WorkspaceBuildOptions& options) {
+    if(!options.output_dir.empty()) {
+        std::filesystem::path base(options.output_dir);
+        if(base.is_relative()) {
+            if(!workspace.base_dir.empty()) {
+                base = std::filesystem::path(workspace.base_dir) / base;
+            }
+        }
+        base /= pkg.name;
+        return base.string();
+    }
+
+    if(!workspace.base_dir.empty()) {
+        std::filesystem::path out_dir = std::filesystem::path(workspace.base_dir) / "out";
+        out_dir /= pkg.name;
+        return out_dir.string();
+    }
+
+    return {};
+}
+
+std::string render_command_template(const std::string& tpl,
+                                    const std::map<std::string, std::string>& vars) {
+    std::string result = tpl;
+    for(const auto& [key, value] : vars) {
+        std::string marker = "{" + key + "}";
+        size_t pos = 0;
+        while((pos = result.find(marker, pos)) != std::string::npos) {
+            result.replace(pos, marker.length(), value);
+            pos += value.length();
+        }
+    }
+    return result;
+}
+
+std::string make_command_for_package(const UppWorkspace& workspace,
+                                     const UppPackage& pkg,
+                                     const WorkspaceBuildOptions& options,
+                                     const UppBuildMethod* builder) {
+    auto assembly_dirs = build_asmlist(workspace, pkg, options, builder);
+    std::string assembly_arg = assembly_dirs.empty() ? "." : join_with(assembly_dirs, ',');
+    std::string flags = umk_flags(options, options.verbose);
+    std::string output_path = default_output_path(workspace, pkg, options);
+
+    std::map<std::string, std::string> vars = {
+        {"assembly", shell_quote(assembly_arg)},
+        {"package", shell_quote(pkg.name)},
+        {"package_path", shell_quote(pkg.path)},
+        {"build_type", shell_quote(options.build_type)},
+        {"flags", shell_quote(flags)},
+        {"output", output_path.empty() ? "" : shell_quote(output_path)},
+        {"workspace", shell_quote(workspace.name)}
+    };
+
+    if(builder) {
+        vars["builder"] = shell_quote(builder->id);
+        vars["builder_path"] = builder->source_path.empty()
+            ? shell_quote(builder->id)
+            : shell_quote(builder->source_path);
+    } else {
+        vars["builder"] = "''";
+        vars["builder_path"] = "''";
+    }
+
+    std::string working_dir;
+    if(!workspace.base_dir.empty()) {
+        working_dir = workspace.base_dir;
+    } else if(!pkg.path.empty()) {
+        working_dir = std::filesystem::path(pkg.path).parent_path().string();
+    } else {
+        working_dir = ".";
+    }
+
+    std::string command_body;
+    if(builder) {
+        auto tpl = builder->get("COMMAND");
+        if(tpl) {
+            command_body = render_command_template(*tpl, vars);
+        }
+    }
+
+    if(command_body.empty()) {
+        std::string builder_arg;
+        if(builder) {
+            builder_arg = builder->source_path.empty()
+                ? shell_quote(builder->id)
+                : shell_quote(builder->source_path);
+        }
+        command_body = "umk " + vars["assembly"] + " " + vars["package"];
+        if(!builder_arg.empty()) {
+            command_body += " " + builder_arg;
+        }
+        if(!flags.empty()) {
+            command_body += " " + vars["flags"];
+        }
+        if(!output_path.empty()) {
+            command_body += " " + vars["output"];
+        }
+    }
+
+    if(!output_path.empty()) {
+        std::filesystem::path out_path(output_path);
+        auto parent = out_path.parent_path();
+        if(!parent.empty()) {
+            command_body = "mkdir -p " + shell_quote(parent.string()) + " && " + command_body;
+        }
+    }
+
+    return "cd " + shell_quote(working_dir) + " && " + command_body;
+}
+
+} // namespace
+
+WorkspaceBuildSummary build_workspace(UppAssembly& assembly,
+                                      Vfs& vfs,
+                                      const WorkspaceBuildOptions& options) {
+    WorkspaceBuildSummary summary;
+
+    auto workspace = assembly.get_workspace();
+    if(!workspace) {
+        throw std::runtime_error("No active workspace. Use 'upp.wksp.open' first.");
+    }
+
+    std::shared_ptr<UppPackage> target_pkg;
+    if(!options.target_package.empty()) {
+        target_pkg = workspace->get_package(options.target_package);
+        if(!target_pkg) {
+            throw std::runtime_error("Target package not found in workspace: " + options.target_package);
+        }
+    } else {
+        target_pkg = workspace->get_primary_package();
+        if(!target_pkg) {
+            throw std::runtime_error("Workspace has no primary package. Use 'upp.wksp.pkg.set' to choose one.");
+        }
+    }
+
+    const UppBuildMethod* builder = nullptr;
+    if(!options.builder_name.empty()) {
+        builder = g_upp_builder_registry.get(options.builder_name);
+        if(!builder) {
+            throw std::runtime_error("Unknown builder: " + options.builder_name);
+        }
+    } else {
+        builder = g_upp_builder_registry.active();
+    }
+
+    if(builder) {
+        summary.builder_used = builder->id;
+    } else {
+        summary.builder_used = "<default>";
+    }
+
+    std::unordered_set<std::string> visiting;
+    std::unordered_set<std::string> visited;
+    collect_packages(workspace, target_pkg->name, visiting, visited, summary.package_order);
+
+    BuildGraph plan;
+
+    for(const auto& pkg_name : summary.package_order) {
+        auto pkg = workspace->get_package(pkg_name);
+        if(!pkg) continue;
+
+        BuildRule rule;
+        rule.name = package_target(pkg_name);
+        rule.always_run = true;
+
+        for(const auto& dep : pkg->dependencies) {
+            if(workspace->get_package(dep)) {
+                rule.dependencies.push_back(package_target(dep));
+            }
+        }
+
+        BuildCommand cmd;
+        cmd.type = BuildCommand::Type::Shell;
+        cmd.text = make_command_for_package(*workspace, *pkg, options, builder);
+        rule.commands.push_back(cmd);
+
+        std::string output_path = default_output_path(*workspace, *pkg, options);
+        if(!output_path.empty()) {
+            rule.outputs.push_back(output_path);
+        }
+
+        plan.rules[rule.name] = rule;
+    }
+
+    summary.plan = plan;
+
+    BuildOptions build_options;
+    build_options.verbose = options.verbose;
+    build_options.executor = [&](const BuildRule& rule, BuildResult& result, bool verbose) {
+        if(options.dry_run) {
+            for(const auto& cmd : rule.commands) {
+                std::string line = "[dry-run] " + cmd.text + "\n";
+                result.output += line;
+            }
+            return true;
+        }
+        return BuildGraph::runShellCommands(rule, result, verbose);
+    };
+
+    std::string target_name = package_target(target_pkg->name);
+    summary.result = summary.plan.build(target_name, vfs, build_options);
+    return summary;
+}

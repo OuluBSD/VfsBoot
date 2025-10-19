@@ -66,6 +66,7 @@
 #include "planner.h"
 #include "ai_bridge.h"
 #include "context_builder.h"
+#include "build_graph.h"
 #include "make.h"
 #include "hypothesis.h"
 #include "scope_store.h"
@@ -79,5 +80,4 @@
 #include "ui_backend.h"
 #include "upp_assembly.h"
 #include "upp_builder.h"
-
 #endif
