@@ -462,7 +462,10 @@ std::vector<std::string> get_all_commands(){
         "hypothesis.duplicates", "hypothesis.logging", "hypothesis.pattern",
         "cpp.tu", "cpp.include", "cpp.func", "cpp.param", "cpp.print",
         "cpp.returni", "cpp.return", "cpp.expr", "cpp.vardecl", "cpp.stmt",
-        "cpp.rangefor", "cpp.dump", "make", "sample.run", "help", "quit", "exit",
+        "cpp.rangefor", "cpp.dump", "make", "sample.run",
+        "upp.builder.load", "upp.builder.add", "upp.builder.list", "upp.builder.active.set",
+        "upp.builder.get", "upp.builder.set", "upp.builder.dump", "upp.builder.active.dump",
+        "help", "quit", "exit",
         "upp.asm.load", "upp.asm.create", "upp.asm.list", "upp.asm.scan", "upp.asm.load.host", "upp.asm.refresh", "upp.gui"
     };
 }
@@ -644,4 +647,3 @@ void save_history(const std::vector<std::string>& history){
         out << entry << '\n';
     }
 }
-

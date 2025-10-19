@@ -7,6 +7,14 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 	- workspace has active primary package and it's dependency packages
 	- have ncurses gui with: main code editor area, package list at top left and file list (of package) at bottom left. have menu bar too
 
+- Implement U++ build method + package build pipeline (umk subset)
+	- load package configuration (.upp) settings into builder context
+	- honour toggles: use shared / only shared / only static
+	- support debug / release toolchains and flag bundles
+	- handle build flags (GUI, USEMALLOC, etc.) and verbosity switches
+	- allow exporting makefiles and performing clean targets
+	- document BLITZ / advanced optimizations as deferred follow-up
+
 	
 ## Upcoming: web browser gui: important
 - **Phase 1 COMPLETE** - Basic terminal working ✅

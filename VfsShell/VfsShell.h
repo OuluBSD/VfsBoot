@@ -78,5 +78,6 @@
 #include "editor_functions.h"
 #include "ui_backend.h"
 #include "upp_assembly.h"
+#include "upp_builder.h"
 
 #endif

@@ -11,8 +11,39 @@ std::vector<std::shared_ptr<UppAssembly>> g_startup_assemblies;
 // Global reference to the currently active assembly
 std::shared_ptr<UppAssembly> g_current_assembly = nullptr;
 
+// Global U++ builder registry
+UppBuilderRegistry g_upp_builder_registry;
+
 // Global registry instance
 Registry g_registry;
+
+namespace {
+
+bool has_bm_extension(const std::string& name) {
+    if(name.size() < 3) return false;
+    std::string suffix = name.substr(name.size() - 3);
+    std::transform(suffix.begin(), suffix.end(), suffix.begin(),
+                   [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+    return suffix == ".bm";
+}
+
+void dump_builder(const UppBuildMethod& builder) {
+    std::cout << "Builder: " << builder.id;
+    if(!builder.builder_type.empty() && builder.builder_type != builder.id) {
+        std::cout << " (type: " << builder.builder_type << ")";
+    }
+    std::cout << "\n";
+    if(!builder.source_path.empty()) {
+        std::cout << "Source: " << builder.source_path << "\n";
+    }
+    for(const auto& key : builder.keys()) {
+        auto it = builder.properties.find(key);
+        if(it == builder.properties.end()) continue;
+        std::cout << "  " << key << " = \"" << it->second << "\"\n";
+    }
+}
+
+} // namespace
 
 
 void help(){
@@ -147,6 +178,15 @@ R"(Commands:
   # Build automation
   make [target] [-f makefile] [-v|--verbose]  (minimal GNU make subset)
   sample.run [--keep] [--trace]               (build, compile, and run demo C++ program)
+  # U++ builder support
+  upp.builder.load <directory-path> [-H]      (load all .bm files from directory, -H treats path as OS filesystem path)
+  upp.builder.add <bm-file-path> [-H]         (load a single .bm build method file)
+  upp.builder.list                            (list loaded build methods)
+  upp.builder.active.set <builder-name>       (set the active build method)
+  upp.builder.get <key>                       (show a key from the active build method)
+  upp.builder.set <key> <value>               (update a key in the active build method)
+  upp.builder.dump <builder-name>             (dump all keys for a build method)
+  upp.builder.active.dump                     (dump keys for the active build method)
   # U++ startup support
   upp.startup.load <directory-path> [-H]      (load all .var files from directory, -H treats path as OS filesystem path)
   upp.startup.list                            (list all loaded startup assemblies)
@@ -4555,6 +4595,251 @@ int main(int argc, char** argv){
             if(exec_status != 0){
                 result.success = false;
             }
+
+        } else if(cmd == "upp.builder.load") {
+            bool use_host_path = false;
+            std::string dir_arg;
+            for(const auto& arg : inv.args){
+                if(arg == "-H") use_host_path = true;
+                else dir_arg = arg;
+            }
+            if(dir_arg.empty()){
+                throw std::runtime_error("upp.builder.load <directory-path> [-H]");
+            }
+
+            std::vector<std::string> loaded_builders;
+            std::vector<std::string> errors;
+
+            if(use_host_path){
+                std::filesystem::path host_dir(dir_arg);
+                if(!std::filesystem::exists(host_dir)){
+                    throw std::runtime_error("upp.builder.load: host directory does not exist: " + host_dir.string());
+                }
+                if(!std::filesystem::is_directory(host_dir)){
+                    throw std::runtime_error("upp.builder.load: not a directory: " + host_dir.string());
+                }
+
+                for(const auto& entry : std::filesystem::directory_iterator(host_dir)){
+                    if(!entry.is_regular_file()) continue;
+                    auto filename = entry.path().filename().string();
+                    if(!has_bm_extension(filename)) continue;
+
+                    std::ifstream file(entry.path());
+                    if(!file){
+                        errors.push_back(entry.path().string() + ": cannot open");
+                        continue;
+                    }
+                    std::stringstream buffer;
+                    buffer << file.rdbuf();
+                    std::string parse_error;
+                    std::string builder_id = entry.path().stem().string();
+                    if(g_upp_builder_registry.parseAndStore(builder_id, entry.path().string(), buffer.str(), parse_error)){
+                        loaded_builders.push_back(builder_id);
+                    } else {
+                        errors.push_back(entry.path().string() + ": " + parse_error);
+                    }
+                }
+            } else {
+                std::string dir_path = normalize_path(cwd.path, dir_arg);
+                auto hits = vfs.resolveMulti(dir_path);
+                if(hits.empty()){
+                    throw std::runtime_error("upp.builder.load: directory not found: " + dir_path);
+                }
+                bool is_dir = false;
+                for(const auto& hit : hits){
+                    if(hit.node->isDir()){
+                        is_dir = true;
+                        break;
+                    }
+                }
+                if(!is_dir){
+                    throw std::runtime_error("upp.builder.load: not a directory: " + dir_path);
+                }
+
+                auto overlay_ids = vfs.overlaysForPath(dir_path);
+                auto listing = vfs.listDir(dir_path, overlay_ids);
+                for(const auto& [name, entry] : listing){
+                    if(entry.types.count('f') == 0) continue;
+                    if(!has_bm_extension(name)) continue;
+                    std::string file_path = join_path(dir_path, name);
+                    std::string content;
+                    try {
+                        content = vfs.read(file_path, std::nullopt);
+                    } catch(const std::exception& e) {
+                        errors.push_back(file_path + ": read failed (" + e.what() + ")");
+                        continue;
+                    } catch(...) {
+                        errors.push_back(file_path + ": read failed (unknown error)");
+                        continue;
+                    }
+                    std::string parse_error;
+                    std::string builder_id = std::filesystem::path(name).stem().string();
+                    if(g_upp_builder_registry.parseAndStore(builder_id, file_path, content, parse_error)){
+                        loaded_builders.push_back(builder_id);
+                    } else {
+                        errors.push_back(file_path + ": " + parse_error);
+                    }
+                }
+            }
+
+            if(loaded_builders.empty()){
+                std::cout << "upp.builder.load: no .bm files processed\n";
+            } else {
+                std::cout << "upp.builder.load: loaded " << loaded_builders.size() << " build method(s):\n";
+                for(const auto& name : loaded_builders){
+                    const auto* builder = g_upp_builder_registry.get(name);
+                    std::cout << "  - " << name;
+                    if(builder && !builder->builder_type.empty() && builder->builder_type != name){
+                        std::cout << " [" << builder->builder_type << "]";
+                    }
+                    std::cout << "\n";
+                }
+            }
+            if(!errors.empty()){
+                std::cout << "upp.builder.load: encountered " << errors.size() << " issue(s):\n";
+                for(const auto& msg : errors){
+                    std::cout << "  ! " << msg << "\n";
+                }
+            }
+
+        } else if(cmd == "upp.builder.add") {
+            bool use_host_path = false;
+            std::string path_arg;
+            for(const auto& arg : inv.args){
+                if(arg == "-H") use_host_path = true;
+                else path_arg = arg;
+            }
+            if(path_arg.empty()){
+                throw std::runtime_error("upp.builder.add <bm-file-path> [-H]");
+            }
+
+            std::string builder_id;
+            std::string source_path;
+            std::string content;
+            if(use_host_path){
+                std::filesystem::path host_file(path_arg);
+                if(!std::filesystem::exists(host_file)){
+                    throw std::runtime_error("upp.builder.add: host file does not exist: " + host_file.string());
+                }
+                if(!std::filesystem::is_regular_file(host_file)){
+                    throw std::runtime_error("upp.builder.add: not a file: " + host_file.string());
+                }
+                if(!has_bm_extension(host_file.filename().string())){
+                    throw std::runtime_error("upp.builder.add: expected .bm file");
+                }
+                std::ifstream file(host_file);
+                if(!file){
+                    throw std::runtime_error("upp.builder.add: cannot open " + host_file.string());
+                }
+                std::stringstream buffer;
+                buffer << file.rdbuf();
+                content = buffer.str();
+                builder_id = host_file.stem().string();
+                source_path = host_file.string();
+            } else {
+                std::string vfs_path = normalize_path(cwd.path, path_arg);
+                if(!has_bm_extension(std::filesystem::path(vfs_path).filename().string())){
+                    throw std::runtime_error("upp.builder.add: expected .bm file");
+                }
+                try {
+                    content = vfs.read(vfs_path, std::nullopt);
+                } catch(const std::exception& e) {
+                    throw std::runtime_error("upp.builder.add: read failed: " + std::string(e.what()));
+                }
+                builder_id = std::filesystem::path(vfs_path).stem().string();
+                source_path = vfs_path;
+            }
+
+            std::string parse_error;
+            if(!g_upp_builder_registry.parseAndStore(builder_id, source_path, content, parse_error)){
+                throw std::runtime_error("upp.builder.add: parse error: " + parse_error);
+            }
+            std::cout << "upp.builder.add: loaded build method '" << builder_id << "'\n";
+
+        } else if(cmd == "upp.builder.list") {
+            auto names = g_upp_builder_registry.list();
+            if(names.empty()){
+                std::cout << "No build methods loaded. Use 'upp.builder.load' or 'upp.builder.add'.\n";
+            } else {
+                auto active_name = g_upp_builder_registry.activeName();
+                std::cout << "Loaded build methods (" << names.size() << "):\n";
+                for(const auto& name : names){
+                    const auto* builder = g_upp_builder_registry.get(name);
+                    bool is_active = active_name && *active_name == name;
+                    std::cout << (is_active ? "* " : "  ") << name;
+                    if(builder && !builder->builder_type.empty() && builder->builder_type != name){
+                        std::cout << " [" << builder->builder_type << "]";
+                    }
+                    if(builder && !builder->source_path.empty()){
+                        std::cout << " <" << builder->source_path << ">";
+                    }
+                    if(is_active){
+                        std::cout << " (active)";
+                    }
+                    std::cout << "\n";
+                }
+            }
+
+        } else if(cmd == "upp.builder.active.set") {
+            if(inv.args.empty()){
+                throw std::runtime_error("upp.builder.active.set <builder-name>");
+            }
+            std::string builder_name = inv.args[0];
+            std::string error_message;
+            if(!g_upp_builder_registry.setActive(builder_name, error_message)){
+                throw std::runtime_error("upp.builder.active.set: " + error_message);
+            }
+            std::cout << "Active build method set to '" << builder_name << "'\n";
+
+        } else if(cmd == "upp.builder.get") {
+            if(inv.args.empty()){
+                throw std::runtime_error("upp.builder.get <key>");
+            }
+            auto* builder = g_upp_builder_registry.active();
+            if(!builder){
+                throw std::runtime_error("upp.builder.get: no active build method");
+            }
+            std::string key = inv.args[0];
+            std::string key_upper = key;
+            std::transform(key_upper.begin(), key_upper.end(), key_upper.begin(),
+                           [](unsigned char c){ return static_cast<char>(std::toupper(c)); });
+            auto value = builder->get(key_upper);
+            if(!value){
+                throw std::runtime_error("upp.builder.get: key not found: " + key_upper);
+            }
+            std::cout << key_upper << " = \"" << *value << "\"\n";
+
+        } else if(cmd == "upp.builder.set") {
+            if(inv.args.size() < 2){
+                throw std::runtime_error("upp.builder.set <key> <value>");
+            }
+            auto* builder = g_upp_builder_registry.active();
+            if(!builder){
+                throw std::runtime_error("upp.builder.set: no active build method");
+            }
+            std::string key = inv.args[0];
+            std::transform(key.begin(), key.end(), key.begin(),
+                           [](unsigned char c){ return static_cast<char>(std::toupper(c)); });
+            std::string value = join_args(inv.args, 1);
+            builder->set(key, value);
+            std::cout << "Set " << key << " = \"" << value << "\" for builder '" << builder->id << "'\n";
+
+        } else if(cmd == "upp.builder.dump") {
+            if(inv.args.empty()){
+                throw std::runtime_error("upp.builder.dump <builder-name>");
+            }
+            const auto* builder = g_upp_builder_registry.get(inv.args[0]);
+            if(!builder){
+                throw std::runtime_error("upp.builder.dump: builder not found: " + inv.args[0]);
+            }
+            dump_builder(*builder);
+
+        } else if(cmd == "upp.builder.active.dump") {
+            const auto* builder = g_upp_builder_registry.active();
+            if(!builder){
+                throw std::runtime_error("upp.builder.active.dump: no active build method");
+            }
+            dump_builder(*builder);
 
         } else if(cmd == "parse.file"){
             // libclang: parse C++ file from disk
