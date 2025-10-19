@@ -88,7 +88,11 @@ file
 	upp_assembly.h,
 	upp_assembly.cpp,
 	upp_builder.h,
-	upp_builder.cpp;
+	upp_builder.cpp,
+	upp_workspace_build.h,
+	upp_workspace_build.cpp,
+	build_graph.h,
+	build_graph.cpp;
 
 mainconfig
 	"" = "";

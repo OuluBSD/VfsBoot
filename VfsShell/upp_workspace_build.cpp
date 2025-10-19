@@ -257,30 +257,17 @@ std::string make_command_for_package(const UppWorkspace& workspace,
         }
     }
 
+    bool has_real_command = true;
     if(command_body.empty()) {
-        std::string builder_arg;
-        if(builder) {
-            std::string builder_source = builder->source_path;
-            if(!builder_source.empty()) {
-                builder_source = prefer_host_path(vfs, builder_source);
-            }
-            builder_arg = builder_source.empty()
-                ? shell_quote(builder->id)
-                : shell_quote(builder_source);
-        }
-        command_body = "umk " + vars["assembly"] + " " + vars["package"];
-        if(!builder_arg.empty()) {
-            command_body += " " + builder_arg;
-        }
-        if(!flags.empty()) {
-            command_body += " " + vars["flags"];
-        }
-        if(!output_path.empty()) {
-            command_body += " " + vars["output"];
-        }
+        has_real_command = false;
+        std::string builder_label = builder ? builder->id : "<default>";
+        std::string message = "upp.wksp.build: builder '" + builder_label +
+                              "' has no COMMAND defined; configure the build method to describe how to build package '" +
+                              pkg.name + "'.\n";
+        command_body = "printf '%s' " + shell_quote(message) + " >&2; exit 1";
     }
 
-    if(!output_path.empty()) {
+    if(has_real_command && !output_path.empty()) {
         std::filesystem::path out_path(output_path);
         auto parent = out_path.parent_path();
         if(!parent.empty()) {
