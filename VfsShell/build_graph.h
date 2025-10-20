@@ -14,7 +14,9 @@ class Vfs;
 struct BuildCommand {
     enum class Type {
         Shell,
-        AiPrompt
+        AiPrompt,
+        UppCompile,
+        UppLink
     };
 
     Type type = Type::Shell;

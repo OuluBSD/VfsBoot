@@ -54,31 +54,81 @@ BuildResult BuildGraph::build(const std::string& target, Vfs& vfs, BuildOptions 
 
 bool BuildGraph::runShellCommands(const BuildRule& rule, BuildResult& result, bool verbose) {
     for(const auto& command : rule.commands) {
-        if(command.type != BuildCommand::Type::Shell) {
+        if(command.type == BuildCommand::Type::Shell) {
+            if(verbose) {
+                result.output += command.text + "\n";
+            }
+
+            FILE* pipe = popen(command.text.c_str(), "r");
+            if(!pipe) {
+                result.errors.push_back("Failed to execute: " + command.text);
+                return false;
+            }
+
+            char buffer[256];
+            while(fgets(buffer, sizeof(buffer), pipe)) {
+                result.output += buffer;
+            }
+
+            int status = pclose(pipe);
+            if(status != 0) {
+                result.errors.push_back("Command failed (exit " +
+                                        std::to_string(WEXITSTATUS(status)) +
+                                        "): " + command.text);
+                return false;
+            }
+        } else if(command.type == BuildCommand::Type::UppCompile) {
+            // Handle U++ compilation command
+            if(verbose) {
+                result.output += "[U++ Compile] " + command.text + "\n";
+            }
+            
+            // Extract metadata for compilation
+            std::string source_file = command.metadata.at("source");
+            std::string output_file = command.metadata.at("output");
+            std::string flags = command.metadata.at("flags");
+            
+            // Construct the compilation command
+            std::string cmd = command.text + " " + flags + " -c " + source_file + " -o " + output_file;
+            
+            if(verbose) {
+                result.output += "Executing: " + cmd + "\n";
+            }
+            
+            int status = std::system(cmd.c_str());
+            if(status != 0) {
+                result.errors.push_back("U++ compilation failed (exit " +
+                                        std::to_string(WEXITSTATUS(status)) +
+                                        "): " + cmd);
+                return false;
+            }
+        } else if(command.type == BuildCommand::Type::UppLink) {
+            // Handle U++ linking command
+            if(verbose) {
+                result.output += "[U++ Link] " + command.text + "\n";
+            }
+            
+            // Extract metadata for linking
+            std::string output_file = command.metadata.at("output");
+            std::string object_files = command.metadata.at("objects");
+            std::string flags = command.metadata.at("flags");
+            
+            // Construct the linking command
+            std::string cmd = command.text + " " + flags + " " + object_files + " -o " + output_file;
+            
+            if(verbose) {
+                result.output += "Executing: " + cmd + "\n";
+            }
+            
+            int status = std::system(cmd.c_str());
+            if(status != 0) {
+                result.errors.push_back("U++ linking failed (exit " +
+                                        std::to_string(WEXITSTATUS(status)) +
+                                        "): " + cmd);
+                return false;
+            }
+        } else {
             result.errors.push_back("Unsupported command type for rule: " + rule.name);
-            return false;
-        }
-
-        if(verbose) {
-            result.output += command.text + "\n";
-        }
-
-        FILE* pipe = popen(command.text.c_str(), "r");
-        if(!pipe) {
-            result.errors.push_back("Failed to execute: " + command.text);
-            return false;
-        }
-
-        char buffer[256];
-        while(fgets(buffer, sizeof(buffer), pipe)) {
-            result.output += buffer;
-        }
-
-        int status = pclose(pipe);
-        if(status != 0) {
-            result.errors.push_back("Command failed (exit " +
-                                    std::to_string(WEXITSTATUS(status)) +
-                                    "): " + command.text);
             return false;
         }
     }
