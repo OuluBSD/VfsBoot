@@ -62,10 +62,14 @@ std::string prefer_host_path(Vfs& vfs, const std::string& path) {
     // If the path is within the virtual filesystem, return the host path
     // Otherwise return the original path
     if (path.empty()) return path;
-    
-    // Check if the path is a VFS path (starts with /) and map to host if needed
-    // This is a simplified implementation - in a real scenario, you might need 
-    // more complex mapping logic based on the specific VFS implementation
+
+    // Try to map VFS path to host filesystem path
+    auto host_path = vfs.mapToHostPath(path);
+    if (host_path.has_value()) {
+        return host_path.value();
+    }
+
+    // If no mapping found, return original path
     return path;
 }
 
