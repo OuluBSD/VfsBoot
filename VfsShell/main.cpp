@@ -4611,8 +4611,8 @@ int main(int argc, char** argv){
                              "  --include, -I <path>     Additional include/search directory (repeatable)\n"
                              "  --dry-run                Show commands without executing them\n"
                              "  --plan                   Display build plan (implies --dry-run)\n"
-                             "  --verbose                Verbose execution (passes -v to builder)\n"
-                             "  --help                   Show this help message\n";
+                             "  --verbose, -v            Show all build commands executed (clang++, umk, etc.)\n"
+                             "  --help,    -h            Show this help message\n";
             };
 
             WorkspaceBuildOptions build_opts;
@@ -4651,7 +4651,7 @@ int main(int argc, char** argv){
                 } else if(arg == "--plan") {
                     build_opts.dry_run = true;
                     show_plan = true;
-                } else if(arg == "--verbose") {
+                } else if(arg == "--verbose" || arg == "-v") {
                     build_opts.verbose = true;
                 } else if(arg == "--help" || arg == "-h") {
                     print_usage();
@@ -4680,6 +4680,20 @@ int main(int argc, char** argv){
                     std::cout << "upp.wksp.build: plan\n";
                     for(const auto& name : summary.package_order) {
                         auto target = "pkg:" + name;
+                        auto it = summary.plan.rules.find(target);
+                        if(it == summary.plan.rules.end()) continue;
+                        std::cout << "  [" << name << "]\n";
+                        for(const auto& cmd_entry : it->second.commands) {
+                            std::cout << "    " << cmd_entry.text << "\n";
+                        }
+                    }
+                }
+
+                // Show build commands in verbose mode
+                if(build_opts.verbose && !show_plan) {
+                    std::cout << "upp.wksp.build: commands\n";
+                    for(const auto& name : summary.package_order) {
+                        auto target = "pkg." + name;
                         auto it = summary.plan.rules.find(target);
                         if(it == summary.plan.rules.end()) continue;
                         std::cout << "  [" << name << "]\n";
