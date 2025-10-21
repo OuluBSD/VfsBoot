@@ -142,6 +142,7 @@ struct Vfs {
     void setMountAllowed(bool allowed);
     bool isMountAllowed() const;
     std::optional<std::string> mapToHostPath(const std::string& vfs_path) const;
+    std::optional<std::string> mapFromHostPath(const std::string& host_path) const;
 
     // Remote filesystem server
     void serveRemoteFilesystem(int port, const std::string& vfs_root = "/");

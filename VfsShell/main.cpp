@@ -18,6 +18,9 @@ UppBuilderRegistry g_upp_builder_registry;
 // Global registry instance
 Registry g_registry;
 
+// Global variable to track the active file in the workspace
+std::string g_active_file_path = "";
+
 namespace {
 
 bool has_bm_extension(const std::string& name) {
@@ -4347,6 +4350,7 @@ int main(int argc, char** argv){
                     if(primary_pkg) {
                         // Check if the file exists in the active package
                         bool file_found = false;
+                        std::string matched_pkg_file;
                         for(const auto& pkg_file : primary_pkg->files) {
                             // Match by filename only (last part after slash)
                             size_t last_slash = pkg_file.find_last_of("/\\");
@@ -4359,14 +4363,32 @@ int main(int argc, char** argv){
                             
                             if(filename == target_filename) {
                                 file_found = true;
+                                matched_pkg_file = pkg_file;
                                 break;
                             }
                         }
                         
                         if(file_found) {
-                            std::cout << "Set active file: " << file_path << "\n";
-                            // In a real implementation, we would set the active file in the editor context
-                            // For now, we just acknowledge the command
+                            // Construct the full path by combining package path with matched file
+                            std::string full_path;
+                            if(matched_pkg_file.empty() || matched_pkg_file[0] != '/') {
+                                // Relative path - combine with package path
+                                full_path = primary_pkg->path + "/" + matched_pkg_file;
+                            } else {
+                                // Already absolute path
+                                full_path = matched_pkg_file;
+                            }
+
+                            // Translate the host path to VFS-mounted path
+                            auto vfs_mapped = vfs.mapFromHostPath(full_path);
+                            if(vfs_mapped.has_value()) {
+                                std::cout << "Set active file: " << vfs_mapped.value() << " (mapped from " << full_path << ")\n";
+                                g_active_file_path = vfs_mapped.value();
+                            } else {
+                                // Fallback to original path if not mounted
+                                std::cout << "Set active file: " << full_path << " (not mounted, using host path)\n";
+                                g_active_file_path = full_path;
+                            }
                         } else {
                             throw std::runtime_error("File not found in active package '" + 
                                 primary_pkg->name + "': " + file_path);
@@ -4379,6 +4401,200 @@ int main(int argc, char** argv){
                 }
             } else {
                 throw std::runtime_error("No active workspace. Use 'upp.wksp.open <path>' first");
+            }
+
+        } else if(cmd == "upp.wksp.file.edit") {
+            // Implementation of upp.wksp.file.edit [<file>]
+            // If <file> is provided, set it as active file first (like upp.wksp.file.set)
+            // Then open the file in the internal full-screen ncurses text editor
+            
+            std::string file_path;
+            bool file_specified = !inv.args.empty();
+            
+            if(file_specified) {
+                // Set the specified file as active first
+                std::string target_file = inv.args[0];
+                
+                if(g_current_assembly) {
+                    auto workspace = g_current_assembly->get_workspace();
+                    if(workspace) {
+                        // Find the primary (active) package
+                        auto primary_pkg = workspace->get_primary_package();
+                        if(primary_pkg) {
+                            // Check if the file exists in the active package
+                            bool file_found = false;
+                            std::string matched_pkg_file;
+                            for(const auto& pkg_file : primary_pkg->files) {
+                                // Match by filename only (last part after slash)
+                                size_t last_slash = pkg_file.find_last_of("/\\");
+                                std::string filename = (last_slash != std::string::npos) ? 
+                                    pkg_file.substr(last_slash + 1) : pkg_file;
+                                
+                                size_t target_last_slash = target_file.find_last_of("/\\");
+                                std::string target_filename = (target_last_slash != std::string::npos) ? 
+                                    target_file.substr(target_last_slash + 1) : target_file;
+                                
+                                if(filename == target_filename) {
+                                    file_found = true;
+                                    matched_pkg_file = pkg_file;
+                                    break;
+                                }
+                            }
+                            
+                            if(file_found) {
+                                std::cout << "Set active file: " << target_file << "\n";
+                                file_path = matched_pkg_file; // Use the full package file path
+                            } else {
+                                throw std::runtime_error("File not found in active package '" + 
+                                    primary_pkg->name + "': " + target_file);
+                            }
+                        } else {
+                            throw std::runtime_error("No active package selected. Use 'upp.wksp.pkg.set <package-name>' first");
+                        }
+                    } else {
+                        throw std::runtime_error("Current workspace has no packages");
+                    }
+                } else {
+                    throw std::runtime_error("No active workspace. Use 'upp.wksp.open <path>' first");
+                }
+            } else {
+                // No file specified - use the active file if one is set
+                if (!g_active_file_path.empty()) {
+                    file_path = g_active_file_path;
+                } else {
+                    throw std::runtime_error("No active file set. Use 'upp.wksp.file.set <file-path>' first, or specify a file path.");
+                }
+            }
+            
+            // Now open the file in the ncurses editor
+            if(!file_path.empty()) {
+                // Read existing content if file exists
+                std::string content;
+                bool file_exists = true;
+
+                // Check if this path can be translated to a VFS path via mounts
+                auto vfs_path_opt = vfs.mapFromHostPath(file_path);
+
+                if(vfs_path_opt.has_value()) {
+                    // Path is mounted in VFS, read via VFS
+                    try {
+                        content = vfs.read(vfs_path_opt.value(), std::nullopt);
+                    } catch(...) {
+                        file_exists = false;
+                        content = ""; // New file
+                    }
+                } else {
+                    // Not a mounted path, try VFS directly, fallback to host filesystem
+                    try {
+                        content = vfs.read(file_path, std::nullopt);
+                    } catch(...) {
+                        // Last resort: try reading from host filesystem
+                        std::ifstream host_file(file_path);
+                        if(host_file.good()) {
+                            std::stringstream buffer;
+                            buffer << host_file.rdbuf();
+                            content = buffer.str();
+                            host_file.close();
+                        } else {
+                            file_exists = false;
+                            content = ""; // New file
+                        }
+                    }
+                }
+                
+                // Split content into lines
+                std::vector<std::string> lines;
+                std::istringstream iss(content);
+                std::string line;
+                while(std::getline(iss, line)) {
+                    lines.push_back(line);
+                }
+                
+                // If file was empty but we have one empty line, clear it
+                if(content.empty() && lines.size() == 1 && lines[0].empty()) {
+                    lines.clear();
+                }
+                
+                // If no lines, start with one empty line
+                if(lines.empty()) {
+                    lines.push_back("");
+                }
+                
+#ifdef CODEX_UI_NCURSES
+                // Use ncurses-based editor
+                result.success = run_ncurses_editor(vfs, file_path, lines, file_exists, cwd.primary_overlay);
+#else
+                // Use simple terminal-based editor (fallback)
+                result.success = run_simple_editor(vfs, file_path, lines, file_exists, cwd.primary_overlay);
+#endif
+            }
+
+        } else if(cmd == "upp.wksp.file.cat") {
+            // Print the active file content
+            if (g_active_file_path.empty()) {
+                throw std::runtime_error("No active file set. Use 'upp.wksp.file.set <file-path>' first.");
+            }
+
+            std::string file_path = g_active_file_path;
+            std::string content;
+            bool file_read = false;
+
+            std::cout << "Active file path: " << file_path << "\n";
+            std::cout << "Attempting to read file...\n";
+
+            // Check if this path can be translated to a VFS path via mounts
+            auto vfs_path_opt = vfs.mapFromHostPath(file_path);
+
+            if(vfs_path_opt.has_value()) {
+                std::cout << "Mapped to VFS path: " << vfs_path_opt.value() << "\n";
+                // Path is mounted in VFS, read via VFS
+                try {
+                    content = vfs.read(vfs_path_opt.value(), std::nullopt);
+                    std::cout << "Successfully read from VFS mount\n";
+                    file_read = true;
+                } catch(const std::exception& e) {
+                    std::cout << "Failed to read from VFS: " << e.what() << "\n";
+                }
+            } else {
+                std::cout << "Path not mapped to VFS mount\n";
+            }
+
+            if(!file_read) {
+                // Try VFS directly
+                try {
+                    content = vfs.read(file_path, std::nullopt);
+                    std::cout << "Successfully read from VFS directly\n";
+                    file_read = true;
+                } catch(const std::exception& e) {
+                    std::cout << "Failed to read from VFS directly: " << e.what() << "\n";
+                }
+            }
+
+            if(!file_read) {
+                // Last resort: try reading from host filesystem
+                std::ifstream host_file(file_path);
+                if(host_file.good()) {
+                    std::stringstream buffer;
+                    buffer << host_file.rdbuf();
+                    content = buffer.str();
+                    host_file.close();
+                    std::cout << "Successfully read from host filesystem\n";
+                    file_read = true;
+                } else {
+                    std::cout << "Failed to read from host filesystem\n";
+                }
+            }
+
+            if(file_read) {
+                std::cout << "\n===== File Content =====\n";
+                std::cout << content;
+                if(!content.empty() && content.back() != '\n') {
+                    std::cout << "\n";
+                }
+                std::cout << "===== End of File =====\n";
+                std::cout << "Content size: " << content.size() << " bytes\n";
+            } else {
+                throw std::runtime_error("Could not read file from any source: " + file_path);
             }
 
         } else if(cmd == "upp.wksp.build") {
@@ -5599,17 +5815,58 @@ bool run_ncurses_editor(Vfs& vfs, const std::string& vfs_path, std::vector<std::
                             if (i < lines.size() - 1) oss << "\n";
                         }
                         std::string new_content = oss.str();
-                        vfs.write(vfs_path, new_content, overlay_id);
-                        file_modified = false;
-                        
-                        // Show confirmation
-                        move(rows - 1, 0);
-                        clrtoeol();
-                        attron(COLOR_PAIR(2));
-                        printw("[Saved %d lines to %s]", static_cast<int>(lines.size()), vfs_path.c_str());
-                        attroff(COLOR_PAIR(2));
-                        refresh();
-                        sleep(1);
+
+                        // Check if this path can be translated to a VFS path via mounts
+                        auto vfs_mapped_path = vfs.mapFromHostPath(vfs_path);
+
+                        if (vfs_mapped_path.has_value()) {
+                            // Path is mounted in VFS, write via VFS
+                            try {
+                                vfs.write(vfs_mapped_path.value(), new_content, overlay_id);
+                                file_modified = false;
+                            } catch(const std::exception& e) {
+                                move(rows - 1, 0);
+                                clrtoeol();
+                                attron(COLOR_PAIR(2) | A_BOLD);
+                                printw("Error: VFS write failed: %s", e.what());
+                                attroff(COLOR_PAIR(2) | A_BOLD);
+                                refresh();
+                                sleep(2);
+                            }
+                        } else {
+                            // Not a mounted path, try VFS directly, fallback to host filesystem
+                            try {
+                                vfs.write(vfs_path, new_content, overlay_id);
+                                file_modified = false;
+                            } catch(...) {
+                                // Fallback: write to host filesystem
+                                std::ofstream host_out(vfs_path);
+                                if (host_out.good()) {
+                                    host_out << new_content;
+                                    host_out.close();
+                                    file_modified = false;
+                                } else {
+                                    move(rows - 1, 0);
+                                    clrtoeol();
+                                    attron(COLOR_PAIR(2) | A_BOLD);
+                                    printw("Error: Could not write file: %s", vfs_path.c_str());
+                                    attroff(COLOR_PAIR(2) | A_BOLD);
+                                    refresh();
+                                    sleep(2);
+                                }
+                            }
+                        }
+
+                        if (!file_modified) {
+                            // Show confirmation
+                            move(rows - 1, 0);
+                            clrtoeol();
+                            attron(COLOR_PAIR(2));
+                            printw("[Saved %d lines to %s]", static_cast<int>(lines.size()), vfs_path.c_str());
+                            attroff(COLOR_PAIR(2));
+                            refresh();
+                            sleep(1);
+                        }
                     } else if (command == "wq" || command == "x") {
                         // Save and quit
                         std::ostringstream oss;
@@ -5618,7 +5875,30 @@ bool run_ncurses_editor(Vfs& vfs, const std::string& vfs_path, std::vector<std::
                             if (i < lines.size() - 1) oss << "\n";
                         }
                         std::string new_content = oss.str();
-                        vfs.write(vfs_path, new_content, overlay_id);
+
+                        // Check if this path can be translated to a VFS path via mounts
+                        auto vfs_mapped_path = vfs.mapFromHostPath(vfs_path);
+
+                        if (vfs_mapped_path.has_value()) {
+                            // Path is mounted in VFS, write via VFS
+                            try {
+                                vfs.write(vfs_mapped_path.value(), new_content, overlay_id);
+                            } catch(...) {
+                                // Ignore errors on quit
+                            }
+                        } else {
+                            // Not a mounted path, try VFS directly, fallback to host filesystem
+                            try {
+                                vfs.write(vfs_path, new_content, overlay_id);
+                            } catch(...) {
+                                // Fallback: write to host filesystem
+                                std::ofstream host_out(vfs_path);
+                                if (host_out.good()) {
+                                    host_out << new_content;
+                                    host_out.close();
+                                }
+                            }
+                        }
                         editor_active = false;
                     } else if (command == "help") {
                         // Show help

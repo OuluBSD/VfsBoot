@@ -409,6 +409,47 @@ std::optional<std::string> Vfs::mapToHostPath(const std::string& vfs_path) const
     return best_match;
 }
 
+std::optional<std::string> Vfs::mapFromHostPath(const std::string& host_path) const {
+    if(host_path.empty()) {
+        return std::nullopt;
+    }
+
+    // Normalize the host path first
+    std::filesystem::path normalized_host = std::filesystem::path(host_path).lexically_normal();
+
+    std::optional<std::string> best_match;
+    size_t best_len = 0;
+
+    for(const auto& mount : mounts) {
+        if(mount.type != MountType::Filesystem) continue;
+
+        std::filesystem::path mount_host = std::filesystem::path(mount.host_path).lexically_normal();
+
+        // Check if the host_path is under this mount's host_path
+        auto rel_path = normalized_host.lexically_relative(mount_host);
+        if(!rel_path.empty() && rel_path.native()[0] != '.') {
+            // The path is under this mount
+            if(mount.host_path.size() > best_len) {
+                // Build the VFS path
+                std::filesystem::path vfs_result = mount.vfs_path;
+                if(rel_path != ".") {
+                    vfs_result /= rel_path;
+                }
+                best_match = vfs_result.lexically_normal().string();
+                best_len = mount.host_path.size();
+            }
+        } else if(normalized_host == mount_host) {
+            // Exact match with mount point
+            if(mount.host_path.size() > best_len) {
+                best_match = mount.vfs_path;
+                best_len = mount.host_path.size();
+            }
+        }
+    }
+
+    return best_match;
+}
+
 std::string overlay_suffix(const Vfs& vfs, const std::vector<size_t>& overlays, size_t primary){
     if(overlays.empty()) return {};
     std::ostringstream oss;
