@@ -4698,6 +4698,23 @@ int main(int argc, char** argv){
                         std::cout << "upp.wksp.build: target up to date\n";
                     } else {
                         std::cout << "upp.wksp.build: built " << summary.result.targets_built.size() << " target(s)\n";
+
+                        // Print output paths for each package
+                        for(const auto& pkg_name : summary.package_order) {
+                            auto it = summary.package_outputs.find(pkg_name);
+                            if(it != summary.package_outputs.end()) {
+                                const std::string& host_path = it->second;
+
+                                // Try to map back to VFS path
+                                auto vfs_path_opt = vfs.mapFromHostPath(host_path);
+
+                                std::cout << "  " << pkg_name << ":\n";
+                                std::cout << "    Host: " << host_path << "\n";
+                                if(vfs_path_opt.has_value()) {
+                                    std::cout << "    VFS:  " << vfs_path_opt.value() << "\n";
+                                }
+                            }
+                        }
                     }
                 } else {
                     if(!summary.result.errors.empty()) {

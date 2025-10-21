@@ -446,6 +446,8 @@ WorkspaceBuildSummary build_workspace(UppAssembly& assembly,
         std::string output_path = default_output_path(*workspace, *pkg, options, vfs);
         if(!output_path.empty()) {
             rule.outputs.push_back(output_path);
+            // Store the output path for this package
+            summary.package_outputs[pkg_name] = output_path + "/" + pkg_name;
         }
 
         plan.rules[rule.name] = rule;

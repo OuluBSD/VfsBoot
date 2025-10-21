@@ -2,6 +2,7 @@
 
 #include "build_graph.h"
 
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -24,6 +25,7 @@ struct WorkspaceBuildSummary {
     BuildGraph plan;
     std::vector<std::string> package_order;
     std::string builder_used;
+    std::map<std::string, std::string> package_outputs;  // package_name -> output_path (host filesystem)
 };
 
 WorkspaceBuildSummary build_workspace(UppAssembly& assembly,
