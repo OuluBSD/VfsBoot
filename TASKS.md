@@ -3,7 +3,85 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 ---
 
-## 🚀 CURRENT CONTEXT - qwen-code C++ Integration (Phase 3 COMPLETE → Phase 4 STARTING)
+## 📍 CONTEXT FOR NEXT SESSION (2025-10-22)
+
+**Current State**: Phase 4 foundation complete! The `qwen` command is registered, session management works, but the **interactive loop with qwen-code subprocess** needs implementation.
+
+**What Just Happened**:
+- ✅ Created VfsShell/cmd_qwen.cpp (200 lines) - working shell command
+- ✅ Created VfsShell/cmd_qwen.h (60 lines) - public API
+- ✅ Registered in shell dispatcher (main.cpp:3015-3017)
+- ✅ Binary compiles successfully (2.3M)
+- ✅ `qwen --help` and `qwen --list-sessions` working
+- ✅ Session creation working (creates session-{timestamp}-{uuid})
+- ✅ Committed: 7eb9f72 "Add Phase 4 qwen command integration (foundation complete)"
+
+**What to Do Next** (Priority Order):
+
+1. **IMPLEMENT INTERACTIVE LOOP** in VfsShell/cmd_qwen.cpp (~200 lines)
+   - Location: Replace the TODO comment around line 166
+   - Create QwenClientConfig with qwen executable path
+   - Create QwenClient instance
+   - Set up MessageHandlers (on_conversation, on_tool_group, on_error, on_status)
+   - Main loop: read user input → send via client → poll for responses → display
+   - Handle special commands: /detach, /exit, /save, /help, /status
+   - Save session on exit
+
+2. **SETUP MESSAGE HANDLERS** (~100 lines)
+   - on_conversation: Display AI messages, store in state manager
+   - on_tool_group: Trigger tool approval workflow
+   - on_error: Display error messages in red
+   - on_status: Display status updates in gray
+   - on_info: Display info messages
+
+3. **ADD TOOL APPROVAL** (~150 lines)
+   - Detect tool_group messages
+   - Display tool details to user
+   - Prompt: "Approve tool execution? [y/n/d(details)]"
+   - Send approval via client.send_tool_approval()
+
+4. **TEST WITH QWEN-CODE**
+   - Verify qwen-code executable path
+   - Test subprocess spawning
+   - Test message exchange
+   - Test streaming responses
+
+5. **CREATE DEMO SCRIPTS**
+   - scripts/examples/qwen-demo.cx
+   - scripts/examples/qwen-session-demo.cx
+
+**Key APIs to Use**:
+```cpp
+// From qwen_client.h:
+QwenClientConfig config;
+config.qwen_executable = "qwen";  // or from QWEN_CODE_PATH env
+QwenClient client(config);
+client.start();
+client.set_handlers(handlers);
+client.send_user_input(message);
+client.poll_messages(timeout_ms);
+client.send_tool_approval(tool_id, approved);
+
+// From qwen_state_manager.h:
+state_mgr.add_message(msg);  // Store conversation
+state_mgr.save_session();    // Persist to VFS
+```
+
+**Files to Modify**:
+- VfsShell/cmd_qwen.cpp (main work here)
+- VfsShell/cmd_qwen.h (maybe add helper functions)
+
+**Testing Commands**:
+```bash
+make                          # Rebuild
+printf 'qwen\nexit\n' | ./codex    # Test session creation
+./codex                       # Interactive test
+# Then: qwen, type messages, /exit
+```
+
+---
+
+## 🚀 CURRENT CONTEXT - qwen-code C++ Integration (Phase 4 IN PROGRESS)
 
 **Last Updated**: 2025-10-22
 
