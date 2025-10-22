@@ -18,9 +18,9 @@ namespace QwenCmd {
 
 // Configuration for qwen command
 struct QwenConfig {
-    std::string model = "coder";  // Default model
+    std::string model = "gpt-4o-mini";  // Default model
     std::string workspace_root;
-    std::string qwen_code_path = "qwen-code";  // Path to qwen-code executable
+    std::string qwen_code_path = "/common/active/sblo/Dev/VfsBoot/qwen-code";  // Path to qwen-code wrapper
     bool auto_approve_tools = false;
     bool use_colors = true;
     int max_retries = 3;

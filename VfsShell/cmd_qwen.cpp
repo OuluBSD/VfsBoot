@@ -319,6 +319,14 @@ void cmd_qwen(const std::vector<std::string>& args,
     client_config.auto_restart = true;
     client_config.verbose = false;
 
+    // Note: --server-mode stdin is hardcoded in QwenClient, no need to add it here
+
+    // Add model if specified
+    if (!config.model.empty()) {
+        client_config.qwen_args.push_back("--model");
+        client_config.qwen_args.push_back(config.model);
+    }
+
     // Add workspace argument if specified
     if (!config.workspace_root.empty()) {
         client_config.qwen_args.push_back("--workspace-root");

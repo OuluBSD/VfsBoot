@@ -1,0 +1,5 @@
+#!/bin/bash
+# Wrapper script for qwen-code development bundle
+# This launches the qwen-code TypeScript implementation with server-mode support
+
+exec node /common/active/sblo/Dev/qwen-code/bundle/gemini.js "$@"
