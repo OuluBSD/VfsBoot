@@ -58,6 +58,9 @@ VFSSHELL_SRC_NO_MAIN := $(filter-out VfsShell/main.cpp, $(VFSSHELL_SRC))
 $(QWEN_STATE_MANAGER_TEST_BIN): VfsShell/qwen_state_manager_test.cpp $(VFSSHELL_SRC) $(VFSSHELL_HDR)
 	$(CXX) $(CXXFLAGS) -DCODEX_NO_MAIN VfsShell/qwen_state_manager_test.cpp $(VFSSHELL_SRC_NO_MAIN) -o $@ $(LDFLAGS)
 
+qwen-integration-test: VfsShell/qwen_integration_test.cpp $(VFSSHELL_SRC) $(VFSSHELL_HDR)
+	$(CXX) $(CXXFLAGS) -DCODEX_NO_MAIN VfsShell/qwen_integration_test.cpp $(VFSSHELL_SRC_NO_MAIN) -o $@ $(LDFLAGS)
+
 clean:
 	rm -f $(VFSSHELL_BIN) $(PLANNER_DEMO_BIN) $(PLANNER_TRAIN_BIN) $(QWEN_STATE_MANAGER_TEST_BIN)
 	rm -rf build
