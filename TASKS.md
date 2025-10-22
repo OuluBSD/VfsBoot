@@ -5,27 +5,55 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 ## 📍 CONTEXT FOR NEXT SESSION (2025-10-22)
 
-**Current State**: ✅ **Phase 4 COMPLETE!** Full interactive qwen command with QwenClient integration, message handlers, tool approval workflow, and demo scripts.
+**Current State**: ✅ **Phase 5 IN PROGRESS** - Subprocess spawning working, investigating message protocol
 
-**What Just Happened**:
-- ✅ Implemented full interactive loop in cmd_qwen.cpp (508 lines total, +308 new)
-- ✅ Setup all 7 message handlers (on_init, on_conversation, on_tool_group, on_status, on_info, on_error, on_completion_stats)
-- ✅ Implemented tool approval workflow with user prompts (y/n/d for details)
-- ✅ Added special commands (/help, /status, /save, /detach, /exit)
-- ✅ QwenClient integration with subprocess management and streaming responses
-- ✅ Session management with create/attach/save functionality
-- ✅ Color-coded output (green=user, cyan=AI, gray=status, red=error)
-- ✅ Created scripts/examples/qwen-demo.cx - basic usage demo
-- ✅ Created scripts/examples/qwen-session-demo.cx - session management guide
-- ✅ Build successful (2.3M binary)
-- ✅ Tested: qwen --help, qwen --list-sessions, demo scripts all working
-- ✅ Committed: 6ed7fe5 "Implement Phase 4 interactive loop for qwen command"
+**What Just Happened (Phase 5 Integration Testing)**:
+- ✅ Built qwen-code from source (npm install successful)
+- ✅ Verified --server-mode flag in development build
+- ✅ Created wrapper script `/common/active/sblo/Dev/VfsBoot/qwen-code`
+- ✅ Updated cmd_qwen.cpp with correct executable path and model
+- ✅ Fixed argument duplication bug (stdin,stdin error)
+- ✅ Subprocess spawning works - qwen-code starts successfully
+- ✅ Server mode initializes and receives commands
+- ✅ Test output shows: Version 0.0.14, workspace set, model configured
+- ⏳ Messages not being received/parsed from qwen-code subprocess
+- ✅ Committed: ce7b7a8 "Phase 5: Configure qwen-code integration and subprocess spawning"
 
-**What to Do Next** (Next Session):
+**Debugging Status**:
+```
+[StructuredServerMode] Starting stdin/stdout mode
+[ServerMode] Starting structured server mode
+[ServerMode] Version: 0.0.14
+[ServerMode] Workspace: /common/active/sblo/Dev/VfsBoot
+[ServerMode] Model: gpt-4o-mini
+[ServerMode] Server mode is running...
+[ServerMode] Received command: user_input
+```
+Subprocess receives commands but responses not reaching C++ client.
 
-**Option A: Phase 5 - Integration Testing & Refinement**
-1. Install/setup qwen-code executable for integration testing
-2. Test full end-to-end flow with actual AI conversations
+**What to Do Next** (Immediate Priority):
+
+1. **Debug Message Reception Issue**
+   - Check if qwen-code is actually sending JSON messages to stdout
+   - Add debug logging to QwenClient poll_messages()
+   - Verify protocol message format matches expectations
+   - Check for newline-delimited JSON (one message per line)
+
+2. **Investigate TypeScript Server Mode**
+   - Check structuredServerMode.ts sendMessage() implementation
+   - Verify JSON serialization format
+   - Test with simple echo to confirm stdout works
+   - May need to implement missing protocol methods
+
+3. **Alternative Testing Approach**
+   - Test qwen-code --server-mode stdin manually with echo
+   - Capture raw JSON output to verify format
+   - Compare with protocol parser expectations in qwen_protocol.cpp
+
+**Option A: Phase 5 - Integration Testing & Refinement (After Messaging Works)**
+1. ✅ Install/setup qwen-code executable for integration testing (DONE)
+2. ⏳ Debug message protocol and establish bidirectional communication
+3. Test full end-to-end flow with actual AI conversations
 3. Test tool approval workflow with real tool executions
 4. Test session persistence across VfsBoot restarts
 5. Verify streaming responses work correctly
