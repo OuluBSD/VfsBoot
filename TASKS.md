@@ -1,6 +1,647 @@
 # Tasks Tracker
 Note: sexp is for AI and shell script is for human user (+ ai called via sexp). This follows the classic codex behaviour.
 
+---
+
+## 🚀 CURRENT CONTEXT - qwen-code C++ Integration (Phase 2 COMPLETE)
+
+**Last Updated**: 2025-10-22
+
+### What We Just Completed (Phase 2)
+
+✅ **C++ Client Implementation for qwen-code Integration** - 1,994 lines, all tests passing
+
+**Protocol Layer:**
+- `VfsShell/qwen_protocol.h` (280 lines) - Type-safe structs with std::variant
+- `VfsShell/qwen_protocol.cpp` (440 lines) - Lightweight JSON parser (no dependencies)
+- `VfsShell/qwen_protocol_test.cpp` (226 lines) - **18/18 tests PASS**
+
+**Communication Layer:**
+- `VfsShell/qwen_client.h` (180 lines) - Subprocess management API
+- `VfsShell/qwen_client.cpp` (450 lines) - POSIX fork/exec, non-blocking I/O with poll()
+- `VfsShell/qwen_client_test.cpp` (140 lines) - **Integration test PASS**
+
+**Test Infrastructure:**
+- `VfsShell/qwen_echo_server.cpp` (60 lines) - Test echo server
+- `tests/100-qwen-protocol-parse.sexp` - Test plan documentation
+
+**What Works:**
+- Spawns qwen-code subprocess ✅
+- Bidirectional JSON protocol via stdin/stdout ✅
+- Callback-based message handling ✅
+- Auto-restart on crash ✅
+- Graceful shutdown ✅
+
+**Committed**: `9dfa269 - Add qwen-code C++ client implementation (Phase 2)`
+
+### Next Steps (Choose One)
+
+**Option A: Phase 3 - VFS Integration** (Recommended)
+- Create `qwen_state_manager.h/cpp` for VFS storage
+- Store conversations in `/qwen/history/`
+- Store files in `/qwen/files/`
+- Persistence and session management
+
+**Option B: Phase 4 - Shell Command Integration**
+- Create `cmd_qwen.cpp` for `qwen` shell command
+- Interactive mode and script mode
+- Session attach/detach
+- Configuration support
+
+**Option C: qwen-code TypeScript Full App Integration**
+- Complete `runServerMode()` in `gemini.tsx`
+- Stream real state changes from qwen-code
+- Handle tool approvals from C++
+- End-to-end integration testing
+
+### Related Files and Documentation
+
+- **Plan**: `QWEN_STRUCTURED_PROTOCOL.md` (protocol spec)
+- **Summary**: `QWEN_CLIENT_IMPLEMENTATION.md` (Phase 2 complete)
+- **Old Plans**: `QWEN_CODE_INTEGRATION_PLAN.md`, `QWEN_VIRTUAL_TERMINAL_PLAN.md` (pre-restart, mostly obsolete)
+- **qwen-code repo**: `/common/active/sblo/Dev/qwen-code/` (TypeScript implementation with structured protocol)
+- **Test binaries**: `./qwen_protocol_test` (18/18), `./qwen_client_test` (PASS), `./qwen_echo_server`
+
+### Architecture Summary
+
+```
+VfsBoot (C++)                     qwen-code (TypeScript)
+┌─────────────────────┐           ┌──────────────────────┐
+│ qwen_client         │◄─stdin───►│ structuredServerMode │
+│ - fork/exec         │   stdout  │ - QwenStateSerializer│
+│ - poll() I/O        │   JSON    │ - StdinStdoutServer  │
+│ - callbacks         │   msgs    │ - runServerMode()    │
+└─────────────────────┘           └──────────────────────┘
+         │                                  │
+         ▼                                  ▼
+   qwen_protocol                   qwenStateSerializer
+   - parse_message()               - serializeHistoryItem()
+   - serialize_command()           - getIncrementalUpdates()
+```
+
+**Protocol Messages** (C++ → TS):
+- init, conversation, tool_group, status, info, error, completion_stats
+
+**Protocol Commands** (TS → C++):
+- user_input, tool_approval, interrupt, model_switch
+
+---
+
+## TODO IMPORTANT: Qwen-Code Interactive Terminal Integration
+
+**Goal**: Integrate qwen-code (TypeScript/React terminal AI assistant) as an internal `qwen` command in VfsBoot with full terminal UI, attachable/detachable sessions, and flexible communication protocols.
+
+### Overview
+Port qwen-code's React+Ink terminal frontend to C++ (ncurses), modify the TypeScript/Node.js backend to support stdin/stdout, named pipes, and TCP communication, and integrate as a builtin VfsBoot shell command with session management.
+
+**Key Difference from Initial Plan**: qwen-code is a TypeScript/React-based terminal app (not Python/Aider). It uses React+Ink for UI rendering (3900+ lines in App.tsx), async generators for streaming, and complex state management with React hooks. This changes the porting strategy significantly.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         VfsBoot (C++)                           │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  qwen Command (Shell Builtin)                            │  │
+│  │  - ncurses terminal UI (simplified from React+Ink)       │  │
+│  │  - Session manager (attach/detach)                       │  │
+│  │  - Protocol handler (stdin/pipe/tcp)                     │  │
+│  │  - Event processor (handles streaming events)            │  │
+│  └──────────────┬───────────────────────────────────────────┘  │
+│                 │                                                │
+└─────────────────┼────────────────────────────────────────────────┘
+                  │ Communication Protocol (JSON events)
+                  │ Event types: content, tool_call, error,
+                  │              status, thought, finished
+                  │ (everything except "detach" and "exit")
+                  │
+┌─────────────────┼────────────────────────────────────────────────┐
+│                 ▼                                                │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  qwen-code TypeScript/Node.js Backend                    │  │
+│  │  ┌────────────────────────────────────────────────────┐  │  │
+│  │  │ Communication Bottleneck (NEW)                     │  │  │
+│  │  │ - StdinStdoutServer (default)                      │  │  │
+│  │  │ - NamedPipeServer (/tmp/qwen-*.pipe)              │  │  │
+│  │  │ - TCPServer (configurable port, e.g. 7777)        │  │  │
+│  │  │ Serializes: ServerGeminiStreamEvent objects       │  │  │
+│  │  └────────────────┬───────────────────────────────────┘  │  │
+│  │                   │                                        │  │
+│  │  ┌────────────────▼───────────────────────────────────┐  │  │
+│  │  │ Qwen Code Core (Modified)                          │  │  │
+│  │  │ - React+Ink frontend blocked/bypassed              │  │  │
+│  │  │ - GeminiClient async generator sends events        │  │  │
+│  │  │ - Tool scheduler executes tools on demand          │  │  │
+│  │  │ - Events: content, tool_call, thought, finished    │  │  │
+│  │  └────────────────────────────────────────────────────┘  │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                      qwen-code Repository                       │
+│           /common/active/sblo/Dev/qwen-code/                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Phase 1: TypeScript Backend Communication Layer (Week 1-2)
+
+**Create Communication Bottleneck in qwen-code**
+
+1. **New File**: `packages/cli/src/server.ts` (~600 lines)
+   - `BaseServer` abstract class
+     - `send_message(type, data)` - serialize and send
+     - `receive_message()` - deserialize and receive
+     - `start()`, `stop()`, `is_alive()`
+   - `StdinStdoutServer` - default mode
+     - Read JSON from stdin, write JSON to stdout
+     - Line-buffered protocol
+   - `NamedPipeServer` - Unix named pipes
+     - Create pipes in `/tmp/qwen-{pid}.in` and `/tmp/qwen-{pid}.out`
+     - Support configurable path override via `--pipe-path`
+   - `TCPServer` - TCP socket communication
+     - Listen on configurable port (default 7777)
+     - Support multiple connections (session per connection)
+     - JSON message framing (length-prefix or newline-delimited)
+
+2. **Message Protocol** (JSON-based, extensible to MessagePack)
+   ```json
+   {
+     "type": "user_input" | "ai_response" | "screen_update" | "error" | "status",
+     "session_id": "uuid-string",
+     "timestamp": 1234567890,
+     "data": {
+       "content": "...",
+       "metadata": {...}
+     }
+   }
+   ```
+   - Message types:
+     - `user_input`: User typed text
+     - `ai_response`: AI response chunk (streaming)
+     - `screen_update`: Terminal screen changes (cursor pos, colors)
+     - `error`: Error messages
+     - `status`: Status updates (model loading, processing, etc.)
+     - `command`: Internal commands (save session, load history)
+
+3. **Modified Entry Point**: `qwencoder-eval/instruct/aider/main.py`
+   - Add command-line flags:
+     - `--server-mode <stdin|pipe|tcp>` (default: stdin)
+     - `--pipe-path <path>` (for named pipes)
+     - `--tcp-port <port>` (for TCP server)
+   - Block original frontend initialization:
+     - Skip `InputOutput` class initialization
+     - Skip `prompt_toolkit` session creation
+   - Wire backend to communication server:
+     - Replace `io.get_input()` with `server.receive_message()`
+     - Replace `io.tool_output()` with `server.send_message()`
+     - Streaming responses sent as chunks through server
+
+4. **Session Persistence**
+   - Serialize conversation state to JSON
+   - Store in `/tmp/qwen-session-{id}.json` or VFS
+   - Include: chat history, file context, model config
+   - Enable attach/detach by saving/loading state
+
+5. **Testing**
+   - Standalone Python test: `python main.py --server-mode stdin`
+   - Echo client test: send JSON input, receive JSON output
+   - Pipe test: `mkfifo /tmp/qwen-in /tmp/qwen-out`
+   - TCP test: `nc localhost 7777`
+
+**Deliverables**:
+- [ ] `server.py` with 3 server implementations
+- [ ] Modified `main.py` with `--server-mode` flag
+- [ ] Message protocol documentation
+- [ ] Standalone test scripts
+- [ ] Session serialization/deserialization
+
+### Phase 2: C++ Terminal UI (ncurses Frontend) (Week 2-4)
+
+**Port Aider Terminal UI from Python to C++**
+
+**Components to Port** (from `aider/io.py`, 586 lines):
+
+1. **New File**: `VfsShell/qwen_terminal.h` (~300 lines)
+   ```cpp
+   class QwenTerminal {
+   public:
+       QwenTerminal();
+       ~QwenTerminal();
+
+       // Terminal control
+       void initialize();
+       void shutdown();
+       void clear();
+       void refresh();
+
+       // Input/output
+       std::string getInput(const std::string& prompt);
+       void displayPrompt(const std::string& prompt);
+       void displayUserInput(const std::string& text);
+       void displayAIResponse(const std::string& text, bool streaming = false);
+       void displayStatus(const std::string& status);
+       void displayError(const std::string& error);
+
+       // Screen management (interactive updates)
+       void updateLine(int line, const std::string& content);
+       void scrollToBottom();
+       void setCursorPos(int row, int col);
+
+       // Colors and formatting
+       enum class Color { Default, Red, Green, Yellow, Blue, Magenta, Cyan, White };
+       void setColor(Color fg, Color bg = Color::Default);
+       void setBold(bool enabled);
+       void setUnderline(bool enabled);
+
+       // History
+       void addToHistory(const std::string& input);
+       std::vector<std::string> getHistory();
+       void saveHistory(const std::string& path);
+       void loadHistory(const std::string& path);
+
+   private:
+       WINDOW* main_win_;
+       WINDOW* input_win_;
+       WINDOW* status_win_;
+       std::vector<std::string> history_;
+       int history_index_;
+       bool colors_enabled_;
+   };
+   ```
+
+2. **New File**: `VfsShell/qwen_terminal.cpp` (~800 lines)
+   - ncurses initialization with color support
+   - Window management (main display, input area, status bar)
+   - Keyboard input handling:
+     - Arrow keys for history navigation
+     - Ctrl+C to interrupt (not exit)
+     - Ctrl+D to detach session
+     - Tab for autocomplete (files/commands)
+   - ANSI color code parsing and rendering
+   - Real-time streaming display (character-by-character or line updates)
+   - Input history with persistent storage
+
+3. **Input Handling Patterns** (from `io.py` lines 277-365):
+   - Multi-line input support (detect incomplete lines)
+   - Command autocompletion (files, slash commands)
+   - History search (Ctrl+R)
+   - Edit mode (vi/emacs keybindings)
+
+4. **Output Formatting** (from `io.py` lines 411-565):
+   - Color-coded messages:
+     - User input: default color
+     - AI response: cyan/blue
+     - Errors: red
+     - Status: yellow
+     - System: green
+   - Markdown rendering (basic: bold, code blocks, lists)
+   - Code syntax highlighting (optional, use Pygments-style patterns)
+   - Progress indicators for long operations
+
+5. **Screen Layout**
+   ```
+   ┌─────────────────────────────────────────────────────┐
+   │ AI Response Area (scrollable, colored)             │
+   │ - Streaming updates shown in real-time             │
+   │ - Syntax highlighting for code blocks              │
+   │ - Line numbers for code                            │
+   │                                                     │
+   │ [AI output continues here...]                      │
+   └─────────────────────────────────────────────────────┘
+   ┌─────────────────────────────────────────────────────┐
+   │ Status: Connected to Qwen3-Coder | Model: qwen2.5  │
+   └─────────────────────────────────────────────────────┘
+   ┌─────────────────────────────────────────────────────┐
+   │ You> [user input here with autocomplete]           │
+   └─────────────────────────────────────────────────────┘
+   ```
+
+6. **Integration with VfsBoot**
+   - Use VFS for history: `/qwen/history.txt`
+   - Use VFS for sessions: `/qwen/sessions/{id}.json`
+   - Use VFS for chat logs: `/qwen/chats/{timestamp}.md`
+
+**Deliverables**:
+- [ ] `qwen_terminal.h` with terminal UI interface
+- [ ] `qwen_terminal.cpp` with ncurses implementation
+- [ ] Input handling (history, autocomplete, keybindings)
+- [ ] Output formatting (colors, markdown, streaming)
+- [ ] VFS integration for persistence
+
+### Phase 3: Communication Protocol Client (Week 3-4)
+
+**C++ Client for Python Backend Communication**
+
+1. **New File**: `VfsShell/qwen_client.h` (~200 lines)
+   ```cpp
+   enum class QwenCommMode { Stdin, Pipe, TCP };
+
+   class QwenClient {
+   public:
+       QwenClient(QwenCommMode mode, const std::string& config);
+       ~QwenClient();
+
+       // Connection management
+       bool connect();
+       void disconnect();
+       bool isConnected();
+
+       // Message sending/receiving
+       void sendUserInput(const std::string& text);
+       void sendCommand(const std::string& cmd, const nlohmann::json& args);
+
+       // Message handling (blocking or callback-based)
+       void pollMessages(std::function<void(const Message&)> handler);
+       std::optional<Message> receiveMessage(int timeout_ms = -1);
+
+       // Session management
+       void saveSession(const std::string& session_id);
+       void loadSession(const std::string& session_id);
+       void detachSession();
+       void attachSession(const std::string& session_id);
+
+   private:
+       QwenCommMode mode_;
+       std::unique_ptr<BaseCommChannel> channel_;
+       std::string session_id_;
+   };
+
+   struct Message {
+       std::string type;
+       std::string session_id;
+       uint64_t timestamp;
+       nlohmann::json data;
+   };
+   ```
+
+2. **New File**: `VfsShell/qwen_client.cpp` (~600 lines)
+   - `StdinStdoutChannel`: subprocess communication
+     - Fork/exec Python backend with `--server-mode stdin`
+     - Pipe stdin/stdout, parse JSON messages
+   - `NamedPipeChannel`: Unix named pipe communication
+     - Create or open named pipes
+     - Read/write JSON messages
+   - `TCPChannel`: TCP socket communication
+     - Connect to Python backend TCP server
+     - JSON message framing
+
+3. **Subprocess Management** (for stdin mode)
+   - `fork()` + `exec()` to launch Python backend
+   - Pass arguments: `--server-mode stdin --model qwen2.5-coder`
+   - Pipe setup for bidirectional communication
+   - Process lifecycle: start, monitor, restart on crash, stop
+
+4. **Message Queue and Threading**
+   - Background thread for message polling
+   - Thread-safe message queue (producer/consumer)
+   - Callbacks for different message types
+   - Graceful shutdown handling
+
+**Deliverables**:
+- [ ] `qwen_client.h` with client interface
+- [ ] `qwen_client.cpp` with 3 communication modes
+- [ ] Subprocess management for stdin mode
+- [ ] Message queuing and threading
+- [ ] Connection error handling and retry logic
+
+### Phase 4: VfsBoot Shell Command Integration (Week 4-5)
+
+**Add `qwen` Command to VfsBoot**
+
+1. **New File**: `VfsShell/cmd_qwen.cpp` (~400 lines)
+   ```cpp
+   // Shell command: qwen [options]
+   // Options:
+   //   --attach <session-id>  - attach to existing session
+   //   --detach               - detach from current session
+   //   --list-sessions        - list available sessions
+   //   --mode <stdin|pipe|tcp> - communication mode
+   //   --port <port>          - TCP port (for tcp mode)
+   //   --pipe-path <path>     - named pipe path
+   //   --model <name>         - model name (qwen2.5-coder, etc.)
+
+   void cmd_qwen(const std::vector<std::string>& args,
+                 Vfs& vfs,
+                 std::map<std::string, std::string>& env) {
+       // Parse arguments
+       QwenOptions opts = parseQwenArgs(args);
+
+       // Create client
+       QwenClient client(opts.mode, opts.config);
+
+       // Create terminal UI
+       QwenTerminal terminal;
+       terminal.initialize();
+
+       // Handle session attach/detach
+       if (opts.attach) {
+           client.attachSession(opts.session_id);
+       } else {
+           client.connect();  // new session
+       }
+
+       // Main interaction loop
+       while (true) {
+           // Get user input
+           std::string input = terminal.getInput("You> ");
+
+           // Check for local commands
+           if (input == "/detach") {
+               client.detachSession();
+               break;
+           }
+           if (input == "/exit") {
+               client.disconnect();
+               break;
+           }
+
+           // Send to backend
+           client.sendUserInput(input);
+
+           // Poll for responses (streaming)
+           client.pollMessages([&](const Message& msg) {
+               if (msg.type == "ai_response") {
+                   terminal.displayAIResponse(msg.data["content"], true);
+               } else if (msg.type == "error") {
+                   terminal.displayError(msg.data["content"]);
+               } else if (msg.type == "status") {
+                   terminal.displayStatus(msg.data["content"]);
+               }
+           });
+       }
+
+       terminal.shutdown();
+   }
+   ```
+
+2. **Wire Command into Shell** (modify `VfsShell/codex.cpp`)
+   - Add to command registry (lines ~11000-11200)
+   - Add to help text
+   - Add to autocomplete
+
+3. **Session Management in VFS**
+   - Store sessions: `/qwen/sessions/{id}.json`
+   - List sessions: `/qwen/sessions/list`
+   - Session metadata: timestamp, model, conversation length
+   - Cleanup old sessions (configurable retention)
+
+4. **Configuration Support**
+   - Config file: `~/.config/vfsboot/qwen.conf`
+   - VFS config: `/env/qwen_config.json`
+   - Options: default model, mode, port, pipe path, color scheme
+
+**Deliverables**:
+- [ ] `cmd_qwen.cpp` with main command logic
+- [ ] Shell integration (command registry, help, autocomplete)
+- [ ] Session management (create, list, attach, detach)
+- [ ] Configuration file support
+- [ ] VFS storage for sessions and history
+
+### Phase 5: Testing and Documentation (Week 5-6)
+
+1. **Unit Tests**
+   - Python backend: test all 3 server modes
+   - C++ client: test all 3 communication modes
+   - Terminal UI: test input handling, display formatting
+   - Session management: test attach/detach, persistence
+
+2. **Integration Tests**
+   - End-to-end: C++ qwen command → Python backend → AI response
+   - Streaming: verify real-time display updates
+   - Error handling: connection failures, backend crashes
+   - Session persistence: detach/attach workflow
+
+3. **Demo Scripts**
+   - `scripts/examples/qwen-demo.cx` - basic usage
+   - `scripts/examples/qwen-session-demo.cx` - session management
+   - `scripts/examples/qwen-streaming-demo.cx` - streaming display
+
+4. **Documentation**
+   - `docs/QWEN_INTEGRATION.md` - architecture and design
+   - Update `CLAUDE.md` - add `qwen` command reference
+   - Update `README.md` - usage examples
+   - Update `AGENTS.md` - implementation notes
+
+5. **Performance Tuning**
+   - Optimize JSON parsing (use simdjson or RapidJSON)
+   - Optimize terminal rendering (reduce screen updates)
+   - Profile subprocess overhead (stdin mode)
+   - Benchmark TCP vs pipe vs stdin modes
+
+**Deliverables**:
+- [ ] Test suite (Python backend + C++ client)
+- [ ] Integration tests (end-to-end workflows)
+- [ ] Demo scripts
+- [ ] Comprehensive documentation
+- [ ] Performance benchmarks and tuning
+
+### Technical Decisions
+
+**Message Format**: JSON (human-readable, debuggable)
+  - Alternative: MessagePack (more efficient, binary)
+  - Decision: Start with JSON, optimize to MessagePack if needed
+
+**Communication Mode Default**: stdin/stdout
+  - Simplest: no file/network setup required
+  - Subprocess lifecycle managed by C++
+  - Fallback to pipes/TCP for remote scenarios
+
+**Terminal Library**: ncurses
+  - Portable, mature, well-documented
+  - Alternative: termbox, FTXUI (C++ only)
+  - Decision: ncurses for maximum compatibility
+
+**Session Storage**: VFS JSON files
+  - `/qwen/sessions/{uuid}.json`
+  - Enables attach/detach across VfsBoot restarts
+  - Supports overlays for project-specific sessions
+
+**Threading Model**: Background polling thread
+  - Main thread: ncurses UI
+  - Background thread: message I/O
+  - Thread-safe queue for message passing
+
+### Dependencies
+
+**Python (Qwen3-Coder Backend)**:
+- No new dependencies (existing Aider requirements)
+- Add: `--server-mode` flag to main.py
+
+**C++ (VfsBoot)**:
+- `ncurses` - terminal UI (already available on most systems)
+- `nlohmann/json` - JSON parsing (header-only, add to vendor/)
+- POSIX APIs: `fork()`, `exec()`, `pipe()`, `socket()`
+- No additional external libraries required
+
+**Build System**:
+- Update `Makefile` to link ncurses: `-lncurses`
+- Add `qwen_terminal.cpp`, `qwen_client.cpp`, `cmd_qwen.cpp` to build
+
+### Risk Mitigation
+
+| Risk | Impact | Mitigation |
+|------|--------|-----------|
+| ncurses complexity | High | Start with simple layout, iterate |
+| Subprocess crashes | High | Auto-restart with exponential backoff |
+| Message protocol mismatch | Medium | Version protocol, strict schema validation |
+| Session corruption | Medium | Atomic writes, backup before overwrite |
+| Terminal incompatibility | Low | Test on multiple terminals (xterm, alacritty, tmux) |
+| Performance overhead | Low | Profile and optimize hot paths |
+
+### Success Criteria
+
+- [ ] `qwen` command launches interactive terminal
+- [ ] User can type prompts and receive AI responses
+- [ ] Streaming updates shown in real-time
+- [ ] Session detach/attach works correctly
+- [ ] All 3 communication modes functional (stdin, pipe, tcp)
+- [ ] Terminal UI handles colors, formatting, scrolling
+- [ ] Chat history persisted in VFS
+- [ ] No data loss on disconnect/crash
+- [ ] Documentation complete and accurate
+- [ ] Demo scripts working
+
+### Timeline Summary
+
+| Phase | Duration | Focus |
+|-------|----------|-------|
+| Phase 1 | Week 1-2 | Python backend communication layer |
+| Phase 2 | Week 2-4 | C++ ncurses terminal UI |
+| Phase 3 | Week 3-4 | Communication protocol client |
+| Phase 4 | Week 4-5 | Shell command integration |
+| Phase 5 | Week 5-6 | Testing and documentation |
+
+**Total Estimated Effort**: 5-6 weeks for full implementation
+
+### Files to Create/Modify
+
+**New Files** (estimated ~3,000 lines total):
+- `qwencoder-eval/instruct/aider/server.py` (~500 lines)
+- `VfsShell/qwen_terminal.h` (~300 lines)
+- `VfsShell/qwen_terminal.cpp` (~800 lines)
+- `VfsShell/qwen_client.h` (~200 lines)
+- `VfsShell/qwen_client.cpp` (~600 lines)
+- `VfsShell/cmd_qwen.cpp` (~400 lines)
+- `docs/QWEN_INTEGRATION.md` (~200 lines)
+
+**Modified Files**:
+- `qwencoder-eval/instruct/aider/main.py` (add --server-mode flag)
+- `VfsShell/codex.cpp` (register qwen command)
+- `VfsShell/codex.h` (add qwen command prototype)
+- `Makefile` (add ncurses, new source files)
+- `CLAUDE.md` (document qwen command)
+- `README.md` (usage examples)
+- `AGENTS.md` (implementation notes)
+
+### Next Actions
+
+1. **Immediate**: Validate exploration documents are accurate
+2. **Week 1**: Begin Phase 1 - Python backend server.py
+3. **Week 2**: Continue Phase 1, start Phase 2 - Terminal UI
+4. **Week 3**: Complete Phase 2, start Phase 3 - Client
+5. **Week 4**: Complete Phase 3, start Phase 4 - Integration
+6. **Week 5**: Complete Phase 4, start Phase 5 - Testing
+7. **Week 6**: Complete Phase 5, polish and release
+
+---
+
 ## Internal U++ Builder (see docs/internal_umk_plan.md)
 - Stand up a minimal in-process `umk` pipeline leveraging `UppToolchain` metadata (compiler/linker, flags, includes). Reuse the shared `BuildGraph` with new command types for compile/link and ensure host paths come via `Vfs::mapToHostPath`.
 - Emit per-translation-unit compile nodes and package-level link nodes when no builder `COMMAND` is provided; retain custom commands as override. Handle output directory selection and dependency ordering inside the workspace.
