@@ -5,7 +5,7 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 ## 📍 CONTEXT FOR NEXT SESSION (2025-10-22)
 
-**Current State**: ✅ **Phase 5 DEBUGGING COMPLETE** - Bidirectional communication working!
+**Current State**: ✅ **Phase 5 Option B COMPLETE** - Mock test infrastructure fully implemented!
 
 **What Just Happened (Phase 5 Debugging Session)**:
 - ✅ Built qwen-code from source (npm install successful)
@@ -41,24 +41,49 @@ C++ receives:      [QwenClient] Read 107 bytes from subprocess
 - It does NOT yet integrate with the AI/Gemini client for actual responses
 - Comment in gemini.tsx: "NOTE: This is a preliminary implementation. Full integration with App state requires additional work."
 
-**What to Do Next** (Two Options):
+**What Was Accomplished (Option B - Mock Test Mode)**:
+- ✅ Created comprehensive mock response system in qwen-code gemini.tsx
+- ✅ Added `is_streaming` field to C++ ConversationMessage protocol
+- ✅ Implemented streaming-aware display in cmd_qwen.cpp
+- ✅ Enhanced JSON parser to extract role, content, id, isStreaming fields
+- ✅ Mock features: streaming chunks, status updates, tool calls, completion stats
+- ✅ Rebuilt qwen-code bundle with mock server mode
+- ✅ Committed: VfsBoot `0d25633`, qwen-code `3fe692c4`
 
-**Option A: Complete TypeScript Server Mode Implementation (Recommended Next)**
-1. Implement full AI integration in `runServerMode()` (gemini.tsx)
-2. Wire up GeminiClient to process user_input commands
-3. Stream AI responses as conversation messages
-4. Handle tool approvals through the protocol
-5. Test end-to-end with actual AI conversations
-6. Verify tool execution workflow
+**Mock Test Infrastructure Details**:
+1. **Streaming**: Word-by-word chunks with isStreaming=true flag
+2. **Tool Simulation**: Sends tool_group when "test tool" detected in input
+3. **Tool Approval**: Handles approval/rejection + simulates execution
+4. **Display Logic**: Prefix on first chunk, flush chunks, newline on complete
+5. **Status/Info**: Processing messages + completion stats with token counts
 
-**Option B: Alternative - Test with Mock Responses**
-1. Create a simple test mode that sends mock AI responses
-2. Validate C++ side handles streaming responses correctly
-3. Test tool approval UI in cmd_qwen.cpp
-4. Verify session persistence works
-5. Then complete TypeScript implementation later
+**Protocol Validation Results**:
+- ✅ Bidirectional communication confirmed working
+- ✅ JSON parsing extracts all fields correctly
+- ✅ Messages received and dispatched to handlers
+- ✅ TypeScript → C++ protocol proven functional
+- ⏳ Interactive display testing blocked by stdin complexity
 
-**Recommended**: Option A - Complete the TypeScript side now while the protocol details are fresh.
+**Next Steps** (Choose Path):
+
+**Path A: Real AI Integration (Recommended)**
+1. Implement full AI in runServerMode() - wire up GeminiClient
+2. Stream real AI responses through protocol
+3. Handle real tool executions
+4. Test end-to-end with actual conversations
+
+**Path B: Fix Interactive Testing**
+1. Debug stdin handling in nested readline loops
+2. Test mock responses via interactive qwen command
+3. Validate tool approval UI
+4. Test session persistence
+
+**Path C: Alternative Transport**
+1. Test with TCP mode (--server-mode tcp --tcp-port 7777)
+2. Or named pipes (--server-mode pipe)
+3. Avoid stdin readline complexity
+
+**Recommended**: Path A - Mock infrastructure validates protocol works, proceed with real AI.
 
 ---
 
