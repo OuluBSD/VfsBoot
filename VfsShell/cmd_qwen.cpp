@@ -1,8 +1,13 @@
 #include "VfsShell.h"
 #include "cmd_qwen.h"
+#include "qwen_client.h"
+#include "qwen_state_manager.h"
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
+#include <sstream>
+#include <chrono>
+#include <thread>
 
 namespace QwenCmd {
 
@@ -131,6 +136,124 @@ void list_sessions(QwenStateManager& state_mgr) {
     }
 }
 
+// Display a conversation message with formatting
+void display_conversation_message(const Qwen::ConversationMessage& msg) {
+    if (msg.role == Qwen::MessageRole::USER) {
+        std::cout << Color::GREEN << "You: " << Color::RESET << msg.content << "\n";
+    } else if (msg.role == Qwen::MessageRole::ASSISTANT) {
+        std::cout << Color::CYAN << "AI: " << Color::RESET << msg.content << "\n";
+    } else {
+        std::cout << Color::GRAY << "[system]: " << Color::RESET << msg.content << "\n";
+    }
+}
+
+// Display a tool group for approval
+void display_tool_group(const Qwen::ToolGroup& group) {
+    std::cout << "\n" << Color::YELLOW << "Tool Execution Request:" << Color::RESET << "\n";
+    std::cout << "  Group ID: " << group.id << "\n";
+    std::cout << "  Tools to execute:\n";
+
+    for (const auto& tool : group.tools) {
+        std::cout << "    - " << Color::MAGENTA << tool.tool_name << Color::RESET;
+        std::cout << " (ID: " << tool.tool_id << ")\n";
+
+        // Display confirmation details if present
+        if (tool.confirmation_details.has_value()) {
+            std::cout << "      Details: " << tool.confirmation_details->message << "\n";
+        }
+
+        // Display arguments
+        if (!tool.args.empty()) {
+            std::cout << "      Arguments:\n";
+            for (const auto& [key, value] : tool.args) {
+                std::cout << "        " << key << ": " << value << "\n";
+            }
+        }
+    }
+}
+
+// Prompt user for tool approval
+bool prompt_tool_approval(const Qwen::ToolGroup& group) {
+    std::cout << "\n" << Color::YELLOW << "Approve tool execution? [y/n/d(details)]: " << Color::RESET;
+    std::cout.flush();
+
+    std::string response;
+    std::getline(std::cin, response);
+
+    if (response.empty() || response[0] == 'y' || response[0] == 'Y') {
+        return true;
+    } else if (response[0] == 'd' || response[0] == 'D') {
+        // Display tool group again for details
+        display_tool_group(group);
+        return prompt_tool_approval(group);
+    } else {
+        return false;
+    }
+}
+
+// Handle special commands (return true if command was handled and should exit loop)
+bool handle_special_command(const std::string& input, QwenStateManager& state_mgr,
+                            Qwen::QwenClient& client, bool& should_exit) {
+    if (input.empty()) {
+        return false;
+    }
+
+    if (input[0] != '/') {
+        return false;  // Not a special command
+    }
+
+    if (input == "/exit") {
+        std::cout << Color::YELLOW << "Exiting and closing session...\n" << Color::RESET;
+        state_mgr.save_session();
+        client.stop();
+        should_exit = true;
+        return true;
+    }
+
+    if (input == "/detach") {
+        std::cout << Color::YELLOW << "Detaching from session (saving state)...\n" << Color::RESET;
+        state_mgr.save_session();
+        std::cout << Color::GREEN << "Session saved. Use 'qwen --attach "
+                  << state_mgr.get_current_session() << "' to reconnect.\n" << Color::RESET;
+        should_exit = true;
+        return true;
+    }
+
+    if (input == "/save") {
+        std::cout << Color::YELLOW << "Saving session...\n" << Color::RESET;
+        if (state_mgr.save_session()) {
+            std::cout << Color::GREEN << "Session saved successfully.\n" << Color::RESET;
+        } else {
+            std::cout << Color::RED << "Failed to save session.\n" << Color::RESET;
+        }
+        return true;
+    }
+
+    if (input == "/status") {
+        std::cout << Color::CYAN << "Session Status:\n" << Color::RESET;
+        std::cout << "  Session ID: " << state_mgr.get_current_session() << "\n";
+        std::cout << "  Model: " << state_mgr.get_model() << "\n";
+        std::cout << "  Message count: " << state_mgr.get_message_count() << "\n";
+        std::cout << "  Workspace: " << state_mgr.get_workspace_root() << "\n";
+        std::cout << "  Client running: " << (client.is_running() ? "yes" : "no") << "\n";
+        return true;
+    }
+
+    if (input == "/help") {
+        std::cout << Color::CYAN << "Interactive Commands:\n" << Color::RESET;
+        std::cout << "  /detach   - Detach from session (keeps it running)\n";
+        std::cout << "  /exit     - Exit and close session\n";
+        std::cout << "  /save     - Save session immediately\n";
+        std::cout << "  /status   - Show session status\n";
+        std::cout << "  /help     - Show this help\n";
+        return true;
+    }
+
+    std::cout << Color::RED << "Unknown command: " << input << Color::RESET << "\n";
+    std::cout << "Type /help for available commands.\n";
+    return true;
+}
+
 // Main qwen command entry point
 void cmd_qwen(const std::vector<std::string>& args,
               Vfs& vfs) {
@@ -164,39 +287,231 @@ void cmd_qwen(const std::vector<std::string>& args,
         return;
     }
 
-    // TODO: Implement interactive loop
-    // For Phase 4 initial implementation, just show a message
-    std::cout << Color::YELLOW << "\n[Phase 4 Integration - In Progress]\n" << Color::RESET;
-    std::cout << "The qwen command structure is in place.\n";
-    std::cout << "Session management is ready (create, load, save, list).\n";
-    std::cout << "Interactive terminal loop needs to be implemented.\n\n";
-    std::cout << "Available functionality:\n";
-    std::cout << "  - qwen --list-sessions  (list all sessions)\n";
-    std::cout << "  - qwen --help           (show help)\n\n";
-
-    // Example: Create a test session
+    // Create or load session
+    std::string session_id;
     if (opts.attach) {
         std::cout << "Loading session: " << opts.session_id << "\n";
         bool loaded = state_mgr.load_session(opts.session_id);
-        if (loaded) {
-            std::cout << Color::GREEN << "Session loaded successfully!" << Color::RESET << "\n";
-        } else {
+        if (!loaded) {
             std::cout << Color::RED << "Failed to load session." << Color::RESET << "\n";
+            return;
         }
+        session_id = opts.session_id;
+        std::cout << Color::GREEN << "Session loaded successfully!" << Color::RESET << "\n";
     } else {
         std::cout << "Creating new session with model: " << config.model << "\n";
-        std::string session_id = state_mgr.create_session(config.model, config.workspace_root);
-        if (!session_id.empty()) {
-            std::cout << Color::GREEN << "Session created: " << session_id << Color::RESET << "\n";
-            std::cout << "\nTo attach to this session later:\n";
-            std::cout << "  qwen --attach " << session_id << "\n\n";
-        } else {
+        session_id = state_mgr.create_session(config.model, config.workspace_root);
+        if (session_id.empty()) {
             std::cout << Color::RED << "Failed to create session." << Color::RESET << "\n";
+            return;
         }
+        std::cout << Color::GREEN << "Session created: " << session_id << Color::RESET << "\n";
     }
 
-    std::cout << "\n" << Color::YELLOW << "Note:" << Color::RESET <<
-        " Full interactive loop with qwen-code integration coming in next iteration.\n";
+    // Display session info
+    std::cout << "\n" << Color::CYAN << "Active Session: " << session_id << Color::RESET << "\n";
+    std::cout << "Model: " << state_mgr.get_model() << "\n";
+    std::cout << "Type /help for commands, /exit to quit\n\n";
+
+    // Configure QwenClient
+    Qwen::QwenClientConfig client_config;
+    client_config.qwen_executable = config.qwen_code_path;
+    client_config.auto_restart = true;
+    client_config.verbose = false;
+
+    // Add workspace argument if specified
+    if (!config.workspace_root.empty()) {
+        client_config.qwen_args.push_back("--workspace-root");
+        client_config.qwen_args.push_back(config.workspace_root);
+    }
+
+    // Create client
+    Qwen::QwenClient client(client_config);
+
+    // Track pending tool approvals
+    std::vector<Qwen::ToolGroup> pending_tools;
+
+    // Setup message handlers
+    Qwen::MessageHandlers handlers;
+
+    handlers.on_init = [&](const Qwen::InitMessage& msg) {
+        std::cout << Color::GRAY << "[Connected to qwen-code]" << Color::RESET << "\n";
+        if (!msg.version.empty()) {
+            std::cout << Color::GRAY << "[Version: " << msg.version << "]" << Color::RESET << "\n";
+        }
+    };
+
+    handlers.on_conversation = [&](const Qwen::ConversationMessage& msg) {
+        // Display the message
+        display_conversation_message(msg);
+
+        // Store in state manager
+        state_mgr.add_message(msg);
+    };
+
+    handlers.on_tool_group = [&](const Qwen::ToolGroup& group) {
+        // Display tool group
+        display_tool_group(group);
+
+        // Store in state manager
+        state_mgr.add_tool_group(group);
+
+        // Check if auto-approve is enabled
+        if (config.auto_approve_tools) {
+            std::cout << Color::YELLOW << "[Auto-approving tools]\n" << Color::RESET;
+            // Send approval for all tools
+            for (const auto& tool : group.tools) {
+                client.send_tool_approval(tool.tool_id, true);
+            }
+        } else {
+            // Prompt user for approval
+            bool approved = prompt_tool_approval(group);
+
+            // Send approval/rejection for all tools in the group
+            for (const auto& tool : group.tools) {
+                client.send_tool_approval(tool.tool_id, approved);
+
+                if (approved) {
+                    std::cout << Color::GREEN << "  ✓ Approved: " << tool.tool_name << Color::RESET << "\n";
+                } else {
+                    std::cout << Color::RED << "  ✗ Rejected: " << tool.tool_name << Color::RESET << "\n";
+                }
+            }
+        }
+    };
+
+    handlers.on_status = [&](const Qwen::StatusUpdate& msg) {
+        std::cout << Color::GRAY << "[Status: " << Qwen::app_state_to_string(msg.state) << "]" << Color::RESET;
+        if (msg.message.has_value()) {
+            std::cout << " " << msg.message.value();
+        }
+        std::cout << "\n";
+    };
+
+    handlers.on_info = [&](const Qwen::InfoMessage& msg) {
+        std::cout << Color::BLUE << "[Info: " << msg.message << "]" << Color::RESET << "\n";
+    };
+
+    handlers.on_error = [&](const Qwen::ErrorMessage& msg) {
+        std::cout << Color::RED << "[Error: " << msg.message << "]" << Color::RESET << "\n";
+    };
+
+    handlers.on_completion_stats = [&](const Qwen::CompletionStats& stats) {
+        std::cout << Color::GRAY << "[Stats";
+        if (stats.prompt_tokens.has_value()) {
+            std::cout << " - Prompt: " << stats.prompt_tokens.value();
+        }
+        if (stats.completion_tokens.has_value()) {
+            std::cout << ", Completion: " << stats.completion_tokens.value();
+        }
+        if (!stats.duration.empty()) {
+            std::cout << ", Duration: " << stats.duration;
+        }
+        std::cout << "]" << Color::RESET << "\n";
+    };
+
+    // Set handlers
+    client.set_handlers(handlers);
+
+    // Start the client
+    std::cout << Color::YELLOW << "Starting qwen-code...\n" << Color::RESET;
+    if (!client.start()) {
+        std::cout << Color::RED << "Failed to start qwen-code subprocess.\n" << Color::RESET;
+        std::cout << "Error: " << client.get_last_error() << "\n";
+        std::cout << "\nMake sure qwen-code is installed and accessible.\n";
+        std::cout << "Set QWEN_CODE_PATH environment variable if needed.\n";
+        return;
+    }
+
+    std::cout << Color::GREEN << "Connected!\n" << Color::RESET << "\n";
+
+    // Main interactive loop
+    bool should_exit = false;
+    std::string input_line;
+
+    while (!should_exit && client.is_running()) {
+        // Display prompt
+        std::cout << Color::GREEN << "> " << Color::RESET;
+        std::cout.flush();
+
+        // Read user input
+        if (!std::getline(std::cin, input_line)) {
+            // EOF or error on stdin
+            break;
+        }
+
+        // Handle special commands
+        if (handle_special_command(input_line, state_mgr, client, should_exit)) {
+            if (should_exit) {
+                break;
+            }
+            continue;
+        }
+
+        // Skip empty lines
+        if (input_line.empty()) {
+            continue;
+        }
+
+        // Send user input to qwen
+        if (!client.send_user_input(input_line)) {
+            std::cout << Color::RED << "Failed to send message.\n" << Color::RESET;
+            continue;
+        }
+
+        // Poll for responses with a timeout
+        // We'll poll in a loop to handle streaming responses
+        bool waiting_for_response = true;
+        auto start_time = std::chrono::steady_clock::now();
+        const int total_timeout_ms = 30000;  // 30 seconds total timeout
+
+        while (waiting_for_response && client.is_running()) {
+            // Poll for messages (100ms timeout per poll)
+            int msg_count = client.poll_messages(100);
+
+            if (msg_count < 0) {
+                // Error occurred
+                std::cout << Color::RED << "Error polling messages.\n" << Color::RESET;
+                waiting_for_response = false;
+                break;
+            }
+
+            if (msg_count == 0) {
+                // No messages yet, check timeout
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - start_time
+                ).count();
+
+                if (elapsed > total_timeout_ms) {
+                    std::cout << Color::YELLOW << "\n[Response timeout]\n" << Color::RESET;
+                    waiting_for_response = false;
+                    break;
+                }
+
+                // Brief sleep to avoid busy-waiting
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                continue;
+            }
+
+            // Messages received - reset timer for next batch
+            start_time = std::chrono::steady_clock::now();
+
+            // Continue polling for more messages (streaming)
+            // We'll keep polling until we get a completion_stats or no messages for a bit
+        }
+
+        std::cout << "\n";  // Add newline after response
+    }
+
+    // Cleanup
+    if (client.is_running()) {
+        client.stop();
+    }
+
+    // Save session before exiting
+    std::cout << Color::YELLOW << "Saving session...\n" << Color::RESET;
+    state_mgr.save_session();
+    std::cout << Color::GREEN << "Session saved.\n" << Color::RESET;
 }
 
 }  // namespace QwenCmd

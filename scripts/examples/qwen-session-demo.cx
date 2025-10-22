@@ -1,0 +1,103 @@
+#!/usr/bin/env codex
+# qwen-session-demo.cx - Demonstration of qwen session management
+#
+# This script demonstrates qwen session management features including:
+#   - Creating new sessions
+#   - Listing sessions
+#   - Attaching to existing sessions
+#   - Session persistence in VFS
+#
+# Session data is stored in the VFS under /qwen/sessions/
+# Each session includes:
+#   - metadata.json       - Session info (model, workspace, tags)
+#   - history.jsonl       - Conversation history (one message per line)
+#   - tool_groups.jsonl   - Tool execution tracking
+#   - files/              - Session-specific files
+#
+# Usage:
+#   ./codex scripts/examples/qwen-session-demo.cx
+
+echo =======================================
+echo Qwen Session Management Demo
+echo =======================================
+echo
+
+# Check if any sessions exist
+echo "--- Step 1: Check existing sessions ---"
+qwen --list-sessions
+echo
+
+# Show VFS structure for sessions
+echo "--- Step 2: Check VFS session storage ---"
+echo "Sessions are stored in VFS under /qwen/sessions/"
+tree /qwen 2>/dev/null || echo "No /qwen directory yet (will be created on first session)"
+echo
+
+# Show how to create and attach to sessions
+echo "--- Step 3: Session creation and attachment ---"
+echo ""
+echo "To create a new session:"
+echo "  ./codex"
+echo "  > qwen"
+echo "  This creates a new session with ID: session-{timestamp}-{uuid}"
+echo ""
+echo "To attach to an existing session:"
+echo "  ./codex"
+echo "  > qwen --attach <session-id>"
+echo ""
+echo "Session IDs can be found with: qwen --list-sessions"
+echo
+
+# Show session commands
+echo "--- Step 4: Interactive session commands ---"
+echo "Once in a session, you can use:"
+echo "  /status  - Show current session info (ID, model, message count)"
+echo "  /save    - Manually save session to VFS"
+echo "  /detach  - Detach from session (saves state, session remains)"
+echo "  /exit    - Exit and close session (saves final state)"
+echo
+
+# Show VFS persistence
+echo "--- Step 5: VFS persistence structure ---"
+echo "After creating sessions, VFS structure will be:"
+echo "/qwen/"
+echo "  └── sessions/"
+echo "      └── session-<timestamp>-<uuid>/"
+echo "          ├── metadata.json       # Session info"
+echo "          ├── history.jsonl       # Conversation messages"
+echo "          ├── tool_groups.jsonl   # Tool execution log"
+echo "          └── files/              # Session files"
+echo
+
+# Show model configuration
+echo "--- Step 6: Model and workspace configuration ---"
+echo "Create a session with specific model:"
+echo "  ./codex"
+echo "  > qwen --model gpt-4"
+echo ""
+echo "Create a session with workspace:"
+echo "  ./codex"
+echo "  > qwen --workspace /path/to/project"
+echo ""
+echo "Or use environment variables:"
+echo "  export QWEN_MODEL=coder"
+echo "  export QWEN_WORKSPACE=/home/user/project"
+echo
+
+# Show session management features
+echo "--- Step 7: Advanced session features ---"
+echo "The QwenStateManager (VfsShell/qwen_state_manager.h) provides:"
+echo "  - Session CRUD operations (create, load, save, delete)"
+echo "  - Conversation history management"
+echo "  - File storage per session"
+echo "  - Tool group tracking"
+echo "  - Session metadata (tags, timestamps, model info)"
+echo "  - VFS-backed persistence (survives restarts)"
+echo
+
+echo "Demo complete!"
+echo "For implementation details, see:"
+echo "  - VfsShell/cmd_qwen.cpp         # Shell command implementation"
+echo "  - VfsShell/qwen_state_manager.h # Session management API"
+echo "  - VfsShell/qwen_client.h        # qwen-code client API"
+echo "  - TASKS.md                      # Development roadmap"

@@ -1,0 +1,54 @@
+#!/usr/bin/env codex
+# qwen-demo.cx - Basic demonstration of qwen command integration
+#
+# This script demonstrates the qwen command which provides an interactive
+# AI assistant powered by qwen-code with full VFS integration.
+#
+# Prerequisites:
+#   - qwen-code must be installed and accessible
+#   - Set QWEN_CODE_PATH if qwen is not in PATH
+#   - Optionally set QWEN_MODEL for custom model
+#
+# Usage:
+#   ./codex scripts/examples/qwen-demo.cx
+
+echo ===================================
+echo Qwen Integration Demo
+echo ===================================
+echo
+
+# Show help first
+echo "--- Step 1: Display qwen help ---"
+qwen --help
+echo
+
+# List existing sessions (should be empty initially)
+echo "--- Step 2: List existing sessions ---"
+qwen --list-sessions
+echo
+
+# Note: Interactive session creation would require user input
+# To test interactively, run: ./codex
+# Then type: qwen
+echo "--- Step 3: To start an interactive session ---"
+echo "Run: ./codex"
+echo "Then type: qwen"
+echo ""
+echo "Interactive commands available:"
+echo "  /help    - Show interactive help"
+echo "  /status  - Show session status"
+echo "  /save    - Save session"
+echo "  /detach  - Detach from session (keeps it running)"
+echo "  /exit    - Exit and close session"
+echo
+
+echo "--- Step 4: Environment configuration ---"
+echo "You can configure qwen using environment variables:"
+echo "  export QWEN_MODEL=coder           # Set default model"
+echo "  export QWEN_WORKSPACE=/path/to/ws # Set workspace root"
+echo "  export QWEN_CODE_PATH=/path/qwen  # Set qwen executable path"
+echo "  export QWEN_AUTO_APPROVE=1        # Auto-approve tool execution"
+echo
+
+echo "Demo complete! See TASKS.md for implementation details."
+echo "See QWEN_STRUCTURED_PROTOCOL.md for protocol documentation."
