@@ -5,76 +5,60 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 ## 📍 CONTEXT FOR NEXT SESSION (2025-10-22)
 
-**Current State**: ✅ **Phase 5 IN PROGRESS** - Subprocess spawning working, investigating message protocol
+**Current State**: ✅ **Phase 5 DEBUGGING COMPLETE** - Bidirectional communication working!
 
-**What Just Happened (Phase 5 Integration Testing)**:
+**What Just Happened (Phase 5 Debugging Session)**:
 - ✅ Built qwen-code from source (npm install successful)
-- ✅ Verified --server-mode flag in development build
+- ✅ Verified --server-mode flag: `--server-mode stdin` (not just `--server-mode`)
 - ✅ Created wrapper script `/common/active/sblo/Dev/VfsBoot/qwen-code`
 - ✅ Updated cmd_qwen.cpp with correct executable path and model
 - ✅ Fixed argument duplication bug (stdin,stdin error)
 - ✅ Subprocess spawning works - qwen-code starts successfully
 - ✅ Server mode initializes and receives commands
-- ✅ Test output shows: Version 0.0.14, workspace set, model configured
-- ⏳ Messages not being received/parsed from qwen-code subprocess
-- ✅ Committed: ce7b7a8 "Phase 5: Configure qwen-code integration and subprocess spawning"
+- ✅ Added debug logging to QwenClient to diagnose message reception
+- ✅ **BREAKTHROUGH**: Messages ARE being received and parsed correctly!
+- ✅ Test output confirms bidirectional communication:
+  - Init message: `{"type":"init","version":"0.0.14","workspaceRoot":"/common/active/sblo/Dev/VfsBoot","model":"gpt-4o-mini"}`
+  - Conversation echo: `{"type":"conversation","role":"user","content":"hello","id":1761158324665}`
 
-**Debugging Status**:
+**Working Communication Flow**:
 ```
-[StructuredServerMode] Starting stdin/stdout mode
-[ServerMode] Starting structured server mode
-[ServerMode] Version: 0.0.14
-[ServerMode] Workspace: /common/active/sblo/Dev/VfsBoot
-[ServerMode] Model: gpt-4o-mini
-[ServerMode] Server mode is running...
-[ServerMode] Received command: user_input
+C++ sends:     {"type":"user_input","content":"hello"}
+                    ↓
+TypeScript receives and logs: [ServerMode] Received command: user_input
+                    ↓
+TypeScript sends:  {"type":"init",...}
+                   {"type":"conversation","role":"user","content":"hello",...}
+                    ↓
+C++ receives:      [QwenClient] Read 107 bytes from subprocess
+                   [QwenClient] Received: {"type":"init",...}
+                   [QwenClient] Received: {"type":"conversation",...}
 ```
-Subprocess receives commands but responses not reaching C++ client.
 
-**What to Do Next** (Immediate Priority):
+**Root Cause Identified**:
+- qwen-code's `runServerMode()` is a **preliminary implementation**
+- It successfully sends init messages and echoes user input
+- It does NOT yet integrate with the AI/Gemini client for actual responses
+- Comment in gemini.tsx: "NOTE: This is a preliminary implementation. Full integration with App state requires additional work."
 
-1. **Debug Message Reception Issue**
-   - Check if qwen-code is actually sending JSON messages to stdout
-   - Add debug logging to QwenClient poll_messages()
-   - Verify protocol message format matches expectations
-   - Check for newline-delimited JSON (one message per line)
+**What to Do Next** (Two Options):
 
-2. **Investigate TypeScript Server Mode**
-   - Check structuredServerMode.ts sendMessage() implementation
-   - Verify JSON serialization format
-   - Test with simple echo to confirm stdout works
-   - May need to implement missing protocol methods
+**Option A: Complete TypeScript Server Mode Implementation (Recommended Next)**
+1. Implement full AI integration in `runServerMode()` (gemini.tsx)
+2. Wire up GeminiClient to process user_input commands
+3. Stream AI responses as conversation messages
+4. Handle tool approvals through the protocol
+5. Test end-to-end with actual AI conversations
+6. Verify tool execution workflow
 
-3. **Alternative Testing Approach**
-   - Test qwen-code --server-mode stdin manually with echo
-   - Capture raw JSON output to verify format
-   - Compare with protocol parser expectations in qwen_protocol.cpp
+**Option B: Alternative - Test with Mock Responses**
+1. Create a simple test mode that sends mock AI responses
+2. Validate C++ side handles streaming responses correctly
+3. Test tool approval UI in cmd_qwen.cpp
+4. Verify session persistence works
+5. Then complete TypeScript implementation later
 
-**Option A: Phase 5 - Integration Testing & Refinement (After Messaging Works)**
-1. ✅ Install/setup qwen-code executable for integration testing (DONE)
-2. ⏳ Debug message protocol and establish bidirectional communication
-3. Test full end-to-end flow with actual AI conversations
-3. Test tool approval workflow with real tool executions
-4. Test session persistence across VfsBoot restarts
-5. Verify streaming responses work correctly
-6. Fix any bugs discovered during testing
-7. Add error recovery for subprocess crashes
-
-**Option B: Phase 5 - TypeScript Full App Integration**
-1. Complete TypeScript server mode in qwen-code
-2. Implement structured protocol on TypeScript side
-3. Test bidirectional communication
-4. Handle state synchronization
-5. End-to-end integration testing
-
-**Option C: Documentation & Polish**
-1. Update CLAUDE.md with qwen command usage
-2. Create comprehensive user guide
-3. Add examples to HOWTO_SCRIPTS.md
-4. Document environment variables and configuration
-5. Add troubleshooting guide
-
-**Recommended**: Start with Option A to validate the implementation works end-to-end before moving to TypeScript integration.
+**Recommended**: Option A - Complete the TypeScript side now while the protocol details are fresh.
 
 ---
 

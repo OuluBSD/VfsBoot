@@ -317,7 +317,7 @@ void cmd_qwen(const std::vector<std::string>& args,
     Qwen::QwenClientConfig client_config;
     client_config.qwen_executable = config.qwen_code_path;
     client_config.auto_restart = true;
-    client_config.verbose = false;
+    client_config.verbose = true;  // Enable verbose logging for debugging
 
     // Note: --server-mode stdin is hardcoded in QwenClient, no need to add it here
 

@@ -310,6 +310,12 @@ private:
         }
 
         chunk[n] = '\0';
+
+        if (config_.verbose) {
+            std::cerr << "[QwenClient] Read " << n << " bytes from subprocess\n";
+            std::cerr << "[QwenClient] Raw data: " << chunk << "\n";
+        }
+
         read_buffer_ += chunk;
 
         // Process complete lines
