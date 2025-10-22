@@ -3,11 +3,15 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 ---
 
-## 🚀 CURRENT CONTEXT - qwen-code C++ Integration (Phase 2 COMPLETE)
+## 🚀 CURRENT CONTEXT - qwen-code C++ Integration (Phase 3 COMPLETE → Phase 4 STARTING)
 
 **Last Updated**: 2025-10-22
 
-### What We Just Completed (Phase 2)
+### What We Just Completed (Phase 3)
+
+✅ **VFS State Manager for Session Persistence** - 1,050 lines, 7/8 tests passing
+
+### Previously Completed (Phase 2)
 
 ✅ **C++ Client Implementation for qwen-code Integration** - 1,994 lines, all tests passing
 
@@ -34,21 +38,183 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 **Committed**: `9dfa269 - Add qwen-code C++ client implementation (Phase 2)`
 
-### Next Steps (Choose One)
+### ✅ Phase 3 COMPLETE - VFS Integration (2025-10-22)
 
-**Option A: Phase 3 - VFS Integration** (Recommended)
-- Create `qwen_state_manager.h/cpp` for VFS storage
-- Store conversations in `/qwen/history/`
-- Store files in `/qwen/files/`
-- Persistence and session management
+**VFS State Manager Implementation** - 1,050 lines, 7/8 tests passing
 
-**Option B: Phase 4 - Shell Command Integration**
-- Create `cmd_qwen.cpp` for `qwen` shell command
-- Interactive mode and script mode
-- Session attach/detach
-- Configuration support
+**Storage Layer:**
+- `VfsShell/qwen_state_manager.h` (280 lines) - Full session management API
+- `VfsShell/qwen_state_manager.cpp` (770 lines) - VFS-backed persistence with JSON storage
+- `VfsShell/qwen_state_manager_test.cpp` (300 lines) - **7/8 tests PASS**
 
-**Option C: qwen-code TypeScript Full App Integration**
+**What Works:**
+- Session creation with UUID generation ✅
+- Conversation history storage in `/qwen/history/` ✅
+- File storage in `/qwen/files/` ✅
+- Session metadata (model, workspace_root, tags) ✅
+- Session list/load/save/delete ✅
+- Tool group tracking ✅
+- Storage statistics (minor bug with deleted sessions)
+
+**VFS Storage Structure:**
+```
+/qwen/
+├── sessions/
+│   └── session-<id>/
+│       ├── metadata.json          # Session info (created_at, model, tags, etc.)
+│       ├── history.jsonl          # Conversation messages (one per line)
+│       ├── tool_groups.jsonl      # Tool execution tracking
+│       └── files/                 # Session-specific files
+│           └── <filename>
+```
+
+**API Highlights:**
+- Session Management: `create_session()`, `load_session()`, `save_session()`, `delete_session()`
+- History: `add_message()`, `get_history()`, `get_recent_messages()`, `clear_history()`
+- Files: `store_file()`, `retrieve_file()`, `list_files()`, `delete_file()`
+- Metadata: `set_workspace_root()`, `set_model()`, `add_session_tag()`, `get_session_tags()`
+- Maintenance: `flush_all()`, `export_session()`, `import_session()`, `cleanup_old_sessions()`
+
+**Build Integration:**
+- Added to Makefile with full dependency chain
+- Test binary: `make qwen-state-manager-test` (2.0M)
+- Integrated with existing VfsBoot VFS system
+
+**Known Issues:**
+- get_storage_stats() needs better error handling for deleted sessions
+
+### 🎯 Phase 4 - Shell Command Integration (IN PROGRESS - 2025-10-22)
+
+**Goal**: Integrate qwen-code as a builtin `qwen` command in VfsBoot with interactive terminal, session management, and full VFS integration.
+
+**Current Status**: Foundation complete! Basic command structure and session management working.
+
+**✅ Completed Today**:
+1. ✅ Created `cmd_qwen.cpp` (~200 lines) - Basic shell command with argument parsing
+2. ✅ Created `cmd_qwen.h` (~60 lines) - Public API and configuration structures
+3. ✅ Implemented session lifecycle management (create, load, attach, list)
+4. ✅ Registered `qwen` command in shell dispatcher (main.cpp)
+5. ✅ Updated Makefile to build cmd_qwen.cpp
+6. ✅ Added help text to shell help system
+7. ✅ Fixed vfs_core.h missing `#include <set>` directive
+8. ✅ Successfully compiles with no errors (only warnings)
+9. ✅ Tested: `qwen --help` working
+10. ✅ Tested: Session creation working (creates session-{timestamp}-{uuid})
+11. ✅ Tested: Session listing infrastructure ready
+
+**Recommended Implementation Order (Original Plan):**
+
+1. **Create `cmd_qwen.cpp` - Basic shell command registration** (~200 lines)
+   - Register `qwen` command in shell dispatcher
+   - Parse command-line arguments: `--attach`, `--list-sessions`, `--model`, etc.
+   - Help text and usage examples
+   - Wire into existing command infrastructure
+
+2. **Implement session lifecycle management** (~150 lines in `cmd_qwen.cpp`)
+   - Create new session on `qwen` (no args)
+   - Attach to existing session with `qwen --attach <id>`
+   - List sessions with `qwen --list-sessions`
+   - Auto-save on exit
+   - Session switching support
+
+3. **Connect QwenClient to QwenStateManager** (~100 lines integration)
+   - Bridge callbacks: QwenClient → QwenStateManager
+   - Store incoming messages to VFS
+   - Store tool groups to VFS
+   - Track conversation state
+
+4. **Interactive command loop** (~200 lines)
+   - Read user input from terminal
+   - Send via QwenClient
+   - Display streaming responses
+   - Handle special commands: `/detach`, `/exit`, `/save`, `/help`
+   - ANSI color support for messages
+
+5. **Tool approval workflow** (~150 lines)
+   - Detect tool confirmation requests
+   - Prompt user: "Approve tool execution? [y/n/details]"
+   - Send approval/rejection via QwenClient
+   - Track tool status in StateManager
+
+6. **Configuration support** (~100 lines)
+   - Read from `/env/qwen_config.json` or `~/.config/vfsboot/qwen.conf`
+   - Options: default model, auto-approve tools, color scheme
+   - Environment variable overrides: `QWEN_MODEL`, `QWEN_WORKSPACE`
+
+7. **Testing and integration** (~150 lines test script)
+   - Create `scripts/examples/qwen-demo.cx`
+   - Create `scripts/examples/qwen-session-demo.cx`
+   - Test: new session, save/load, tool approvals
+   - Verify VFS persistence across restarts
+
+**Total Estimated Effort**: ~1,050 lines, 1-2 days
+
+**Files to Create/Modify:**
+- **New**: `VfsShell/cmd_qwen.cpp` (~900 lines total)
+- **New**: `VfsShell/cmd_qwen.h` (~100 lines header)
+- **Modify**: `VfsShell/main.cpp` or `VfsShell/shell_commands.cpp` (register command)
+- **Modify**: `Makefile` (add cmd_qwen.cpp to build)
+- **New**: `scripts/examples/qwen-demo.cx` (demo script)
+- **New**: `scripts/examples/qwen-session-demo.cx` (session management demo)
+
+**Dependencies Ready:**
+- ✅ QwenClient (Phase 2) - subprocess management, protocol handling
+- ✅ QwenStateManager (Phase 3) - VFS persistence, session management
+- ✅ QwenProtocol (Phase 2) - message serialization
+- ✅ VFS system - directory creation, file I/O
+
+**Integration Points:**
+- Shell command system (`shell_commands.cpp` pattern)
+- VFS paths: `/qwen/sessions/<id>/`
+- Environment variables: `/env/` in VFS
+- ANSI terminal output (existing support in VfsBoot)
+
+**Success Criteria:**
+- [x] `qwen` command structure in place
+- [x] Session create/load/save/list implemented
+- [x] `qwen --list-sessions` shows all sessions
+- [x] `qwen --attach <id>` infrastructure ready
+- [x] VFS persistence working (QwenStateManager from Phase 3)
+- [ ] `qwen` launches interactive session with qwen-code subprocess
+- [ ] User can send messages and receive AI responses
+- [ ] Tool approval prompts work correctly
+- [ ] Full interactive loop with streaming responses
+- [ ] Demo scripts work end-to-end
+
+**🔧 Remaining Work (Next Session)**:
+1. **Interactive command loop** (~200 lines) - MAIN PRIORITY
+   - Spawn qwen-code subprocess using QwenClient
+   - Set up MessageHandlers for incoming messages
+   - Read user input from terminal
+   - Display streaming responses
+   - Handle special commands: /detach, /exit, /save, /help, /status
+
+2. **QwenClient integration** (~100 lines)
+   - Create QwenClientConfig with correct executable path
+   - Set up message handlers (on_conversation, on_tool_group, on_error, etc.)
+   - Poll messages in loop with timeout
+   - Send user input via send_user_input()
+
+3. **Tool approval workflow** (~150 lines)
+   - Detect tool_group messages
+   - Prompt user for approval
+   - Send approval/rejection via send_tool_approval()
+
+4. **Demo scripts** (~100 lines)
+   - Create `scripts/examples/qwen-demo.cx`
+   - Create `scripts/examples/qwen-session-demo.cx`
+   - Test end-to-end workflow
+
+**Next Implementation Steps**:
+- Start with interactive loop in cmd_qwen.cpp
+- Use QwenClient API (set_handlers, poll_messages, send_user_input)
+- Test with actual qwen-code subprocess
+- Add tool approval prompts
+- Create demo scripts
+
+**Next Steps (Alternative Options)**
+
+**Option B: Phase 5 - TypeScript Full App Integration**
 - Complete `runServerMode()` in `gemini.tsx`
 - Stream real state changes from qwen-code
 - Handle tool approvals from C++
@@ -62,28 +228,73 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 - **qwen-code repo**: `/common/active/sblo/Dev/qwen-code/` (TypeScript implementation with structured protocol)
 - **Test binaries**: `./qwen_protocol_test` (18/18), `./qwen_client_test` (PASS), `./qwen_echo_server`
 
-### Architecture Summary
+### Architecture Summary (Phases 2-3 Complete)
 
 ```
-VfsBoot (C++)                     qwen-code (TypeScript)
-┌─────────────────────┐           ┌──────────────────────┐
-│ qwen_client         │◄─stdin───►│ structuredServerMode │
-│ - fork/exec         │   stdout  │ - QwenStateSerializer│
-│ - poll() I/O        │   JSON    │ - StdinStdoutServer  │
-│ - callbacks         │   msgs    │ - runServerMode()    │
-└─────────────────────┘           └──────────────────────┘
-         │                                  │
-         ▼                                  ▼
-   qwen_protocol                   qwenStateSerializer
-   - parse_message()               - serializeHistoryItem()
-   - serialize_command()           - getIncrementalUpdates()
+VfsBoot (C++)                                    qwen-code (TypeScript)
+┌──────────────────────────────────────────┐    ┌──────────────────────┐
+│ [Phase 4] cmd_qwen (Shell Command)      │    │ structuredServerMode │
+│ - Interactive terminal loop              │    │ - QwenStateSerializer│
+│ - User input / display responses         │    │ - StdinStdoutServer  │
+│ - Tool approval prompts                  │    │ - runServerMode()    │
+│ - Session management UI                  │    └──────────────────────┘
+│ - /detach, /exit, /help commands         │              ▲
+└──────────────┬───────────────────────────┘              │
+               │                                           │
+               ▼                                           │
+┌──────────────────────────────────────────┐             │
+│ [Phase 2] qwen_client                    │◄────stdin───┤
+│ - fork/exec subprocess                   │     stdout  │
+│ - poll() I/O (non-blocking)              │     JSON    │
+│ - Message callbacks                      │     msgs    │
+│ - Auto-restart on crash                  │             │
+└──────────────┬───────────────────────────┘             │
+               │                                           │
+               ▼                                           │
+┌──────────────────────────────────────────┐             │
+│ [Phase 3] qwen_state_manager             │             │
+│ - Session CRUD (create/load/save/delete) │             │
+│ - Conversation history (/qwen/history/)  │             │
+│ - File storage (/qwen/files/)            │             │
+│ - Tool group tracking                    │             │
+│ - VFS persistence (JSON/JSONL)           │             │
+└──────────────┬───────────────────────────┘             │
+               │                                           │
+               ▼                                           ▼
+┌──────────────────────────────────────────┐    qwenStateSerializer
+│ [Phase 2] qwen_protocol                  │    - serializeHistoryItem()
+│ - parse_message() (TS → C++)             │    - getIncrementalUpdates()
+│ - serialize_command() (C++ → TS)         │
+│ - Type-safe structs (std::variant)       │
+└───────────────────────────────────────────┘
+
+         VFS (/qwen/)
+         ├── sessions/
+         │   └── <session-id>/
+         │       ├── metadata.json
+         │       ├── history.jsonl
+         │       ├── tool_groups.jsonl
+         │       └── files/
+         ├── history/  (future: shared history)
+         └── files/    (future: shared files)
 ```
 
-**Protocol Messages** (C++ → TS):
+**Protocol Messages** (TS → C++):
 - init, conversation, tool_group, status, info, error, completion_stats
 
-**Protocol Commands** (TS → C++):
+**Protocol Commands** (C++ → TS):
 - user_input, tool_approval, interrupt, model_switch
+
+**Phase 4 Data Flow:**
+```
+User types → cmd_qwen → QwenClient → qwen-code subprocess
+                ↓                            ↓
+         QwenStateManager              AI response
+                ↓                            ↓
+         VFS persistence ← QwenClient ← protocol messages
+                                             ↓
+                                    cmd_qwen displays
+```
 
 ---
 

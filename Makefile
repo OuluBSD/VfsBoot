@@ -15,8 +15,8 @@ ifneq ($(NCURSES_CFLAGS),)
     LDFLAGS += $(NCURSES_LDFLAGS)
 endif
 
-VFSSHELL_SRC := VfsShell/vfs_common.cpp VfsShell/tag_system.cpp VfsShell/logic_engine.cpp VfsShell/vfs_core.cpp VfsShell/vfs_mount.cpp VfsShell/sexp.cpp VfsShell/cpp_ast.cpp VfsShell/clang_parser.cpp VfsShell/planner.cpp VfsShell/ai_bridge.cpp VfsShell/context_builder.cpp VfsShell/build_graph.cpp VfsShell/make.cpp VfsShell/hypothesis.cpp VfsShell/scope_store.cpp VfsShell/feedback.cpp VfsShell/shell_commands.cpp VfsShell/repl.cpp VfsShell/main.cpp VfsShell/snippet_catalog.cpp VfsShell/utils.cpp VfsShell/web_server.cpp VfsShell/upp_assembly.cpp VfsShell/upp_builder.cpp VfsShell/upp_workspace_build.cpp VfsShell/command.cpp VfsShell/daemon.cpp VfsShell/registry.cpp
-VFSSHELL_HDR := VfsShell/vfs_common.h VfsShell/tag_system.h VfsShell/logic_engine.h VfsShell/vfs_core.h VfsShell/vfs_mount.h VfsShell/sexp.h VfsShell/cpp_ast.h VfsShell/clang_parser.h VfsShell/planner.h VfsShell/ai_bridge.h VfsShell/context_builder.h VfsShell/build_graph.h VfsShell/make.h VfsShell/hypothesis.h VfsShell/scope_store.h VfsShell/feedback.h VfsShell/shell_commands.h VfsShell/repl.h VfsShell/snippet_catalog.h VfsShell/utils.h VfsShell/upp_assembly.h VfsShell/upp_builder.h VfsShell/upp_workspace_build.h VfsShell/registry.h
+VFSSHELL_SRC := VfsShell/vfs_common.cpp VfsShell/tag_system.cpp VfsShell/logic_engine.cpp VfsShell/vfs_core.cpp VfsShell/vfs_mount.cpp VfsShell/sexp.cpp VfsShell/cpp_ast.cpp VfsShell/clang_parser.cpp VfsShell/planner.cpp VfsShell/ai_bridge.cpp VfsShell/context_builder.cpp VfsShell/build_graph.cpp VfsShell/make.cpp VfsShell/hypothesis.cpp VfsShell/scope_store.cpp VfsShell/feedback.cpp VfsShell/shell_commands.cpp VfsShell/repl.cpp VfsShell/main.cpp VfsShell/snippet_catalog.cpp VfsShell/utils.cpp VfsShell/web_server.cpp VfsShell/upp_assembly.cpp VfsShell/upp_builder.cpp VfsShell/upp_workspace_build.cpp VfsShell/command.cpp VfsShell/daemon.cpp VfsShell/registry.cpp VfsShell/qwen_protocol.cpp VfsShell/qwen_client.cpp VfsShell/qwen_state_manager.cpp VfsShell/cmd_qwen.cpp
+VFSSHELL_HDR := VfsShell/vfs_common.h VfsShell/tag_system.h VfsShell/logic_engine.h VfsShell/vfs_core.h VfsShell/vfs_mount.h VfsShell/sexp.h VfsShell/cpp_ast.h VfsShell/clang_parser.h VfsShell/planner.h VfsShell/ai_bridge.h VfsShell/context_builder.h VfsShell/build_graph.h VfsShell/make.h VfsShell/hypothesis.h VfsShell/scope_store.h VfsShell/feedback.h VfsShell/shell_commands.h VfsShell/repl.h VfsShell/snippet_catalog.h VfsShell/utils.h VfsShell/upp_assembly.h VfsShell/upp_builder.h VfsShell/upp_workspace_build.h VfsShell/registry.h VfsShell/qwen_protocol.h VfsShell/qwen_client.h VfsShell/qwen_state_manager.h VfsShell/cmd_qwen.h
 VFSSHELL_BIN := codex
 
 HARNESS_SRC := harness/scenario.cpp harness/runner.cpp
@@ -24,7 +24,13 @@ HARNESS_HDR := harness/scenario.h harness/runner.h
 PLANNER_DEMO_BIN := planner_demo
 PLANNER_TRAIN_BIN := planner_train
 
-.PHONY: all clean debug release sample test-lib planner-demo planner-train
+# Qwen test binaries
+QWEN_PROTOCOL_TEST_BIN := qwen_protocol_test
+QWEN_CLIENT_TEST_BIN := qwen_client_test
+QWEN_STATE_MANAGER_TEST_BIN := qwen_state_manager_test
+QWEN_ECHO_SERVER_BIN := qwen_echo_server
+
+.PHONY: all clean debug release sample test-lib planner-demo planner-train qwen-tests qwen-protocol-test qwen-client-test qwen-state-manager-test qwen-echo-server
 
 all: $(VFSSHELL_BIN)
 
@@ -41,8 +47,19 @@ $(PLANNER_DEMO_BIN): harness/demo.cpp $(HARNESS_SRC) $(HARNESS_HDR) $(VFSSHELL_S
 $(PLANNER_TRAIN_BIN): harness/train.cpp $(HARNESS_SRC) $(HARNESS_HDR) $(VFSSHELL_SRC) $(VFSSHELL_HDR)
 	$(CXX) $(CXXFLAGS) -DCODEX_NO_MAIN harness/train.cpp $(HARNESS_SRC) $(VFSSHELL_SRC) -o $@ $(LDFLAGS)
 
+# Qwen test binaries
+qwen-tests: $(QWEN_STATE_MANAGER_TEST_BIN)
+
+qwen-state-manager-test: $(QWEN_STATE_MANAGER_TEST_BIN)
+
+# Filter out main.cpp from VFSSHELL_SRC for test binaries
+VFSSHELL_SRC_NO_MAIN := $(filter-out VfsShell/main.cpp, $(VFSSHELL_SRC))
+
+$(QWEN_STATE_MANAGER_TEST_BIN): VfsShell/qwen_state_manager_test.cpp $(VFSSHELL_SRC) $(VFSSHELL_HDR)
+	$(CXX) $(CXXFLAGS) -DCODEX_NO_MAIN VfsShell/qwen_state_manager_test.cpp $(VFSSHELL_SRC_NO_MAIN) -o $@ $(LDFLAGS)
+
 clean:
-	rm -f $(VFSSHELL_BIN) $(PLANNER_DEMO_BIN) $(PLANNER_TRAIN_BIN)
+	rm -f $(VFSSHELL_BIN) $(PLANNER_DEMO_BIN) $(PLANNER_TRAIN_BIN) $(QWEN_STATE_MANAGER_TEST_BIN)
 	rm -rf build
 
 BUILD_DIR := build

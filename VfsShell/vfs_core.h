@@ -1,5 +1,6 @@
 #pragma once
 
+#include <set>
 
 //
 // VFS perus

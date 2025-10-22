@@ -1,6 +1,7 @@
 #include "VfsShell.h"
 #include "upp_workspace_build.h"
 #include "registry.h"
+#include "cmd_qwen.h"
 #include <filesystem>
 #include <unistd.h>
 
@@ -179,6 +180,10 @@ R"(Commands:
   cpp.returni <scope-path> <int>
   cpp.rangefor <scope-path> <loop-name> <decl> | <range>
   cpp.dump <tu-path> <vfs-file-path>
+  # Qwen AI Assistant
+  qwen [options]                                  (interactive AI assistant)
+  qwen --attach <id>                              (attach to existing session)
+  qwen --list-sessions                            (list all sessions)
   # Build automation
   make [target] [-f makefile] [-v|--verbose]  (minimal GNU make subset)
   sample.run [--keep] [--trace]               (build, compile, and run demo C++ program)
@@ -3006,6 +3011,10 @@ int main(int argc, char** argv){
             std::string absOut = normalize_path(cwd.path, inv.args[1]);
             cpp_dump_to_vfs(vfs, cwd.primary_overlay, absTu, absOut);
             std::cout << "dump -> " << absOut << "\n";
+
+        } else if(cmd == "qwen"){
+            // Interactive AI assistant powered by qwen-code
+            QwenCmd::cmd_qwen(inv.args, vfs);
 
         } else if(cmd == "upp.asm.load"){
             // Parse flags first
