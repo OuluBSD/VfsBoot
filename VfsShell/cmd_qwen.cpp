@@ -136,13 +136,40 @@ void list_sessions(QwenStateManager& state_mgr) {
     }
 }
 
+// Track if we're in the middle of streaming (to manage AI: prefix)
+static bool streaming_in_progress = false;
+
 // Display a conversation message with formatting
 void display_conversation_message(const Qwen::ConversationMessage& msg) {
     if (msg.role == Qwen::MessageRole::USER) {
         std::cout << Color::GREEN << "You: " << Color::RESET << msg.content << "\n";
-    } else if (msg.role == Qwen::MessageRole::ASSISTANT) {
-        std::cout << Color::CYAN << "AI: " << Color::RESET << msg.content << "\n";
+        return;
+    }
+
+    if (msg.role == Qwen::MessageRole::ASSISTANT) {
+        // Handle streaming messages
+        if (msg.is_streaming.value_or(false)) {
+            // Streaming chunk
+            if (!streaming_in_progress) {
+                // First chunk - print prefix
+                std::cout << Color::CYAN << "AI: " << Color::RESET;
+                streaming_in_progress = true;
+            }
+            // Print content without newline
+            std::cout << msg.content << std::flush;
+        } else {
+            // End of streaming or non-streaming message
+            if (streaming_in_progress) {
+                // End of streaming - just add newline
+                std::cout << "\n";
+                streaming_in_progress = false;
+            } else if (!msg.content.empty()) {
+                // Complete non-streaming message
+                std::cout << Color::CYAN << "AI: " << Color::RESET << msg.content << "\n";
+            }
+        }
     } else {
+        // System message
         std::cout << Color::GRAY << "[system]: " << Color::RESET << msg.content << "\n";
     }
 }
@@ -317,7 +344,7 @@ void cmd_qwen(const std::vector<std::string>& args,
     Qwen::QwenClientConfig client_config;
     client_config.qwen_executable = config.qwen_code_path;
     client_config.auto_restart = true;
-    client_config.verbose = true;  // Enable verbose logging for debugging
+    client_config.verbose = false;  // Disable verbose logging for clean output
 
     // Note: --server-mode stdin is hardcoded in QwenClient, no need to add it here
 

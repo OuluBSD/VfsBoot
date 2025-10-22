@@ -205,7 +205,13 @@ std::unique_ptr<StateMessage> ProtocolParser::parse_message(const std::string& j
     auto msg = std::make_unique<StateMessage>();
     std::string type_str;
 
-    // Parse JSON object
+    // Storage for conversation message fields
+    std::string role_str;
+    std::string content;
+    int id = 0;
+    std::optional<bool> is_streaming;
+
+    // Parse JSON object - collect all fields first
     while (*p && *p != '}') {
         skip_whitespace(p);
         if (*p == '}') break;
@@ -226,24 +232,34 @@ std::unique_ptr<StateMessage> ProtocolParser::parse_message(const std::string& j
         // Parse value based on key
         if (key == "type") {
             type_str = parse_string(p);
+        } else if (key == "role") {
+            role_str = parse_string(p);
+        } else if (key == "content") {
+            content = parse_string(p);
+        } else if (key == "id") {
+            id = parse_number(p);
+        } else if (key == "isStreaming") {
+            is_streaming = parse_bool(p);
         } else {
-            // For now, skip unknown fields
-            // TODO: Parse specific fields based on message type
+            // Skip unknown fields
             skip_value(p);
         }
 
         skip_whitespace(p);
     }
 
-    // Determine message type
+    // Determine message type and construct data
     if (type_str == "init") {
         msg->type = MessageType::INIT;
-        // TODO: Parse init fields
+        // TODO: Parse init fields properly
         msg->data = InitMessage{"0.0.14", "/workspace", "qwen"};
     } else if (type_str == "conversation") {
         msg->type = MessageType::CONVERSATION;
-        // TODO: Parse conversation fields
-        msg->data = ConversationMessage{MessageRole::USER, "test", 1, std::nullopt};
+        MessageRole role = MessageRole::USER;
+        if (!role_str.empty()) {
+            role = parse_role(role_str);
+        }
+        msg->data = ConversationMessage{role, content, id, std::nullopt, is_streaming};
     } else if (type_str == "tool_group") {
         msg->type = MessageType::TOOL_GROUP;
         msg->data = ToolGroup{1, {}};

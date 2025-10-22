@@ -78,6 +78,7 @@ struct ConversationMessage {
     std::string content;
     int id;
     std::optional<int64_t> timestamp;
+    std::optional<bool> is_streaming;  // True if this is a streaming chunk
 };
 
 struct ToolConfirmationDetails {
