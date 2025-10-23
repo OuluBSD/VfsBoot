@@ -56,10 +56,20 @@ qwen-state-manager-test: $(QWEN_STATE_MANAGER_TEST_BIN)
 VFSSHELL_SRC_NO_MAIN := $(filter-out VfsShell/main.cpp, $(VFSSHELL_SRC))
 
 $(QWEN_STATE_MANAGER_TEST_BIN): VfsShell/qwen_state_manager_test.cpp $(VFSSHELL_SRC) $(VFSSHELL_HDR)
-	$(CXX) $(CXXFLAGS) -DCODEX_NO_MAIN VfsShell/qwen_state_manager_test.cpp $(VFSSHELL_SRC_NO_MAIN) -o $@ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -DCODEX_NO_MAIN -DQWEN_TESTS_ENABLED VfsShell/qwen_state_manager_test.cpp $(VFSSHELL_SRC_NO_MAIN) -o $@ $(LDFLAGS)
 
 qwen-integration-test: VfsShell/qwen_integration_test.cpp $(VFSSHELL_SRC) $(VFSSHELL_HDR)
-	$(CXX) $(CXXFLAGS) -DCODEX_NO_MAIN VfsShell/qwen_integration_test.cpp $(VFSSHELL_SRC_NO_MAIN) -o $@ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -DCODEX_NO_MAIN -DQWEN_TESTS_ENABLED VfsShell/qwen_integration_test.cpp $(VFSSHELL_SRC_NO_MAIN) -o $@ $(LDFLAGS)
+
+# Add other qwen test binaries
+$(QWEN_PROTOCOL_TEST_BIN): VfsShell/qwen_protocol_test.cpp $(VFSSHELL_SRC) $(VFSSHELL_HDR)
+	$(CXX) $(CXXFLAGS) -DCODEX_NO_MAIN -DQWEN_TESTS_ENABLED VfsShell/qwen_protocol_test.cpp $(VFSSHELL_SRC_NO_MAIN) -o $@ $(LDFLAGS)
+
+$(QWEN_CLIENT_TEST_BIN): VfsShell/qwen_client_test.cpp $(VFSSHELL_SRC) $(VFSSHELL_HDR)
+	$(CXX) $(CXXFLAGS) -DCODEX_NO_MAIN -DQWEN_TESTS_ENABLED VfsShell/qwen_client_test.cpp $(VFSSHELL_SRC_NO_MAIN) -o $@ $(LDFLAGS)
+
+$(QWEN_ECHO_SERVER_BIN): VfsShell/qwen_echo_server.cpp $(VFSSHELL_SRC) $(VFSSHELL_HDR)
+	$(CXX) $(CXXFLAGS) -DCODEX_NO_MAIN -DQWEN_TESTS_ENABLED VfsShell/qwen_echo_server.cpp $(VFSSHELL_SRC_NO_MAIN) -o $@ $(LDFLAGS)
 
 clean:
 	rm -f $(VFSSHELL_BIN) $(PLANNER_DEMO_BIN) $(PLANNER_TRAIN_BIN) $(QWEN_STATE_MANAGER_TEST_BIN)

@@ -37,6 +37,8 @@ struct QwenOptions {
     bool attach = false;
     bool list_sessions = false;
     bool help = false;
+    bool simple_mode = false;  // Force stdio mode instead of ncurses
+    bool use_openai = false;   // Use OpenAI instead of default provider
     std::string session_id;
     std::string model;
     std::string workspace_root;

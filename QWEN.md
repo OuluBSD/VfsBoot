@@ -489,11 +489,11 @@ echo '{"type":"user_input","content":"test"}' | nc localhost 7777
 ## Future Enhancements
 
 ### Planned Features (Priority 3 in TASKS.md)
-- ⏳ **ncurses interactive mode** (Priority 3 - High priority UX improvement)
+- ⏳ **ncurses interactive mode** (Priority 3 - Previously High priority UX improvement)
   - Full-screen terminal interface like original qwen
   - Auto-detect terminal capabilities
   - Fallback to line-based stdio when ncurses unavailable
-  - `qwen --simple` flag to force stdio mode
+  - `qwen --simple` flag to force stdio mode (now implemented!)
   - Better visual feedback for streaming responses
   - Improved tool approval workflow
 

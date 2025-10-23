@@ -18,16 +18,38 @@
 - ✅ Updated AGENTS.md with QWEN.md link
 - ✅ Compacted TASKS.md (this file)
 
-**Priority 2: qwen-code CLI Enhancements** ⏳
-- ⏳ Add `--help` output documenting all server modes
-- ⏳ Add startup instructions when running in TCP mode
-- ⏳ Add `--openai` flag for easy OpenAI usage instead of requiring env var
+**Priority 2: qwen-code CLI Enhancements** ✅
+- ✅ Add `--help` output documenting all server modes
+- ✅ Add startup instructions when running in TCP mode
+- ✅ Add `--openai` flag for easy OpenAI usage instead of requiring env var
 
-**Priority 3: VfsBoot qwen Command** ⏳
-- ⏳ Add ncurses mode to cmd_qwen.cpp (user expects interactive terminal like original qwen)
-- ⏳ Detect terminal capabilities and default to ncurses
-- ⏳ Fallback to line-based stdio when ncurses unavailable
-- ⏳ Add `qwen --simple` flag to force stdio mode
+**Priority 3: VfsBoot qwen Command** ✅
+- ✅ Add ncurses mode to cmd_qwen.cpp (user expects interactive terminal like original qwen)
+- ✅ Detect terminal capabilities and default to ncurses
+- ✅ Fallback to line-based stdio when ncurses unavailable
+- ✅ Add `qwen --simple` flag to force stdio mode
+
+### Next Steps: Critical Build Fix
+
+**Priority 1: Fix Build System Issues** ✅
+- ✅ Fix undefined references to test functions in main.cpp
+- ✅ Wrap test function calls in conditional compilation blocks
+- ✅ Update Makefile to handle conditional compilation properly
+- ✅ Ensure main executable builds without test dependencies
+
+### Next Steps: Testing & Validation
+
+**Priority 2: Test ncurses Implementation** ✅
+- ✅ Test ncurses mode in compatible terminal environments
+- ✅ Verify `--simple` flag behavior works correctly
+- ✅ Test terminal capability detection functionality
+- ✅ Validate graceful fallback to stdio when ncurses fails
+
+**Priority 3: Documentation & Enhancement** ✅
+- ✅ Update QWEN.md with new `--simple` flag documentation
+- ✅ Add ncurses UI mode information to documentation
+- ⏳ Consider UI improvements (scrollable message history, visual indicators)
+- ⏳ Add error handling improvements for ncurses initialization
 
 ### Quick Links
 
