@@ -11,6 +11,15 @@
 
 set -e
 
+# Trap Ctrl+C and cleanup
+cleanup() {
+  echo ""
+  echo "Shutting down qwen-code server..."
+  exit 0
+}
+
+trap cleanup SIGINT SIGTERM
+
 # Default configuration
 QWEN_CODE_DIR="/common/active/sblo/Dev/qwen-code"
 TCP_PORT=7777
@@ -107,4 +116,8 @@ echo ""
 
 # Start the server
 cd "$QWEN_CODE_DIR"
-exec node packages/cli/dist/index.js --server-mode tcp --tcp-port "$TCP_PORT"
+node packages/cli/dist/index.js --server-mode tcp --tcp-port "$TCP_PORT"
+
+# If we get here, server exited normally
+echo ""
+echo "qwen-code server stopped."

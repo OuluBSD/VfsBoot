@@ -11,6 +11,9 @@
 
 set -e
 
+# Trap Ctrl+C during startup
+trap 'echo ""; echo "Cancelled."; exit 130' SIGINT SIGTERM
+
 # Default configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VFSH_BIN="$SCRIPT_DIR/vfsh"

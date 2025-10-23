@@ -33,6 +33,15 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Trap Ctrl+C and cleanup
+cleanup() {
+  echo ""
+  echo -e "${YELLOW}Test run interrupted by user.${NC}"
+  exit 130
+}
+
+trap cleanup SIGINT SIGTERM
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VFSH_BIN="$SCRIPT_DIR/vfsh"
 
