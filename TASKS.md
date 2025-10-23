@@ -3,9 +3,46 @@ Note: sexp is for AI and shell script is for human user (+ ai called via sexp). 
 
 ---
 
-## 📍 CONTEXT FOR NEXT SESSION (2025-10-22)
+## 📍 CONTEXT FOR NEXT SESSION (2025-10-23)
 
-**Current State**: ✅ **Phase 5 Option B COMPLETE** - Mock test infrastructure fully implemented!
+**Current State**: ⚠️ **Phase 5 Option A (Real AI) - IN PROGRESS** - qwen-oauth server mode needs Config initialization fix
+
+**Session Summary (2025-10-23)**:
+- ✅ Implemented complete real AI integration in routes/tcp/gemini.tsx (~250 lines)
+- ✅ All event handlers (Content, Thought, ToolCallRequest, Error, Finished) properly mapped
+- ✅ Fixed authType preservation to respect qwen-oauth from settings
+- ✅ Added OpenAI fallback auto-detection only when no authType is configured
+- ✅ Added diagnostic logging for auth flow debugging
+- ⚠️ **BLOCKER**: Config.getContentGeneratorConfig() returns undefined despite authType='qwen-oauth'
+
+**Issue Details**:
+- loadCliConfig() correctly sets authType to 'qwen-oauth' from settings (config.ts:586-604)
+- Config constructor receives authType parameter
+- But config.getContentGeneratorConfig() returns undefined in server mode
+- Config.initialize() was already called elsewhere (calling twice throws error)
+- User is logged in with qwen-oauth in other terminal, so credentials are available
+
+**Files Modified (qwen-code)**:
+1. `packages/cli/src/config/config.ts:584-604` - Auth auto-detection (preserves qwen-oauth)
+2. `packages/cli/src/gemini.tsx:623-645` - Simplified server mode startup with diagnostic logging
+3. `packages/cli/src/routes/tcp/gemini.tsx:179-436` - Real AI integration (replaces mock)
+
+**Next Steps**:
+1. Investigate why Config.getContentGeneratorConfig() is undefined
+   - Check if ContentGeneratorConfig is created in Config constructor
+   - Verify initialize() logic in qwen-code-core Config class
+   - May need to call a different initialization method for server mode
+2. Once Config properly initialized, qwen-oauth should work (user already logged in)
+3. Test end-to-end AI streaming with real Qwen AI
+4. Commit working implementation
+
+**Estimated Time**: 30-60 minutes to debug Config initialization
+
+---
+
+## 📍 PREVIOUS SESSION CONTEXT (2025-10-22)
+
+**Previous State**: ✅ **Phase 5 Option B COMPLETE** - Mock test infrastructure fully implemented!
 
 **What Just Happened (Phase 5 Debugging Session)**:
 - ✅ Built qwen-code from source (npm install successful)
