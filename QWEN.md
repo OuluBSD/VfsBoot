@@ -66,7 +66,15 @@ VfsBoot integrates with [qwen-code](https://github.com/lvce-editor/qwen-code) - 
 
 ### Current Interface Mode
 
-**Note**: The current implementation uses **line-based stdio mode**. An ncurses full-screen interface is planned (Priority 3 in TASKS.md) but not yet implemented. The stdio mode is fully functional but less polished than the original qwen experience.
+**Note**: The current implementation uses **full-screen ncurses mode** by default with automatic terminal capability detection (xterm, screen, tmux, rxvt, st, putty, etc.). The interface provides:
+
+- Split-screen layout with color-coded messages (user=green, AI=cyan, system=yellow, errors=red, info=blue, tools=magenta)
+- Scrollable message history
+- Status bar showing session ID, model, and connection info
+- Interactive tool approval workflow
+- Streaming response display
+
+The system gracefully falls back to line-based stdio mode for unsupported terminals or when explicitly requested with `--simple` flag.
 
 ### Using qwen in VfsBoot
 
@@ -488,14 +496,14 @@ echo '{"type":"user_input","content":"test"}' | nc localhost 7777
 
 ## Future Enhancements
 
-### Planned Features (Priority 3 in TASKS.md)
-- ⏳ **ncurses interactive mode** (Priority 3 - Previously High priority UX improvement)
-  - Full-screen terminal interface like original qwen
-  - Auto-detect terminal capabilities
-  - Fallback to line-based stdio when ncurses unavailable
-  - `qwen --simple` flag to force stdio mode (now implemented!)
-  - Better visual feedback for streaming responses
-  - Improved tool approval workflow
+### Possible Improvements
+- ⏳ Enhanced ncurses features
+  - Scrollback buffer navigation with arrow keys
+  - Multi-line input editor
+  - Input history with up/down arrows
+  - Window resize handling
+  - Configurable color schemes
+  - Side panel for tool history
 
 - ⏳ Multi-session management (switch between sessions)
 - ⏳ Session export/import

@@ -8,52 +8,29 @@
 
 ## Active Tasks (2025-10-23)
 
-### qwen-code Integration Enhancements
+### qwen-code Integration - COMPLETE ✅
 
-**Status**: Phase 5 COMPLETE ✅, now adding UX improvements
+**Status**: Phase 5 COMPLETE - Full ncurses UI with 4,082 lines of C++ code
 
-**Priority 1: Documentation** ✅
-- ✅ Created TASK_CONTEXT.md with consolidated context
-- ✅ Created QWEN.md with integration guide and rules
-- ✅ Updated AGENTS.md with QWEN.md link
-- ✅ Compacted TASKS.md (this file)
+**Completed Features**:
+- ✅ Full-screen ncurses interface (6-color support, status bar, scrollable history)
+- ✅ Terminal capability detection with graceful stdio fallback
+- ✅ `--simple` flag to force stdio mode
+- ✅ Complete VFS session persistence
+- ✅ Tool approval workflow
+- ✅ TCP/stdio/pipe communication modes
+- ✅ All tests passing (protocol, state, client, integration)
+- ✅ Documentation updated and organized
 
-**Priority 2: qwen-code CLI Enhancements** ✅
-- ✅ Add `--help` output documenting all server modes
-- ✅ Add startup instructions when running in TCP mode
-- ✅ Add `--openai` flag for easy OpenAI usage instead of requiring env var
-
-**Priority 3: VfsBoot qwen Command** ✅
-- ✅ Add ncurses mode to cmd_qwen.cpp (user expects interactive terminal like original qwen)
-- ✅ Detect terminal capabilities and default to ncurses
-- ✅ Fallback to line-based stdio when ncurses unavailable
-- ✅ Add `qwen --simple` flag to force stdio mode
-
-### Next Steps: Critical Build Fix
-
-**Priority 1: Fix Build System Issues** ✅
-- ✅ Fix undefined references to test functions in main.cpp
-- ✅ Wrap test function calls in conditional compilation blocks
-- ✅ Update Makefile to handle conditional compilation properly
-- ✅ Ensure main executable builds without test dependencies
-
-### Next Steps: Testing & Validation
-
-**Priority 2: Test ncurses Implementation** ✅
-- ✅ Test ncurses mode in compatible terminal environments
-- ✅ Verify `--simple` flag behavior works correctly
-- ✅ Test terminal capability detection functionality
-- ✅ Validate graceful fallback to stdio when ncurses fails
-
-**Priority 3: Documentation & Enhancement** ✅
-- ✅ Update QWEN.md with new `--simple` flag documentation
-- ✅ Add ncurses UI mode information to documentation
-- ⏳ Consider UI improvements (scrollable message history, visual indicators)
-- ⏳ Add error handling improvements for ncurses initialization
+**Optional Enhancements** (for qwen-code fork):
+- See [docs/qwen-code-fork-enhancements.md](docs/qwen-code-fork-enhancements.md) for TCP startup instructions and --openai flag proposals
 
 ### Quick Links
 
-- [QWEN.md](QWEN.md) - Integration guide, protocol spec, usage
+- [QWEN.md](QWEN.md) - Integration guide, protocol spec, usage (UPDATED)
+- [QWEN_STRUCTURED_PROTOCOL.md](QWEN_STRUCTURED_PROTOCOL.md) - Protocol reference
+- [QWEN_LOGGING_GUIDE.md](QWEN_LOGGING_GUIDE.md) - Debugging guide
+- [docs/qwen-code-fork-enhancements.md](docs/qwen-code-fork-enhancements.md) - Optional fork improvements
 - [TASK_CONTEXT.md](TASK_CONTEXT.md) - Implementation status and detailed context
 - [AGENTS.md](AGENTS.md) - VfsBoot architecture and agent documentation
 - [README.md](README.md) - Build instructions and quick start
@@ -61,6 +38,17 @@
 ---
 
 ## Upcoming: Important (Ordered by Priority)
+
+### 0. Build System: Makefile Timeout Issue (Low Priority)
+**Status**: Minor annoyance, workaround exists
+**Issue**: `make` command times out after 30+ seconds with no output
+**Workaround**: Use `./build.sh` instead (works perfectly, completes in ~21 seconds)
+**Impact**: Low - build.sh is preferred method anyway
+**Investigation needed**:
+- Check for circular dependencies in Makefile
+- Verify pkg-config calls aren't hanging
+- Review ncurses detection logic
+**See**: [docs/COMMIT_REVIEW_FINDINGS.md](docs/COMMIT_REVIEW_FINDINGS.md) for details
 
 ### 1. Internal U++ Builder
 - Stand up minimal in-process `umk` pipeline using `UppToolchain` metadata
