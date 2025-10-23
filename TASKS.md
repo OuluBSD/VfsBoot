@@ -39,7 +39,20 @@
 
 ## Upcoming: Important (Ordered by Priority)
 
-### 0. Build System: Makefile Timeout Issue (Low Priority)
+### 0. qwen: Add --mode and --port Options (URGENT)
+**Status**: MISSING CRITICAL FEATURE - qwen commands ignore --mode tcp --port 7777
+**Issue**: Users expect `qwen --mode tcp --port 7777` but these options are not implemented
+**Current Behavior**: qwen always uses stdin mode with qwen-code subprocess
+**Impact**: Cannot connect to existing TCP servers, run_qwen_client.sh doesn't work as expected
+**Required Changes**:
+- Add `mode` and `port` fields to QwenOptions struct (cmd_qwen.h)
+- Parse --mode and --port in parse_args() (cmd_qwen.cpp)
+- Implement TCP client mode in QwenClient (qwen_client.cpp)
+- Update help text with --mode and --port options
+**Priority**: URGENT - This breaks expected workflow from documentation
+**See**: commit 76bb86a fixed interactive mode, but TCP mode still not implemented
+
+### 1. Build System: Makefile Timeout Issue (Low Priority)
 **Status**: Minor annoyance, workaround exists
 **Issue**: `make` command times out after 30+ seconds with no output
 **Workaround**: Use `./build.sh` instead (works perfectly, completes in ~21 seconds)
@@ -50,7 +63,7 @@
 - Review ncurses detection logic
 **See**: [docs/COMMIT_REVIEW_FINDINGS.md](docs/COMMIT_REVIEW_FINDINGS.md) for details
 
-### 1. Internal U++ Builder
+### 2. Internal U++ Builder
 - Stand up minimal in-process `umk` pipeline using `UppToolchain` metadata
 - Emit per-translation-unit compile nodes and package-level link nodes
 - Add regression coverage in `scripts/unittst/upp_internal_umk.md`
