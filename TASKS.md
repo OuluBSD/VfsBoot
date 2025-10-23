@@ -6,6 +6,8 @@
 
 ---
 
+---
+
 ## Active Tasks (2025-10-23)
 
 ### qwen-code Integration - COMPLETE ✅
@@ -198,6 +200,57 @@ qwen --mode tcp --port 7777           # Full ncurses support
 - VfsShell/qwen_client.cpp:1-6,328-377 - TCP implementation
 - run_qwen_server.sh:14-32,128-134 - Ctrl+C fix
 - run_qwen_client.sh:22,35-61,94-129 - --direct mode
+
+### qwen-code UI: Fixed Input/Output Separation in ncurses Mode (2025-10-24) ✅
+**COMPLETE**: Proper chat interface with separated input/output and preserved input buffer
+
+**Problem Solved**:
+The cursor no longer moves around the screen based on output. The UI now maintains a proper chat interface where the cursor always stays in the input field while conversation history displays in a separate scrollable area above.
+
+**What Was Implemented**:
+1. ✅ **Proper Window Management**:
+   - Output window: Scrollable area for conversation history (auto-scrolls to bottom)
+   - Status bar: Shows session info, scroll position, and current state
+   - Input window: Fixed 3-line area at bottom with box border and prompt
+
+2. ✅ **Output Buffer System**:
+   - All output stored in `std::vector<OutputLine>` with color information
+   - Redraw functions that update only what's needed
+   - Cursor always returns to input field after any output operation
+
+3. ✅ **Non-blocking Input Handling**:
+   - Character-by-character input processing with `wtimeout(50ms)`
+   - Full line editing support: Left/Right arrows, Home/End, Backspace/Delete
+   - Ctrl+A (Home), Ctrl+E (End) support
+   - Input buffer preserved even when AI responses arrive
+
+4. ✅ **Scrollable History**:
+   - Page Up/Down or Ctrl+U/D to scroll through conversation history
+   - Status bar shows scroll offset when not at bottom
+   - Auto-scroll to bottom when new messages arrive
+   - Scroll position tracked in `scroll_offset` variable
+
+5. ✅ **Streaming Support**:
+   - AI streaming responses update in-place on last line
+   - No cursor jumping during streaming
+   - Clean separation between streaming chunks and complete messages
+
+6. ✅ **Input Preservation**:
+   - Partial input never lost when new messages arrive
+   - All message handlers call `redraw_input()` to restore cursor
+   - Input buffer maintained across all UI updates
+
+**Key Technical Details**:
+- Helper lambdas: `add_output_line()`, `redraw_output()`, `redraw_status()`, `redraw_input()`
+- Non-blocking event loop polls for both messages (0ms) and keyboard input (50ms)
+- 10ms sleep in main loop to avoid CPU thrashing
+- Color pairs maintained for all message types (User, AI, System, Error, Info, Tool)
+
+**Files Modified**:
+- VfsShell/cmd_qwen.cpp:319-758 - Complete ncurses mode rewrite
+
+**Impact**:
+Users can now type continuously while receiving AI responses, scroll through conversation history, and enjoy a professional chat interface. The cursor never leaves the input field, providing a clean and predictable UX.
 
 ### Web Server with Browser Terminal - Phases 1 & 2 (2025-10-10) ✅
 **COMPLETE**: Full web terminal with command execution

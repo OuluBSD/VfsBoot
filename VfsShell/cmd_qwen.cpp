@@ -318,13 +318,22 @@ bool handle_special_command(const std::string& input, QwenStateManager& state_mg
 
 // NCurses UI implementation
 #ifdef CODEX_UI_NCURSES
+
+// Helper struct to store colored output lines
+struct OutputLine {
+    std::string text;
+    int color_pair;
+
+    OutputLine(const std::string& t, int cp = 0) : text(t), color_pair(cp) {}
+};
+
 bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, const QwenConfig& config) {
     // Initialize ncurses
     initscr();
     cbreak();
     noecho();
     keypad(stdscr, TRUE);
-    
+
     // Initialize colors if supported
     if (has_colors()) {
         start_color();
@@ -335,457 +344,417 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
         init_pair(5, COLOR_BLUE, COLOR_BLACK);    // Info messages
         init_pair(6, COLOR_MAGENTA, COLOR_BLACK); // Tool messages
     }
-    
+
     // Get screen dimensions
     int max_y, max_x;
     getmaxyx(stdscr, max_y, max_x);
-    
+
     // Create windows for input and output
-    int output_height = max_y - 6;  // Leave room for input and status bar
+    int output_height = max_y - 4;  // Leave room for input, status bar, and separator
     WINDOW* output_win = newwin(output_height, max_x, 0, 0);
     WINDOW* status_win = newwin(1, max_x, output_height, 0);
     WINDOW* input_win = newwin(3, max_x, output_height + 1, 0);
-    
+
     scrollok(output_win, TRUE);
-    
-    // Print initial info with colors
-    if (has_colors()) {
-        wattron(output_win, COLOR_PAIR(2));
-        wprintw(output_win, "qwen - AI Assistant (NCurses Mode)\n");
-        wattroff(output_win, COLOR_PAIR(2));
-        wattron(output_win, COLOR_PAIR(5));
-        wprintw(output_win, "Active Session: %s\n", state_mgr.get_current_session().c_str());
-        wprintw(output_win, "Model: %s\n", state_mgr.get_model().c_str());
-        wattroff(output_win, COLOR_PAIR(5));
-        wattron(output_win, COLOR_PAIR(3));
-        wprintw(output_win, "Type /help for commands, /exit to quit\n\n");
-        wattroff(output_win, COLOR_PAIR(3));
-    } else {
-        wprintw(output_win, "qwen - AI Assistant (NCurses Mode)\n");
-        wprintw(output_win, "Active Session: %s\n", state_mgr.get_current_session().c_str());
-        wprintw(output_win, "Model: %s\n", state_mgr.get_model().c_str());
-        wprintw(output_win, "Type /help for commands, /exit to quit\n\n");
-    }
-    wrefresh(output_win);
-    
-    // Update status bar
-    if (has_colors()) {
-        wattron(status_win, COLOR_PAIR(3));
-        mvwprintw(status_win, 0, 0, "Status: Connected | Model: %s | Session: %.10s...", 
-                  state_mgr.get_model().c_str(), state_mgr.get_current_session().c_str());
-        wattroff(status_win, COLOR_PAIR(3));
-    } else {
-        mvwprintw(status_win, 0, 0, "Status: Connected | Model: %s | Session: %.10s...", 
-                  state_mgr.get_model().c_str(), state_mgr.get_current_session().c_str());
-    }
-    wrefresh(status_win);
+
+    // Output buffer for scrollable history
+    std::vector<OutputLine> output_buffer;
+    int scroll_offset = 0;  // How many lines scrolled back from bottom
+
+    // Input buffer and cursor position
+    std::string input_buffer;
+    size_t cursor_pos = 0;  // Position in input_buffer
+
+    // Helper function to add a line to output buffer
+    auto add_output_line = [&](const std::string& text, int color = 0) {
+        output_buffer.emplace_back(text, color);
+        scroll_offset = 0;  // Auto-scroll to bottom on new output
+    };
+
+    // Helper function to redraw output window
+    auto redraw_output = [&]() {
+        werase(output_win);
+
+        // Calculate which lines to display
+        int display_lines = output_height;
+        int total_lines = output_buffer.size();
+        int start_line = std::max(0, total_lines - display_lines - scroll_offset);
+        int end_line = std::min(total_lines, start_line + display_lines);
+
+        // Draw visible lines
+        int y = 0;
+        for (int i = start_line; i < end_line; ++i) {
+            const auto& line = output_buffer[i];
+            if (has_colors() && line.color_pair > 0) {
+                wattron(output_win, COLOR_PAIR(line.color_pair));
+                mvwprintw(output_win, y++, 0, "%s", line.text.c_str());
+                wattroff(output_win, COLOR_PAIR(line.color_pair));
+            } else {
+                mvwprintw(output_win, y++, 0, "%s", line.text.c_str());
+            }
+        }
+
+        wrefresh(output_win);
+    };
+
+    // Helper function to redraw status bar
+    auto redraw_status = [&](const std::string& extra = "") {
+        werase(status_win);
+        wattron(status_win, A_REVERSE);
+        std::string status_text = "Status: Connected | Model: " + state_mgr.get_model() +
+                                  " | Session: " + state_mgr.get_current_session().substr(0, 10) + "...";
+        if (!extra.empty()) {
+            status_text += " | " + extra;
+        }
+        if (scroll_offset > 0) {
+            status_text += " | Scrolled: -" + std::to_string(scroll_offset);
+        }
+        mvwprintw(status_win, 0, 0, "%s", status_text.c_str());
+        // Pad the rest of the line
+        int len = status_text.length();
+        for (int i = len; i < max_x - 1; ++i) {
+            waddch(status_win, ' ');
+        }
+        wattroff(status_win, A_REVERSE);
+        wrefresh(status_win);
+    };
+
+    // Helper function to redraw input window
+    auto redraw_input = [&]() {
+        werase(input_win);
+        box(input_win, 0, 0);
+
+        // Display input text (handle text longer than window width)
+        int visible_width = max_x - 4;  // Account for box borders and "> " prompt
+        int display_start = 0;
+
+        if ((int)cursor_pos > visible_width - 1) {
+            display_start = cursor_pos - visible_width + 1;
+        }
+
+        std::string visible_text = input_buffer.substr(display_start, visible_width);
+        mvwprintw(input_win, 1, 2, "> %s", visible_text.c_str());
+
+        // Position cursor
+        int cursor_x = 4 + (cursor_pos - display_start);
+        wmove(input_win, 1, cursor_x);
+
+        wrefresh(input_win);
+    };
+
+    // Add initial info to output buffer
+    add_output_line("qwen - AI Assistant (NCurses Mode)", has_colors() ? 2 : 0);
+    add_output_line("Active Session: " + state_mgr.get_current_session(), has_colors() ? 5 : 0);
+    add_output_line("Model: " + state_mgr.get_model(), has_colors() ? 5 : 0);
+    add_output_line("Type /help for commands, /exit to quit", has_colors() ? 3 : 0);
+    add_output_line("Use Page Up/Down or Ctrl+U/D to scroll", has_colors() ? 3 : 0);
+    add_output_line("");
+
+    // Initial draw
+    redraw_output();
+    redraw_status();
+    redraw_input();
     
     // Message handlers for ncurses mode
     Qwen::MessageHandlers ncurses_handlers;
-    
-    ncurses_handlers.on_init = [&](const Qwen::InitMessage& msg) {
-        if (has_colors()) {
-            wattron(output_win, COLOR_PAIR(5));
-            wprintw(output_win, "[Connected to qwen-code]\n");
-            if (!msg.version.empty()) {
-                wprintw(output_win, "[Version: %s]\n", msg.version.c_str());
-            }
-            wattroff(output_win, COLOR_PAIR(5));
-        } else {
-            wprintw(output_win, "[Connected to qwen-code]\n");
-            if (!msg.version.empty()) {
-                wprintw(output_win, "[Version: %s]\n", msg.version.c_str());
-            }
-        }
-        wrefresh(output_win);
-    };
-    
-    // Track if we're in the middle of streaming a response
+
+    // Track streaming state
     static bool streaming_in_progress = false;
+    static std::string streaming_buffer;
+
+    ncurses_handlers.on_init = [&](const Qwen::InitMessage& msg) {
+        add_output_line("[Connected to qwen-code]", has_colors() ? 5 : 0);
+        if (!msg.version.empty()) {
+            add_output_line("[Version: " + msg.version + "]", has_colors() ? 5 : 0);
+        }
+        redraw_output();
+        redraw_input();  // Restore cursor to input
+    };
 
     ncurses_handlers.on_conversation = [&](const Qwen::ConversationMessage& msg) {
         if (msg.role == Qwen::MessageRole::USER) {
-            streaming_in_progress = false;  // Reset for new user message
-            if (has_colors()) {
-                wattron(output_win, COLOR_PAIR(1));
-                wprintw(output_win, "You: %s\n", msg.content.c_str());
-                wattroff(output_win, COLOR_PAIR(1));
-            } else {
-                wprintw(output_win, "You: %s\n", msg.content.c_str());
-            }
+            streaming_in_progress = false;
+            streaming_buffer.clear();
+            add_output_line("You: " + msg.content, has_colors() ? 1 : 0);
+            redraw_output();
+            redraw_input();
         } else if (msg.role == Qwen::MessageRole::ASSISTANT) {
             // Handle streaming messages
             if (msg.is_streaming.value_or(false)) {
-                // For streaming, only print "AI: " prefix on first chunk
-                if (has_colors()) {
-                    wattron(output_win, COLOR_PAIR(2));
-                    if (!streaming_in_progress) {
-                        wprintw(output_win, "AI: ");
-                        streaming_in_progress = true;
-                    }
-                    wprintw(output_win, "%s", msg.content.c_str());
-                    wattroff(output_win, COLOR_PAIR(2));
-                } else {
-                    if (!streaming_in_progress) {
-                        wprintw(output_win, "AI: ");
-                        streaming_in_progress = true;
-                    }
-                    wprintw(output_win, "%s", msg.content.c_str());
+                if (!streaming_in_progress) {
+                    streaming_in_progress = true;
+                    streaming_buffer = "AI: ";
                 }
-            } else {
-                // Non-streaming message
-                streaming_in_progress = false;
-                if (has_colors()) {
-                    wattron(output_win, COLOR_PAIR(2));
-                    wprintw(output_win, "AI: %s\n", msg.content.c_str());
-                    wattroff(output_win, COLOR_PAIR(2));
+                streaming_buffer += msg.content;
+
+                // Update the last line in the buffer (or add if empty)
+                if (!output_buffer.empty() && output_buffer.back().text.substr(0, 4) == "AI: ") {
+                    output_buffer.back().text = streaming_buffer;
                 } else {
-                    wprintw(output_win, "AI: %s\n", msg.content.c_str());
+                    add_output_line(streaming_buffer, has_colors() ? 2 : 0);
+                }
+                redraw_output();
+                redraw_input();
+            } else {
+                // End of streaming or non-streaming message
+                if (streaming_in_progress) {
+                    streaming_in_progress = false;
+                    streaming_buffer.clear();
+                } else if (!msg.content.empty()) {
+                    add_output_line("AI: " + msg.content, has_colors() ? 2 : 0);
+                    redraw_output();
+                    redraw_input();
                 }
             }
         } else {
-            if (has_colors()) {
-                wattron(output_win, COLOR_PAIR(3));
-                wprintw(output_win, "[system]: %s\n", msg.content.c_str());
-                wattroff(output_win, COLOR_PAIR(3));
-            } else {
-                wprintw(output_win, "[system]: %s\n", msg.content.c_str());
-            }
+            add_output_line("[system]: " + msg.content, has_colors() ? 3 : 0);
+            redraw_output();
+            redraw_input();
         }
-        wrefresh(output_win);
 
         // Store in state manager
         state_mgr.add_message(msg);
     };
     
     ncurses_handlers.on_tool_group = [&](const Qwen::ToolGroup& group) {
-        if (has_colors()) {
-            wattron(output_win, COLOR_PAIR(6));
-            wprintw(output_win, "\n[Tool Execution Request:]\n");
-            wprintw(output_win, "  Group ID: %d\n", group.id);
-            wprintw(output_win, "  Tools to execute:\n");
-            wattroff(output_win, COLOR_PAIR(6));
-        } else {
-            wprintw(output_win, "\n[Tool Execution Request:]\n");
-            wprintw(output_win, "  Group ID: %d\n", group.id);
-            wprintw(output_win, "  Tools to execute:\n");
-        }
-        
+        add_output_line("", 0);
+        add_output_line("[Tool Execution Request:]", has_colors() ? 6 : 0);
+        add_output_line("  Group ID: " + std::to_string(group.id), has_colors() ? 6 : 0);
+        add_output_line("  Tools to execute:", has_colors() ? 6 : 0);
+
         for (const auto& tool : group.tools) {
-            if (has_colors()) {
-                wattron(output_win, COLOR_PAIR(6));
-                wprintw(output_win, "    - %s (ID: %s)\n", tool.tool_name.c_str(), tool.tool_id.c_str());
-                wattroff(output_win, COLOR_PAIR(6));
-            } else {
-                wprintw(output_win, "    - %s (ID: %s)\n", tool.tool_name.c_str(), tool.tool_id.c_str());
-            }
-            
-            // Display confirmation details if present
+            add_output_line("    - " + tool.tool_name + " (ID: " + tool.tool_id + ")", has_colors() ? 6 : 0);
+
             if (tool.confirmation_details.has_value()) {
-                if (has_colors()) {
-                    wattron(output_win, COLOR_PAIR(5));
-                    wprintw(output_win, "      Details: %s\n", tool.confirmation_details->message.c_str());
-                    wattroff(output_win, COLOR_PAIR(5));
-                } else {
-                    wprintw(output_win, "      Details: %s\n", tool.confirmation_details->message.c_str());
-                }
+                add_output_line("      Details: " + tool.confirmation_details->message, has_colors() ? 5 : 0);
             }
-            
-            // Display arguments
+
             if (!tool.args.empty()) {
-                if (has_colors()) {
-                    wattron(output_win, COLOR_PAIR(5));
-                    wprintw(output_win, "      Arguments:\n");
-                    wattroff(output_win, COLOR_PAIR(5));
-                } else {
-                    wprintw(output_win, "      Arguments:\n");
-                }
+                add_output_line("      Arguments:", has_colors() ? 5 : 0);
                 for (const auto& [key, value] : tool.args) {
-                    if (has_colors()) {
-                        wattron(output_win, COLOR_PAIR(5));
-                        wprintw(output_win, "        %s: %s\n", key.c_str(), value.c_str());
-                        wattroff(output_win, COLOR_PAIR(5));
-                    } else {
-                        wprintw(output_win, "        %s: %s\n", key.c_str(), value.c_str());
-                    }
+                    add_output_line("        " + key + ": " + value, has_colors() ? 5 : 0);
                 }
             }
         }
-        
-        // Prompt for tool approval
-        if (has_colors()) {
-            wattron(output_win, COLOR_PAIR(3));
-            wprintw(output_win, "\nApprove tool execution? [y/n/d(details)]: ");
-            wattroff(output_win, COLOR_PAIR(3));
-        } else {
-            wprintw(output_win, "\nApprove tool execution? [y/n/d(details)]: ");
-        }
-        wrefresh(output_win);
-        
+
+        add_output_line("", 0);
+        add_output_line("Approve tool execution? Press 'y' for yes, 'n' for no", has_colors() ? 3 : 0);
+        redraw_output();
+        redraw_status("Waiting for approval...");
+        redraw_input();
+
+        // Wait for approval response (this blocks, but keeps UI clean)
+        wtimeout(input_win, -1);  // Blocking mode for approval
         int ch = wgetch(input_win);
-        char response = (char)ch;
-        
-        bool approved = false;
-        if (response == 'y' || response == 'Y') {
-            approved = true;
-        } else if (response == 'd' || response == 'D') {
-            // Redraw tool group for details
-            if (has_colors()) {
-                wattron(output_win, COLOR_PAIR(3));
-                wprintw(output_win, "\nTool details shown above\n");
-                wattroff(output_win, COLOR_PAIR(3));
-            } else {
-                wprintw(output_win, "\nTool details shown above\n");
-            }
-            wrefresh(output_win);
-            // Prompt again
-            if (has_colors()) {
-                wattron(output_win, COLOR_PAIR(3));
-                wprintw(output_win, "Approve tool execution? [y/n]: ");
-                wattroff(output_win, COLOR_PAIR(3));
-            } else {
-                wprintw(output_win, "Approve tool execution? [y/n]: ");
-            }
-            wrefresh(output_win);
-            ch = wgetch(input_win);
-            response = (char)ch;
-            approved = (response == 'y' || response == 'Y');
-        }
-        
+        wtimeout(input_win, 50);   // Back to non-blocking
+
+        bool approved = (ch == 'y' || ch == 'Y');
+
         // Send approval for all tools in the group
         for (const auto& tool : group.tools) {
             client.send_tool_approval(tool.tool_id, approved);
-            
+
             if (approved) {
-                if (has_colors()) {
-                    wattron(output_win, COLOR_PAIR(1));
-                    wprintw(output_win, "  ✓ Approved: %s\n", tool.tool_name.c_str());
-                    wattroff(output_win, COLOR_PAIR(1));
-                } else {
-                    wprintw(output_win, "  ✓ Approved: %s\n", tool.tool_name.c_str());
-                }
+                add_output_line("  ✓ Approved: " + tool.tool_name, has_colors() ? 1 : 0);
             } else {
-                if (has_colors()) {
-                    wattron(output_win, COLOR_PAIR(4));
-                    wprintw(output_win, "  ✗ Rejected: %s\n", tool.tool_name.c_str());
-                    wattroff(output_win, COLOR_PAIR(4));
-                } else {
-                    wprintw(output_win, "  ✗ Rejected: %s\n", tool.tool_name.c_str());
-                }
+                add_output_line("  ✗ Rejected: " + tool.tool_name, has_colors() ? 4 : 0);
             }
         }
-        wrefresh(output_win);
-        
+
+        redraw_output();
+        redraw_status();
+        redraw_input();
+
         // Store in state manager
         state_mgr.add_tool_group(group);
     };
     
     ncurses_handlers.on_status = [&](const Qwen::StatusUpdate& msg) {
-        if (has_colors()) {
-            wattron(output_win, COLOR_PAIR(3));
-            wprintw(output_win, "[Status: %s]", Qwen::app_state_to_string(msg.state));
-            if (msg.message.has_value()) {
-                wprintw(output_win, " %s", msg.message.value().c_str());
-            }
-            wprintw(output_win, "\n");
-            wattroff(output_win, COLOR_PAIR(3));
-        } else {
-            wprintw(output_win, "[Status: %s]", Qwen::app_state_to_string(msg.state));
-            if (msg.message.has_value()) {
-                wprintw(output_win, " %s", msg.message.value().c_str());
-            }
-            wprintw(output_win, "\n");
+        std::string status_line = "[Status: " + std::string(Qwen::app_state_to_string(msg.state)) + "]";
+        if (msg.message.has_value()) {
+            status_line += " " + msg.message.value();
         }
-        wrefresh(output_win);
+        add_output_line(status_line, has_colors() ? 3 : 0);
+        redraw_output();
+        redraw_input();
     };
-    
+
     ncurses_handlers.on_info = [&](const Qwen::InfoMessage& msg) {
-        if (has_colors()) {
-            wattron(output_win, COLOR_PAIR(5));
-            wprintw(output_win, "[Info: %s]\n", msg.message.c_str());
-            wattroff(output_win, COLOR_PAIR(5));
-        } else {
-            wprintw(output_win, "[Info: %s]\n", msg.message.c_str());
-        }
-        wrefresh(output_win);
+        add_output_line("[Info: " + msg.message + "]", has_colors() ? 5 : 0);
+        redraw_output();
+        redraw_input();
     };
-    
+
     ncurses_handlers.on_error = [&](const Qwen::ErrorMessage& msg) {
-        if (has_colors()) {
-            wattron(output_win, COLOR_PAIR(4));
-            wprintw(output_win, "[Error: %s]\n", msg.message.c_str());
-            wattroff(output_win, COLOR_PAIR(4));
-        } else {
-            wprintw(output_win, "[Error: %s]\n", msg.message.c_str());
-        }
-        wrefresh(output_win);
+        add_output_line("[Error: " + msg.message + "]", has_colors() ? 4 : 0);
+        redraw_output();
+        redraw_input();
     };
-    
+
     ncurses_handlers.on_completion_stats = [&](const Qwen::CompletionStats& stats) {
-        if (has_colors()) {
-            wattron(output_win, COLOR_PAIR(3));
-            wprintw(output_win, "[Stats");
-            if (stats.prompt_tokens.has_value()) {
-                wprintw(output_win, " - Prompt: %d", stats.prompt_tokens.value());
-            }
-            if (stats.completion_tokens.has_value()) {
-                wprintw(output_win, ", Completion: %d", stats.completion_tokens.value());
-            }
-            if (!stats.duration.empty()) {
-                wprintw(output_win, ", Duration: %s", stats.duration.c_str());
-            }
-            wprintw(output_win, "]\n");
-            wattroff(output_win, COLOR_PAIR(3));
-        } else {
-            wprintw(output_win, "[Stats");
-            if (stats.prompt_tokens.has_value()) {
-                wprintw(output_win, " - Prompt: %d", stats.prompt_tokens.value());
-            }
-            if (stats.completion_tokens.has_value()) {
-                wprintw(output_win, ", Completion: %d", stats.completion_tokens.value());
-            }
-            if (!stats.duration.empty()) {
-                wprintw(output_win, ", Duration: %s", stats.duration.c_str());
-            }
-            wprintw(output_win, "]\n");
+        std::string stats_line = "[Stats";
+        if (stats.prompt_tokens.has_value()) {
+            stats_line += " - Prompt: " + std::to_string(stats.prompt_tokens.value());
         }
-        wrefresh(output_win);
+        if (stats.completion_tokens.has_value()) {
+            stats_line += ", Completion: " + std::to_string(stats.completion_tokens.value());
+        }
+        if (!stats.duration.empty()) {
+            stats_line += ", Duration: " + stats.duration;
+        }
+        stats_line += "]";
+        add_output_line(stats_line, has_colors() ? 3 : 0);
+        redraw_output();
+        redraw_input();
     };
     
     // Update client handlers
     client.set_handlers(ncurses_handlers);
-    
+
+    // Set non-blocking input mode with 50ms timeout
+    wtimeout(input_win, 50);
+
     bool should_exit = false;
-    char input_buffer[1024];
-    
-    while (!should_exit && client.is_running()) {
-        // Show input prompt
-        mvwprintw(input_win, 0, 0, "> ");
-        wclrtoeol(input_win);  // Clear to end of line
-        box(input_win, 0, 0);
-        wrefresh(input_win);
-        
-        // Get user input
-        echo();  // Enable echoing for input
-        int input_result = mvwgetnstr(input_win, 0, 2, input_buffer, sizeof(input_buffer) - 1);
-        noecho(); // Disable echoing after input
-        
-        if (input_result == ERR) {
-            // Error reading input
-            continue;
-        }
-        
-        std::string input_line(input_buffer);
-        
-        // Handle special commands
-        if (input_line[0] == '/') {
-            if (input_line == "/exit") {
-                wprintw(output_win, "Exiting and closing session...\n");
-                wrefresh(output_win);
-                state_mgr.save_session();
-                client.stop();
-                should_exit = true;
-                break;
-            } else if (input_line == "/detach") {
-                wprintw(output_win, "Detaching from session (saving state)...\n");
-                wrefresh(output_win);
-                state_mgr.save_session();
-                wprintw(output_win, "Session saved. Use 'qwen --attach %s' to reconnect.\n", 
-                       state_mgr.get_current_session().c_str());
-                wrefresh(output_win);
-                should_exit = true;
-                break;
-            } else if (input_line == "/save") {
-                wprintw(output_win, "Saving session...\n");
-                wrefresh(output_win);
-                if (state_mgr.save_session()) {
-                    wprintw(output_win, "Session saved successfully.\n");
-                } else {
-                    wprintw(output_win, "Failed to save session.\n");
-                }
-                wrefresh(output_win);
-                continue;
-            } else if (input_line == "/status") {
-                wprintw(output_win, "Session Status:\n");
-                wprintw(output_win, "  Session ID: %s\n", state_mgr.get_current_session().c_str());
-                wprintw(output_win, "  Model: %s\n", state_mgr.get_model().c_str());
-                wprintw(output_win, "  Message count: %d\n", state_mgr.get_message_count());
-                wprintw(output_win, "  Workspace: %s\n", state_mgr.get_workspace_root().c_str());
-                wprintw(output_win, "  Client running: %s\n", (client.is_running() ? "yes" : "no"));
-                wrefresh(output_win);
-                continue;
-            } else if (input_line == "/help") {
-                wprintw(output_win, "Interactive Commands:\n");
-                wprintw(output_win, "  /detach   - Detach from session (keeps it running)\n");
-                wprintw(output_win, "  /exit     - Exit and close session\n");
-                wprintw(output_win, "  /save     - Save session immediately\n");
-                wprintw(output_win, "  /status   - Show session status\n");
-                wprintw(output_win, "  /help     - Show this help\n");
-                wrefresh(output_win);
-                continue;
+
+    // Helper to handle special commands
+    auto handle_command = [&](const std::string& cmd) -> bool {
+        if (cmd == "/exit") {
+            add_output_line("Exiting and closing session...", has_colors() ? 3 : 0);
+            redraw_output();
+            state_mgr.save_session();
+            client.stop();
+            should_exit = true;
+            return true;
+        } else if (cmd == "/detach") {
+            add_output_line("Detaching from session (saving state)...", has_colors() ? 3 : 0);
+            redraw_output();
+            state_mgr.save_session();
+            add_output_line("Session saved. Use 'qwen --attach " + state_mgr.get_current_session() + "' to reconnect.", has_colors() ? 1 : 0);
+            redraw_output();
+            should_exit = true;
+            return true;
+        } else if (cmd == "/save") {
+            add_output_line("Saving session...", has_colors() ? 3 : 0);
+            redraw_output();
+            if (state_mgr.save_session()) {
+                add_output_line("Session saved successfully.", has_colors() ? 1 : 0);
             } else {
-                wprintw(output_win, "Unknown command: %s\n", input_line.c_str());
-                wprintw(output_win, "Type /help for available commands.\n");
-                wrefresh(output_win);
-                continue;
+                add_output_line("Failed to save session.", has_colors() ? 4 : 0);
             }
+            redraw_output();
+            return true;
+        } else if (cmd == "/status") {
+            add_output_line("Session Status:", has_colors() ? 2 : 0);
+            add_output_line("  Session ID: " + state_mgr.get_current_session(), 0);
+            add_output_line("  Model: " + state_mgr.get_model(), 0);
+            add_output_line("  Message count: " + std::to_string(state_mgr.get_message_count()), 0);
+            add_output_line("  Workspace: " + state_mgr.get_workspace_root(), 0);
+            add_output_line("  Client running: " + std::string(client.is_running() ? "yes" : "no"), 0);
+            redraw_output();
+            return true;
+        } else if (cmd == "/help") {
+            add_output_line("Interactive Commands:", has_colors() ? 2 : 0);
+            add_output_line("  /detach   - Detach from session (keeps it running)", 0);
+            add_output_line("  /exit     - Exit and close session", 0);
+            add_output_line("  /save     - Save session immediately", 0);
+            add_output_line("  /status   - Show session status", 0);
+            add_output_line("  /help     - Show this help", 0);
+            redraw_output();
+            return true;
+        } else {
+            add_output_line("Unknown command: " + cmd, has_colors() ? 4 : 0);
+            add_output_line("Type /help for available commands.", 0);
+            redraw_output();
+            return true;
         }
-        
-        // Skip empty lines
-        if (input_line.empty()) {
-            continue;
-        }
-        
-        // Send user input to qwen
-        if (!client.send_user_input(input_line)) {
-            wprintw(output_win, "Failed to send message.\n");
-            wrefresh(output_win);
-            continue;
-        }
-        
-        // Poll for responses with a timeout
-        bool waiting_for_response = true;
-        auto start_time = std::chrono::steady_clock::now();
-        const int total_timeout_ms = 30000;  // 30 seconds total timeout
-        
-        while (waiting_for_response && client.is_running()) {
-            // Poll for messages (100ms timeout per poll)
-            int msg_count = client.poll_messages(100);
-            
-            if (msg_count < 0) {
-                // Error occurred
-                wprintw(output_win, "Error polling messages.\n");
-                wrefresh(output_win);
-                waiting_for_response = false;
-                break;
-            }
-            
-            if (msg_count > 0) {
-                // Reset timer for next batch since we received messages
-                start_time = std::chrono::steady_clock::now();
-            }
-            
-            if (msg_count == 0) {
-                // No messages yet, check timeout
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - start_time
-                ).count();
-                
-                if (elapsed > total_timeout_ms) {
-                    wprintw(output_win, "\n[Response timeout]\n");
-                    wrefresh(output_win);
-                    waiting_for_response = false;
-                    break;
+    };
+
+    // Main event loop
+    while (!should_exit && client.is_running()) {
+        // Poll for incoming messages (non-blocking)
+        client.poll_messages(0);
+
+        // Get a character from input window (non-blocking, 50ms timeout)
+        int ch = wgetch(input_win);
+
+        if (ch != ERR) {
+            // Process input character
+            if (ch == '\n' || ch == KEY_ENTER || ch == 13) {
+                // Enter key - submit input
+                if (!input_buffer.empty()) {
+                    // Handle special commands
+                    if (input_buffer[0] == '/') {
+                        handle_command(input_buffer);
+                    } else {
+                        // Send to AI
+                        if (client.send_user_input(input_buffer)) {
+                            // Input sent successfully (will appear via message handler)
+                        } else {
+                            add_output_line("Failed to send message.", has_colors() ? 4 : 0);
+                            redraw_output();
+                        }
+                    }
+
+                    // Clear input buffer
+                    input_buffer.clear();
+                    cursor_pos = 0;
+                    redraw_input();
                 }
-                
-                // Brief sleep to avoid busy-waiting
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                continue;
+            } else if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
+                // Backspace
+                if (cursor_pos > 0) {
+                    input_buffer.erase(cursor_pos - 1, 1);
+                    cursor_pos--;
+                    redraw_input();
+                }
+            } else if (ch == KEY_DC) {
+                // Delete key
+                if (cursor_pos < input_buffer.length()) {
+                    input_buffer.erase(cursor_pos, 1);
+                    redraw_input();
+                }
+            } else if (ch == KEY_LEFT) {
+                // Left arrow
+                if (cursor_pos > 0) {
+                    cursor_pos--;
+                    redraw_input();
+                }
+            } else if (ch == KEY_RIGHT) {
+                // Right arrow
+                if (cursor_pos < input_buffer.length()) {
+                    cursor_pos++;
+                    redraw_input();
+                }
+            } else if (ch == KEY_HOME || ch == 1) {  // Ctrl+A
+                // Home or Ctrl+A - move to beginning
+                cursor_pos = 0;
+                redraw_input();
+            } else if (ch == KEY_END || ch == 5) {  // Ctrl+E
+                // End or Ctrl+E - move to end
+                cursor_pos = input_buffer.length();
+                redraw_input();
+            } else if (ch == KEY_PPAGE || ch == 21) {  // Page Up or Ctrl+U
+                // Scroll up
+                scroll_offset = std::min(scroll_offset + 5, (int)output_buffer.size() - output_height);
+                redraw_output();
+                redraw_status();
+                redraw_input();
+            } else if (ch == KEY_NPAGE || ch == 4) {  // Page Down or Ctrl+D
+                // Scroll down
+                scroll_offset = std::max(scroll_offset - 5, 0);
+                redraw_output();
+                redraw_status();
+                redraw_input();
+            } else if (ch >= 32 && ch < 127) {
+                // Regular printable character
+                input_buffer.insert(cursor_pos, 1, (char)ch);
+                cursor_pos++;
+                redraw_input();
             }
-            
-            // Continue polling for more messages (streaming)
-            // We'll keep polling until we get a completion_stats or no messages for a bit
         }
+
+        // Small delay to avoid busy-waiting
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     
     // Cleanup ncurses
