@@ -15,7 +15,7 @@
 
 ### Building
 ```sh
-make            # builds ./codex with gnu++17 + O2
+make            # builds ./vfsh with gnu++17 + O2
 make debug      # -O0 -g
 make release    # -O3 -DNDEBUG
 make sample     # runs hello-world pipeline test
@@ -78,7 +78,7 @@ All nodes (directories, files, AST nodes) inherit from `VfsNode` base class.
 **AI Bridge**: `ai <prompt>` posts to OpenAI/Llama; `tools` echoes command surface
 
 **Web Server** (Browser-Based Terminal):
-- Start web server: `./codex --web-server [--port 8080]`
+- Start web server: `./vfsh --web-server [--port 8080]`
 - Opens HTTP/WebSocket server with xterm.js terminal in browser
 - Features:
   - Full terminal emulation with ANSI color support
@@ -167,7 +167,7 @@ All nodes (directories, files, AST nodes) inherit from `VfsNode` base class.
 Build with `-DCODEX_TRACE` to enable logging to `codex_trace.log`:
 ```sh
 make debug CXXFLAGS="-O0 -g -DCODEX_TRACE"
-printf 'ls /\nls /cpp\nexit\n' | ./codex
+printf 'ls /\nls /cpp\nexit\n' | ./vfsh
 cat codex_trace.log
 ```
 

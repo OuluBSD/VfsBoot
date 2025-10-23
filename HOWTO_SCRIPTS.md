@@ -23,7 +23,7 @@ VfsBoot uses two types of script files:
 
 1. **.cx files** - Shell scripts for human users
    - Contain shell commands, one per line
-   - Can be piped directly to `./codex`
+   - Can be piped directly to `./vfsh`
    - Syntax: plain shell commands (help, ls, mkdir, echo, parse, eval, cpp.*, etc.)
 
 2. **.sexp files** - S-expression scripts for AI and automation
@@ -40,20 +40,20 @@ Shell scripts (`.cx`) can be run directly by piping them to codex:
 
 ```bash
 # Method 1: Pipe the script
-cat scripts/examples/hello-world.cx | ./codex
+cat scripts/examples/hello-world.cx | ./vfsh
 
 # Method 2: Use shell redirection
-./codex < scripts/examples/hello-world.cx
+./vfsh < scripts/examples/hello-world.cx
 
 # Method 3: Using printf with specific commands
-printf 'help\nls /\nexit\n' | ./codex
+printf 'help\nls /\nexit\n' | ./vfsh
 ```
 
 ### Examples
 
 **scripts/examples/hello-world.cx** - Basic S-expression evaluation:
 ```bash
-cat scripts/examples/hello-world.cx | ./codex
+cat scripts/examples/hello-world.cx | ./vfsh
 ```
 This script:
 - Shows help
@@ -64,7 +64,7 @@ This script:
 
 **scripts/tutorial/getting-started.cx** - Tutorial walkthrough:
 ```bash
-cat scripts/tutorial/getting-started.cx | ./codex
+cat scripts/tutorial/getting-started.cx | ./vfsh
 ```
 This script demonstrates:
 - S-expression evaluation with `parse` and `eval`
@@ -74,7 +74,7 @@ This script demonstrates:
 
 **scripts/examples/mount-demo.cx** - Filesystem and library mounting:
 ```bash
-cat scripts/examples/mount-demo.cx | ./codex
+cat scripts/examples/mount-demo.cx | ./vfsh
 ```
 This script demonstrates:
 - Mounting real filesystems into VFS
@@ -83,8 +83,8 @@ This script demonstrates:
 
 **scripts/examples/remote-mount-demo.cx** - Remote VFS mounting:
 ```bash
-# Start server first: ./codex --daemon 9999
-cat scripts/examples/remote-mount-demo.cx | ./codex
+# Start server first: ./vfsh --daemon 9999
+cat scripts/examples/remote-mount-demo.cx | ./vfsh
 ```
 This script demonstrates:
 - Connecting to remote codex daemon
@@ -93,8 +93,8 @@ This script demonstrates:
 
 **scripts/examples/remote-copy-demo.cx** - Remote file copying:
 ```bash
-# Start server first: ./codex --daemon 9999
-cat scripts/examples/remote-copy-demo.cx | ./codex
+# Start server first: ./vfsh --daemon 9999
+cat scripts/examples/remote-copy-demo.cx | ./vfsh
 ```
 This script demonstrates:
 - Copying files between hosts via VFS
@@ -103,7 +103,7 @@ This script demonstrates:
 
 **scripts/examples/overlay-demo.cx** - Overlay system demo:
 ```bash
-cat scripts/examples/overlay-demo.cx | ./codex
+cat scripts/examples/overlay-demo.cx | ./vfsh
 ```
 Shows how to:
 - Mount and save overlays
@@ -112,7 +112,7 @@ Shows how to:
 
 **scripts/examples/action-planner-demo.cx** - Action planner and context building:
 ```bash
-./codex scripts/examples/action-planner-demo.cx
+./vfsh scripts/examples/action-planner-demo.cx
 ```
 Demonstrates:
 - Tag-based filtering and context building
@@ -122,7 +122,7 @@ Demonstrates:
 
 **scripts/examples/tree-viz-context-demo.cx** - Advanced tree visualization:
 ```bash
-./codex scripts/examples/tree-viz-context-demo.cx
+./vfsh scripts/examples/tree-viz-context-demo.cx
 ```
 Shows:
 - Box-drawing character trees
@@ -132,7 +132,7 @@ Shows:
 
 **scripts/examples/hypothesis-testing-demo.cx** - Hypothesis testing system:
 ```bash
-./codex scripts/examples/hypothesis-testing-demo.cx
+./vfsh scripts/examples/hypothesis-testing-demo.cx
 ```
 Demonstrates 5 levels of hypothesis testing:
 - Simple query (pattern matching)
@@ -143,7 +143,7 @@ Demonstrates 5 levels of hypothesis testing:
 
 **scripts/examples/logic-system-demo.cx** - Logic system and tag mining:
 ```bash
-./codex scripts/examples/logic-system-demo.cx
+./vfsh scripts/examples/logic-system-demo.cx
 ```
 Demonstrates:
 - Tag inference with forward chaining
@@ -154,7 +154,7 @@ Demonstrates:
 
 **scripts/examples/logic-plan-validation.cx** - Plan validation with logic system:
 ```bash
-./codex scripts/examples/logic-plan-validation.cx
+./vfsh scripts/examples/logic-plan-validation.cx
 ```
 Real-world scenario for validating plan configurations:
 - Detecting conflicting requirements (offline + network)
@@ -165,7 +165,7 @@ Real-world scenario for validating plan configurations:
 
 **scripts/examples/logic-debugging-session.cx** - Debugging with logic system:
 ```bash
-./codex scripts/examples/logic-debugging-session.cx
+./vfsh scripts/examples/logic-debugging-session.cx
 ```
 Debugging workflow using tag logic:
 - Root cause analysis of configuration conflicts
@@ -176,7 +176,7 @@ Debugging workflow using tag logic:
 
 **scripts/examples/logic-rules-simple-demo.cx** - Simple rules save/load (EASIEST):
 ```bash
-cat scripts/examples/logic-rules-simple-demo.cx | tail -n +2 | ./codex
+cat scripts/examples/logic-rules-simple-demo.cx | tail -n +2 | ./vfsh
 ```
 Minimal introduction to rule persistence:
 - Load hardcoded rules with `logic.init`
@@ -187,7 +187,7 @@ Minimal introduction to rule persistence:
 
 **scripts/examples/logic-rules-persistence-demo.cx** - Rules persistence workflow (INTERMEDIATE):
 ```bash
-cat scripts/examples/logic-rules-persistence-demo.cx | tail -n +2 | ./codex
+cat scripts/examples/logic-rules-persistence-demo.cx | tail -n +2 | ./vfsh
 ```
 Comprehensive persistence demonstration:
 - Organizing rules by source (hardcoded/learned/user/ai-generated)
@@ -198,7 +198,7 @@ Comprehensive persistence demonstration:
 
 **scripts/examples/logic-rules-advanced-demo.cx** - Advanced rule management (MOST COMPLEX):
 ```bash
-cat scripts/examples/logic-rules-advanced-demo.cx | tail -n +2 | ./codex
+cat scripts/examples/logic-rules-advanced-demo.cx | tail -n +2 | ./vfsh
 ```
 Production-grade rule management workflow:
 - Multi-source rule creation and management
@@ -214,7 +214,7 @@ Production-grade rule management workflow:
 
 **scripts/examples/logic-rules-dynamic-creation-demo.cx** - Dynamic rule creation:
 ```bash
-cat scripts/examples/logic-rules-dynamic-creation-demo.cx | tail -n +2 | ./codex
+cat scripts/examples/logic-rules-dynamic-creation-demo.cx | tail -n +2 | ./vfsh
 ```
 Demonstrates creating rules from multiple sources:
 - `logic.rule.add` - Create simple implication rules (A → B)
@@ -229,7 +229,7 @@ Demonstrates creating rules from multiple sources:
 
 **scripts/examples/logic-rules-from-scratch-demo.cx** - Complete system without hardcoded rules:
 ```bash
-cat scripts/examples/logic-rules-from-scratch-demo.cx | tail -n +2 | ./codex
+cat scripts/examples/logic-rules-from-scratch-demo.cx | tail -n +2 | ./vfsh
 ```
 Build a complete rule system from scratch (NO logic.init):
 - 20-part comprehensive workflow (270+ lines)
@@ -330,7 +330,7 @@ cat /cpp/tests/ai-hello.cpp
 exit
 EOF
 
-cat /tmp/ai-hello-test.cx | ./codex
+cat /tmp/ai-hello-test.cx | ./vfsh
 ```
 
 ## Script Directory Organization
@@ -360,28 +360,28 @@ scripts/
 # Run all example scripts
 for script in scripts/examples/*.cx; do
     echo "=== Running $script ==="
-    cat "$script" | ./codex
+    cat "$script" | ./vfsh
     echo ""
 done
 
 # Run all tutorial scripts
 for script in scripts/tutorial/*.cx; do
     echo "=== Running $script ==="
-    cat "$script" | ./codex
+    cat "$script" | ./vfsh
     echo ""
 done
 
 # Run reference scripts
 for script in scripts/reference/*.cx; do
     echo "=== Running $script ==="
-    cat "$script" | ./codex
+    cat "$script" | ./vfsh
     echo ""
 done
 
 # Run unit test scripts
 for script in scripts/unittst/*.cx; do
     echo "=== Running $script ==="
-    cat "$script" | ./codex
+    cat "$script" | ./vfsh
     echo ""
 done
 ```
@@ -412,7 +412,7 @@ tree /
 exit
 EOF
 
-cat my-script.cx | ./codex
+cat my-script.cx | ./vfsh
 ```
 
 ### Create a .sexp script for testing:
@@ -449,7 +449,7 @@ export /cpp/myprogram.cpp ./myprogram.cpp
 exit
 EOF
 
-cat build-cpp.cx | ./codex
+cat build-cpp.cx | ./vfsh
 c++ myprogram.cpp -o myprogram
 ./myprogram
 ```
@@ -469,7 +469,7 @@ unmount /dev/testlib
 exit
 EOF
 
-cat mount-demo.cx | ./codex
+cat mount-demo.cx | ./vfsh
 ```
 
 See `scripts/examples/mount-demo.cx` for a complete mounting example.
@@ -486,7 +486,7 @@ overlay.list
 exit
 EOF
 
-cat overlay-work.cx | ./codex
+cat overlay-work.cx | ./vfsh
 ```
 
 ### Pattern 4: S-Expression Programming
@@ -498,7 +498,7 @@ eval /ast/fib
 exit
 EOF
 
-cat lisp-demo.cx | ./codex
+cat lisp-demo.cx | ./vfsh
 ```
 
 ## Interactive Mode
@@ -506,7 +506,7 @@ cat lisp-demo.cx | ./codex
 You can also run scripts interactively:
 
 ```bash
-./codex
+./vfsh
 
 # Then type commands manually:
 codex> help
@@ -530,7 +530,7 @@ codex> exit
 
 ```bash
 # Add tree and ls commands to see VFS state
-cat my-script.cx | ./codex
+cat my-script.cx | ./vfsh
 
 # Use verbose test harness
 python tools/test_harness.py my-test.sexp -v
@@ -538,7 +538,7 @@ python tools/test_harness.py my-test.sexp -v
 # Enable tracing (requires rebuild with -DCODEX_TRACE)
 make clean
 make CXXFLAGS="-O0 -g -DCODEX_TRACE"
-cat my-script.cx | ./codex
+cat my-script.cx | ./vfsh
 cat codex_trace.log
 ```
 
@@ -550,7 +550,7 @@ The planner system provides hierarchical project planning with task tracking, co
 
 **scripts/examples/plan-basic.cx** - Basic planner usage:
 ```bash
-cat scripts/examples/plan-basic.cx | ./codex
+cat scripts/examples/plan-basic.cx | ./vfsh
 ```
 This script demonstrates:
 - Creating a project plan with goals, strategy, and jobs
@@ -560,7 +560,7 @@ This script demonstrates:
 
 **scripts/examples/plan-navigation.cx** - Navigation and context:
 ```bash
-cat scripts/examples/plan-navigation.cx | ./codex
+cat scripts/examples/plan-navigation.cx | ./vfsh
 ```
 This script shows:
 - Navigating through hierarchical plans
@@ -570,7 +570,7 @@ This script shows:
 
 **scripts/examples/plan-workflow.cx** - Complete workflow:
 ```bash
-cat scripts/examples/plan-workflow.cx | ./codex
+cat scripts/examples/plan-workflow.cx | ./vfsh
 ```
 This script walks through:
 - Planning a realistic project (e-commerce app)
@@ -597,13 +597,13 @@ This shows how AI can programmatically create and manage plans.
 rm -f plan.vfs
 
 # Create your plan
-printf 'plan.create /plan/myproject root "My project"\n' | ./codex
-printf 'plan.create /plan/myproject/jobs jobs\n' | ./codex
-printf 'plan.jobs.add /plan/myproject/jobs "First task" 10 agent\n' | ./codex
-printf 'plan.save\nexit\n' | ./codex
+printf 'plan.create /plan/myproject root "My project"\n' | ./vfsh
+printf 'plan.create /plan/myproject/jobs jobs\n' | ./vfsh
+printf 'plan.jobs.add /plan/myproject/jobs "First task" 10 agent\n' | ./vfsh
+printf 'plan.save\nexit\n' | ./vfsh
 
 # Plan is saved - reload it later
-./codex
+./vfsh
 > tree /plan
 > exit
 ```

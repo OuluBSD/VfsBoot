@@ -1,12 +1,6 @@
 #include "VfsShell.h"
 
 // String utilities
-std::string trim_copy(const std::string& s){
-    size_t a = 0, b = s.size();
-    while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
-    while (b > a && std::isspace(static_cast<unsigned char>(s[b-1]))) --b;
-    return s.substr(a, b - a);
-}
 
 std::string join_args(const std::vector<std::string>& args, size_t start){
     std::string out;

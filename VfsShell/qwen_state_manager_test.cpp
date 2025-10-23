@@ -1,11 +1,7 @@
 #include "VfsShell.h"
-#include "qwen_state_manager.h"
-#include "qwen_protocol.h"
-#include <iostream>
-#include <cassert>
 
 // Global instance needed by upp_workspace_build.cpp
-UppBuilderRegistry g_upp_builder_registry;
+extern UppBuilderRegistry g_upp_builder_registry;
 
 using namespace Qwen;
 
@@ -402,7 +398,7 @@ void test_tool_groups(QwenStateManager& mgr) {
 // Main
 // ============================================================================
 
-int main() {
+int qwen_state_tests() {
     std::cout << "Qwen State Manager Test Suite" << std::endl;
     std::cout << "==============================" << std::endl;
 

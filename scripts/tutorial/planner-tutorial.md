@@ -25,15 +25,15 @@ This tutorial walks through planning a real project: building a blog application
 
 Let's start by creating a simple project plan.
 
-### Step 1: Start codex
+### Step 1: Start vfsh
 
 ```bash
-./codex
+./vfsh
 ```
 
 You should see:
 ```
-codex-mini 🌲 VFS+AST+AI — 'help' kertoo karun totuuden.
+vfsh 🌲 VFS+AST+AI — 'help' kertoo karun totuuden.
 >
 ```
 
@@ -402,7 +402,7 @@ exit
 
 Start codex again:
 ```bash
-./codex
+./vfsh
 ```
 
 Output shows:

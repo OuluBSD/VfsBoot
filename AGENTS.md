@@ -36,9 +36,25 @@
 
 OpenAI API Key is in ~/openai-key.txt
 
+### qwen-code Integration
+
+For detailed documentation on the qwen-code integration, see:
+- **[QWEN.md](QWEN.md)** - Complete integration guide, protocol specification, usage instructions
+- **[TASK_CONTEXT.md](TASK_CONTEXT.md)** - Current implementation status and context
+
+**All agents working on qwen integration MUST read QWEN.md first.**
+
+Quick reference:
+- C++ implementation: `VfsShell/qwen_*.{h,cpp,test.cpp}` (~3,700 lines)
+- Shell command: `qwen [--attach ID] [--list-sessions] [--mode tcp] [--port 7777]`
+- Server modes: stdin (default), TCP (port 7777), named pipes
+- Protocol: JSON line-buffered, bidirectional stdin/stdout or TCP
+- Storage: VFS `/qwen/sessions/<id>/` with metadata.json, history.jsonl, tool_groups.jsonl
+- Status: Phase 5 Option A COMPLETE ✅ (real AI working end-to-end)
+
 ### Tracing playbook
 - Build with `-DCODEX_TRACE` to enable scoped logging into `codex_trace.log`. Tracing primitives are `TRACE_FN` for function entry/exit, `TRACE_LOOP` for hot loop beacons, and `TRACE_MSG` for ad-hoc notes; they auto-flush into the logfile.
-- When tracing, run scripted interaction via stdin (`printf 'ls /\nls /cpp\nexit\n' | ./codex`) so the CLI prompt is satisfied without extra tooling. The macro guards ensure no overhead in normal builds.
+- When tracing, run scripted interaction via stdin (`printf 'ls /\nls /cpp\nexit\n' | ./vfsh`) so the CLI prompt is satisfied without extra tooling. The macro guards ensure no overhead in normal builds.
 - Inspect `codex_trace.log` for call ordering; use standard tooling (`sort | uniq -c`) if a suspect path emits repeated lines.
 
 ### Implementation details

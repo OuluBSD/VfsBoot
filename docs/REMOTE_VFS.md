@@ -1,6 +1,6 @@
 # Remote VFS Mounting
 
-VfsBoot supports mounting remote VFS filesystems over TCP, enabling transparent access to VFS content on remote codex instances.
+VfsBoot supports mounting remote VFS filesystems over TCP, enabling transparent access to VFS content on remote vfsh instances.
 
 ## Architecture
 
@@ -37,7 +37,7 @@ Commands are executed via shell (`popen()`) on the server, allowing access to bo
 Run codex in daemon mode to accept remote connections:
 
 ```bash
-./codex --daemon 9999
+./vfsh --daemon 9999
 ```
 
 This starts a server listening on port 9999. The server will:
@@ -93,7 +93,7 @@ unmount /remote
 
 ```bash
 # Server
-./codex --daemon 9999
+./vfsh --daemon 9999
 
 # Client
 mount.remote server.example.com 9999 / /remote
@@ -106,11 +106,11 @@ This is the primary use case mentioned in TASKS.md:
 
 ```bash
 # Host A (192.168.1.100)
-./codex --daemon 9999
+./vfsh --daemon 9999
 mount /path/to/source /vfs/source
 
 # Host B
-./codex
+./vfsh
 mount /path/to/destination /vfs/dest
 mount.remote 192.168.1.100 9999 /vfs/source /remote/source
 
@@ -197,7 +197,7 @@ See example scripts:
 ## Troubleshooting
 
 ### Connection Refused
-- Ensure daemon is running: `./codex --daemon 9999`
+- Ensure daemon is running: `./vfsh --daemon 9999`
 - Check firewall allows port 9999
 - Verify hostname resolution
 

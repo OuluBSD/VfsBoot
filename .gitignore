@@ -1,10 +1,12 @@
 .aider*
 
+vfsh
 codex
 build/
 cache/
 tools/__pycache__/**
 codex_trace.log
+vfsh_trace.log
 .static-analysis-*.log
 
 planner_demo

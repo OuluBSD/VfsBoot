@@ -1,13 +1,4 @@
 #include "VfsShell.h"
-#include "cmd_qwen.h"
-#include "qwen_client.h"
-#include "qwen_state_manager.h"
-#include <iostream>
-#include <cstdlib>
-#include <cstring>
-#include <sstream>
-#include <chrono>
-#include <thread>
 
 namespace QwenCmd {
 

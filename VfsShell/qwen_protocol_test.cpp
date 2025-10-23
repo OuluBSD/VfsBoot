@@ -1,7 +1,4 @@
-#include "qwen_protocol.h"
-#include <iostream>
-#include <cassert>
-#include <cstring>
+#include "VfsShell.h"
 
 using namespace Qwen;
 
@@ -189,7 +186,7 @@ TEST(app_state_to_string) {
 // Main Test Runner
 // ============================================================================
 
-int main() {
+int qwen_protocol_tests() {
     std::cout << "=== Qwen Protocol Tests ===\n\n";
 
     // Parse tests

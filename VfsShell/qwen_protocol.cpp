@@ -1,8 +1,4 @@
-#include "qwen_protocol.h"
-#include <sstream>
-#include <cctype>
-#include <cstring>
-#include <stdexcept>
+#include "VfsShell.h"
 
 namespace Qwen {
 

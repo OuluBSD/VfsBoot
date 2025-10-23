@@ -1,279 +1,626 @@
-# Registry Implementation Documentation
+# qwen-code Integration Guide
+
+**IMPORTANT**: All agents working on qwen integration MUST read this document first, then consult [TASK_CONTEXT.md](TASK_CONTEXT.md) for current status.
 
 ## Overview
 
-This document describes the implementation of a Windows Registry-like system for the codex VFS (Virtual File System). The registry provides a hierarchical key-value store that can be accessed through both filesystem paths (`/reg`) and dedicated shell commands.
+VfsBoot integrates with [qwen-code](https://github.com/lvce-editor/qwen-code) - a TypeScript/Node.js AI coding assistant forked from Gemini Code Assist. The integration provides a native `qwen` command in VfsBoot that spawns qwen-code as a subprocess and communicates via a structured JSON protocol.
 
 ## Architecture
 
-### Core Components
-
-1. **Registry Class**: The main registry manager that stores hierarchical key-value data
-2. **RegistryKey Class**: Represents individual registry keys (folders) that contain values and subkeys
-3. **VFS Integration**: Automatic synchronization between the registry and the VFS `/reg` directory
-
-### Data Model
+### Two-Process Design
 
 ```
-Registry Root (/)
-├── Key: wksp
-│   ├── Value: project_path = "/path/to/project"
-│   ├── Value: last_opened = "2025-10-18T12:00:00"
-│   └── Key: settings
-│       ├── Value: theme = "dark"
-│       └── Value: font_size = "12"
-├── Key: user
-│   ├── Value: name = "John Doe"
-│   └── Value: email = "john@example.com"
-└── Value: version = "1.0.0"
+┌─────────────────────────────────────────┐
+│   VfsBoot (C++)                         │
+│   ./vfsh                               │
+│                                         │
+│   ┌──────────────────────────────────┐ │
+│   │  qwen command                    │ │
+│   │  - Session management            │ │
+│   │  - Interactive terminal          │ │
+│   │  - Tool approval prompts         │ │
+│   │  - VFS persistence               │ │
+│   └────────┬─────────────────────────┘ │
+│            │ JSON Protocol             │
+│            │ (stdin/stdout or TCP)     │
+└────────────┼──────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────┐
+│   qwen-code (TypeScript)                │
+│   node packages/cli/dist/index.js       │
+│                                         │
+│   ┌──────────────────────────────────┐ │
+│   │  Server Mode                     │ │
+│   │  - StdinStdoutServer (default)   │ │
+│   │  - TCPServer (port 7777)         │ │
+│   │  - NamedPipeServer               │ │
+│   │  - GeminiClient / OpenAI client  │ │
+│   │  - Tool scheduler                │ │
+│   └──────────────────────────────────┘ │
+└─────────────────────────────────────────┘
 ```
 
-Each registry key can contain:
-- **Values**: Key-value pairs where the value is stored as a string
-- **Subkeys**: Nested registry keys for hierarchical organization
+### Three Layers
 
-## Implementation Details
+1. **Protocol Layer** (`qwen_protocol.{h,cpp}`)
+   - Type-safe message structs (C++ std::variant)
+   - Lightweight JSON parser (no dependencies)
+   - Commands: user_input, tool_approval, interrupt, model_switch
+   - Messages: init, conversation, tool_group, status, info, error, completion_stats
 
-### File Structure
+2. **Communication Layer** (`qwen_client.{h,cpp}`)
+   - Subprocess management (fork/exec)
+   - Non-blocking I/O with poll()
+   - Auto-restart on crash
+   - Callback-based message handling
 
-- `VfsShell/registry.h`: Header file with Registry and RegistryKey class definitions
-- `VfsShell/registry.cpp`: Implementation of registry functionality
-- `VfsShell/main.cpp`: Integration with the shell command system
+3. **Storage Layer** (`qwen_state_manager.{h,cpp}`)
+   - VFS-backed session persistence
+   - Conversation history (JSONL format)
+   - File storage per session
+   - Session metadata tracking
 
-### Key Methods
+## Quick Start
 
-#### Registry Class
-
-```cpp
-// Set a registry value at the specified path
-void setValue(const std::string& full_path, const std::string& data);
-
-// Get a registry value at the specified path
-std::string getValue(const std::string& full_path) const;
-
-// Create a registry key at the specified path
-void createKey(const std::string& full_path);
-
-// List subkeys at the specified path
-std::vector<std::string> listKeys(const std::string& path) const;
-
-// List values at the specified path
-std::vector<std::string> listValues(const std::string& path) const;
-
-// Check if a registry key or value exists
-bool exists(const std::string& path) const;
-
-// Remove a registry key
-void removeKey(const std::string& path);
-
-// Remove a registry value
-void removeValue(const std::string& path);
-
-// Synchronize with VFS
-void syncToVFS(Vfs& vfs, const std::string& registry_path = "/reg") const;
-void syncFromVFS(Vfs& vfs, const std::string& registry_path = "/reg");
-```
-
-#### RegistryKey Class
-
-```cpp
-// Add a subkey
-std::shared_ptr<RegistryKey> addSubKey(const std::string& name);
-
-// Set a value
-void setValue(const std::string& value_name, const std::string& data);
-
-// Get a value
-std::string getValue(const std::string& value_name) const;
-
-// Check if a value exists
-bool hasValue(const std::string& value_name) const;
-
-// Check if a subkey exists
-bool hasSubKey(const std::string& subkey_name) const;
-
-// Get a subkey
-std::shared_ptr<RegistryKey> getSubKey(const std::string& subkey_name) const;
-
-// List subkeys and values
-std::vector<std::string> listSubKeys() const;
-std::vector<std::string> listValues() const;
-
-// Navigate to a path
-std::shared_ptr<RegistryKey> navigateTo(const std::string& path) const;
-```
-
-## Shell Commands
-
-The registry system provides the following shell commands:
-
-### `reg.set <key> <value>`
-Sets a registry key to the specified value.
-
-Example:
-```bash
-reg.set /wksp/project_path "/home/user/myproject"
-reg.set /wksp/settings/theme "dark"
-```
-
-### `reg.get <key>`
-Retrieves the value of a registry key.
-
-Example:
-```bash
-reg.get /wksp/project_path
-# Output: /home/user/myproject
-```
-
-### `reg.list [path]`
-Lists registry keys and values at the specified path (defaults to root).
-
-Example:
-```bash
-reg.list /wksp
-# Output:
-# settings/
-# project_path
-# last_opened
-```
-
-### `reg.rm <key>`
-Removes a registry key or value.
-
-Example:
-```bash
-reg.rm /wksp/old_setting
-```
-
-## VFS Integration
-
-The registry automatically integrates with the VFS system through the `/reg` directory:
-
-1. **Automatic Mounting**: The `/reg` directory is created and maintained automatically
-2. **Bidirectional Sync**: Changes to registry values are reflected in the VFS filesystem and vice versa
-3. **Persistent Storage**: Registry data can be persisted through VFS overlay files
-
-### Filesystem Mapping
-
-Registry paths map directly to VFS paths:
-
-```
-Registry Path        → VFS Path
-/reg/wksp            → Directory: /reg/wksp/
-/reg/wksp/project    → File: /reg/wksp/project (containing the value)
-```
-
-## Usage Examples
-
-### Basic Operations
+### Using qwen in VfsBoot
 
 ```bash
-# Set values
-reg.set /wksp/name "MyWorkspace"
-reg.set /wksp/path "/home/user/projects"
+# Interactive session with default model
+$ ./vfsh
+codex> qwen
 
-# Retrieve values
-reg.get /wksp/name
-# Output: MyWorkspace
+# Attach to existing session
+codex> qwen --attach session-12345
 
-# List contents
-reg.list /
-# Output:
-# wksp/
+# List sessions
+codex> qwen --list-sessions
 
-reg.list /wksp
-# Output:
-# name
-# path
-
-# Remove values
-reg.rm /wksp/old_config
+# Use specific model
+codex> qwen --model gpt-4o-mini
 ```
 
-### Hierarchical Organization
+### Running qwen-code as Standalone Server
+
+qwen-code can run as a TCP server in a separate terminal, making it easy to connect from multiple VfsBoot instances or test with tools like `nc`.
+
+**Terminal 1 - Start qwen-code TCP server:**
+```bash
+cd /common/active/sblo/Dev/qwen-code
+npm install  # First time only
+npm run build  # First time only
+
+# Run with qwen-oauth (requires authentication setup)
+node packages/cli/dist/index.js --server-mode tcp --tcp-port 7777
+
+# Or run with OpenAI (requires OPENAI_API_KEY)
+export OPENAI_API_KEY=sk-...
+node packages/cli/dist/index.js --server-mode tcp --tcp-port 7777
+
+# Or use wrapper script
+/common/active/sblo/Dev/VfsBoot/qwen-code --server-mode tcp --tcp-port 7777
+```
+
+**Terminal 2 - Connect from VfsBoot:**
+```bash
+$ ./vfsh
+codex> qwen --mode tcp --port 7777
+```
+
+**Terminal 3 - Test with netcat:**
+```bash
+$ echo '{"type":"user_input","content":"hello"}' | nc localhost 7777
+{"type":"init","version":"0.0.14","workspaceRoot":"/common/active/sblo/Dev/VfsBoot","model":"gpt-4o-mini"}
+{"type":"conversation","role":"user","content":"hello","id":1761158324665}
+{"type":"status","content":"Processing..."}
+...
+```
+
+## Server Modes
+
+qwen-code supports three transport modes:
+
+### 1. Stdin/Stdout (Default)
+```bash
+# VfsBoot spawns qwen-code automatically
+qwen
+
+# Or manually (for testing)
+echo '{"type":"user_input","content":"test"}' | qwen-code --server-mode stdin
+```
+
+**Pros**: Simple, no network setup, process isolation
+**Cons**: Cannot share across terminals
+
+### 2. TCP Server (Recommended for Multi-Terminal)
+```bash
+# Start server
+qwen-code --server-mode tcp --tcp-port 7777
+
+# Connect from VfsBoot
+qwen --mode tcp --port 7777
+
+# Or test with nc/telnet
+nc localhost 7777
+```
+
+**Pros**: Network-accessible, multiple clients, easy testing
+**Cons**: Requires available port
+
+### 3. Named Pipes (Unix Only)
+```bash
+# Start server with named pipes
+qwen-code --server-mode pipe --pipe-path /tmp/qwen
+
+# This creates:
+# /tmp/qwen.in  (client writes here)
+# /tmp/qwen.out (client reads here)
+```
+
+**Pros**: No network, filesystem-based IPC
+**Cons**: Unix only, cleanup required
+
+## Authentication Options
+
+qwen-code supports multiple AI providers:
+
+### Option 1: qwen-oauth (Google Gemini)
+```bash
+# Follow qwen-code authentication setup
+qwen-code auth login
+
+# Then run server mode
+qwen-code --server-mode tcp --tcp-port 7777
+```
+
+### Option 2: OpenAI
+```bash
+# Set environment variable
+export OPENAI_API_KEY=sk-...
+
+# Run qwen-code
+qwen-code --server-mode tcp --tcp-port 7777
+```
+
+### Option 3: Local Llama
+```bash
+# Set Llama server URL
+export LLAMA_BASE_URL=http://192.168.1.169:8080
+
+# Run qwen-code (requires code modification for Llama support)
+# Currently qwen-code doesn't support Llama out-of-box
+```
+
+## VFS Session Storage
+
+Sessions are stored in `/qwen/sessions/<session-id>/` with the following structure:
+
+```
+/qwen/sessions/session-1234567890-abc123/
+├── metadata.json          # Session info (created_at, model, workspace, tags)
+├── history.jsonl          # Conversation messages (one per line)
+├── tool_groups.jsonl      # Tool execution tracking
+└── files/                 # Session-specific files
+    └── uploaded_image.png
+```
+
+### Session Commands
 
 ```bash
-# Create nested structure
-reg.set /user/profile/name "John Doe"
-reg.set /user/profile/email "john@example.com"
-reg.set /user/preferences/theme "dark"
-reg.set /user/preferences/font_size "12"
+# Create new session
+qwen
 
-# List nested structure
-reg.list /user
-# Output:
-# profile/
-# preferences/
+# List all sessions
+qwen --list-sessions
 
-reg.list /user/profile
-# Output:
-# name
-# email
+# Attach to specific session
+qwen --attach session-1234567890-abc123
+
+# Resume last session
+qwen --resume
 ```
 
-### Integration with Existing VFS
+## Protocol Specification
 
-The registry seamlessly integrates with the existing VFS system:
+### Messages (qwen-code → VfsBoot)
 
+#### init
+```json
+{
+  "type": "init",
+  "version": "0.0.14",
+  "workspaceRoot": "/path/to/workspace",
+  "model": "gpt-4o-mini"
+}
+```
+
+#### conversation
+```json
+{
+  "type": "conversation",
+  "role": "user" | "assistant",
+  "content": "message text",
+  "id": 1234567890,
+  "is_streaming": true | false
+}
+```
+
+#### tool_group
+```json
+{
+  "type": "tool_group",
+  "id": "tool-group-123",
+  "tools": [
+    {
+      "id": "tool-1",
+      "name": "create_file",
+      "arguments": {
+        "path": "/test.txt",
+        "content": "Hello"
+      }
+    }
+  ],
+  "confirmation_details": "Create /test.txt with content 'Hello'"
+}
+```
+
+#### status
+```json
+{
+  "type": "status",
+  "content": "Processing your request..."
+}
+```
+
+#### info
+```json
+{
+  "type": "info",
+  "content": "File created successfully"
+}
+```
+
+#### error
+```json
+{
+  "type": "error",
+  "content": "Failed to create file: permission denied"
+}
+```
+
+#### completion_stats
+```json
+{
+  "type": "completion_stats",
+  "prompt_tokens": 150,
+  "completion_tokens": 75,
+  "total_tokens": 225
+}
+```
+
+### Commands (VfsBoot → qwen-code)
+
+#### user_input
+```json
+{
+  "type": "user_input",
+  "content": "create a hello world program"
+}
+```
+
+#### tool_approval
+```json
+{
+  "type": "tool_approval",
+  "tool_group_id": "tool-group-123",
+  "approved": true | false,
+  "approved_tools": ["tool-1", "tool-2"]  # Optional: partial approval
+}
+```
+
+#### interrupt
+```json
+{
+  "type": "interrupt"
+}
+```
+
+#### model_switch
+```json
+{
+  "type": "model_switch",
+  "model": "gpt-4o"
+}
+```
+
+## Implementation Files
+
+### VfsBoot C++ Files
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `VfsShell/qwen_protocol.h` | 280 | Protocol message structs |
+| `VfsShell/qwen_protocol.cpp` | 440 | JSON parser, serializer |
+| `VfsShell/qwen_protocol_test.cpp` | 226 | 18/18 tests ✅ |
+| `VfsShell/qwen_client.h` | 180 | Client API |
+| `VfsShell/qwen_client.cpp` | 450 | Subprocess management |
+| `VfsShell/qwen_client_test.cpp` | 140 | Integration test ✅ |
+| `VfsShell/qwen_state_manager.h` | 280 | State management API |
+| `VfsShell/qwen_state_manager.cpp` | 770 | VFS persistence |
+| `VfsShell/qwen_state_manager_test.cpp` | 300 | 7/8 tests ✅ |
+| `VfsShell/cmd_qwen.h` | 60 | Command interface |
+| `VfsShell/cmd_qwen.cpp` | 508 | Interactive command |
+| `VfsShell/qwen_echo_server.cpp` | 60 | Test echo server |
+
+**Total**: ~3,700 lines of C++ code
+
+### qwen-code TypeScript Files
+
+| File | Description |
+|------|-------------|
+| `packages/cli/src/gemini.tsx` | Main entry point, runServerMode() |
+| `packages/cli/src/structuredServerMode.ts` | Transport layer (stdin/tcp/pipe) |
+| `packages/cli/src/qwenStateSerializer.ts` | State serialization |
+| `packages/cli/src/config/config.ts` | Configuration system |
+
+## Special Commands in qwen Session
+
+While in an interactive qwen session, these special commands are available:
+
+| Command | Description |
+|---------|-------------|
+| `/exit` | Exit qwen session |
+| `/detach` | Detach from session (keeps it alive) |
+| `/save` | Manually save session to VFS |
+| `/help` | Show help |
+| `/status` | Show session status |
+
+## Environment Variables
+
+### VfsBoot
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `QWEN_AUTO_APPROVE` | false | Auto-approve tool executions |
+| `QWEN_MODEL` | gpt-4o-mini | Default model |
+| `QWEN_WORKSPACE` | cwd | Workspace root path |
+
+### qwen-code
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENAI_API_KEY` | - | OpenAI authentication |
+| `GEMINI_API_KEY` | - | Google Gemini authentication |
+| `LLAMA_BASE_URL` | - | Llama server URL (not yet supported) |
+
+## Troubleshooting
+
+### qwen-code not found
 ```bash
-# Access registry values as files
-cat /reg/user/profile/name
-# Output: John Doe
+# Check executable path
+which qwen-code
 
-# List registry structure with standard VFS commands
-ls /reg/user/profile
-# Output:
-# name
-# email
+# Or use full path in VfsBoot
+export QWEN_CODE_PATH=/common/active/sblo/Dev/qwen-code/packages/cli/dist/index.js
 
-tree /reg
-# Shows hierarchical registry structure
+# Or update cmd_qwen.cpp with correct path
 ```
 
-## Design Considerations
+### TCP port already in use
+```bash
+# Check what's using the port
+lsof -i :7777
 
-### Path Resolution
+# Kill the process
+pkill -f "qwen-code.*7777"
 
-Registry paths follow standard filesystem conventions:
-- Absolute paths start with `/`
-- Relative paths are resolved from the current context
-- Keys are represented as directories with a trailing `/`
-- Values are represented as files without a trailing `/`
+# Or use different port
+qwen-code --server-mode tcp --tcp-port 7778
+```
 
-### Data Types
+### Authentication errors
+```bash
+# For qwen-oauth
+qwen-code auth login
+qwen-code auth status
 
-Currently, all registry values are stored as strings. Future enhancements could include:
-- Integer values
-- Boolean values
-- Binary data (byte arrays)
-- Lists and dictionaries
+# For OpenAI
+echo "sk-..." > ~/openai-key.txt
+export OPENAI_API_KEY=sk-...
 
-### Synchronization Strategy
+# Check config
+cat ~/.config/qwen-code/config.json
+```
 
-The registry employs a bidirectional synchronization strategy:
-1. **Write Operations**: When registry values are modified, they are immediately written to the corresponding VFS paths
-2. **Read Operations**: Registry values are read directly from memory for optimal performance
-3. **External Modifications**: Changes to VFS files are detected and synchronized with the registry
+### Subprocess fails to start
+```bash
+# Test qwen-code manually
+echo '{"type":"user_input","content":"test"}' | qwen-code --server-mode stdin
 
-## Error Handling
+# Check logs in VfsBoot
+cat /logs/qwen_client.log  # If implemented
+```
 
-The registry system follows these error handling principles:
+### Messages not received
+```bash
+# Enable debug logging in cmd_qwen.cpp
+#define QWEN_DEBUG 1
 
-1. **Graceful Degradation**: Errors during synchronization don't crash the system
-2. **Informative Messages**: Clear error messages guide users toward solutions
-3. **Recovery Mechanisms**: Automatic recovery from common error conditions
+# Check protocol messages
+# Add std::cerr << "Received: " << message << std::endl;
+```
+
+## Demo Scripts
+
+### Basic Usage
+```bash
+./vfsh scripts/examples/qwen-demo.cx
+```
+
+### Session Management
+```bash
+./vfsh scripts/examples/qwen-session-demo.cx
+```
+
+### TCP Mode Testing
+```bash
+# Terminal 1
+qwen-code --server-mode tcp --tcp-port 7777
+
+# Terminal 2
+./vfsh
+codex> qwen --mode tcp --port 7777
+You> hello
+
+# Terminal 3 (netcat test)
+echo '{"type":"user_input","content":"test"}' | nc localhost 7777
+```
 
 ## Future Enhancements
 
-Potential future improvements include:
+### Planned Features
+- ⏳ ncurses interactive mode (like original qwen)
+- ⏳ Multi-session management (switch between sessions)
+- ⏳ Session export/import
+- ⏳ Llama backend support in qwen-code
+- ⏳ WebSocket support for browser clients
+- ⏳ Session sharing across machines
+- ⏳ Tool approval policies (auto-approve safe tools)
 
-1. **Data Type Support**: Native support for integers, booleans, and binary data
-2. **Query Language**: SQL-like query capabilities for registry data
-3. **Change Notifications**: Event system for registry changes
-4. **Access Control**: Permission system for registry keys and values
-5. **Backup/Restore**: Built-in backup and restore functionality
-6. **Import/Export**: Support for importing/exporting registry data in standard formats
+### Experimental
+- Voice input/output
+- Image/screenshot sharing
+- Collaborative sessions (multiple users)
+- Integration with VfsBoot planner system
 
-## Conclusion
+## Related Documentation
 
-The registry implementation provides a robust, Windows Registry-like system integrated with the codex VFS. It offers both programmatic access through shell commands and filesystem access through the `/reg` directory, making it flexible and familiar to developers coming from Windows environments while maintaining seamless integration with the existing Unix-like VFS system.
+- [TASK_CONTEXT.md](TASK_CONTEXT.md) - Current status and context
+- [TASKS.md](TASKS.md) - Active task tracking
+- [AGENTS.md](AGENTS.md) - VfsBoot agent documentation
+- [QWEN_STRUCTURED_PROTOCOL.md](QWEN_STRUCTURED_PROTOCOL.md) - Protocol details
+- [QWEN_CLIENT_IMPLEMENTATION.md](QWEN_CLIENT_IMPLEMENTATION.md) - Phase 2 implementation notes
+
+## Testing
+
+### Automated Test Suite (Recommended)
+
+The easiest way to run all qwen tests is using the test runner script:
+
+```bash
+# Run all tests in correct order
+./run_qwen_tests.sh
+
+# Run specific test layers
+./run_qwen_tests.sh --protocol      # Layer 1: Protocol parsing
+./run_qwen_tests.sh --state         # Layer 2: VFS persistence
+./run_qwen_tests.sh --client        # Layer 3: Subprocess I/O
+./run_qwen_tests.sh --integration   # Layer 4: End-to-end
+
+# Verbose output for debugging
+./run_qwen_tests.sh --protocol -v
+
+# Show help
+./run_qwen_tests.sh --help
+```
+
+The test runner executes tests in bottom-up order (protocol → state → client → integration) to isolate failures at each layer. Each test includes detailed explanations of what it tests and why.
+
+### Manual Testing (Individual Components)
+
+#### Protocol Tests
+```bash
+# Build and run protocol tests
+make qwen-protocol-test
+./qwen_protocol_test
+# Expected: 18/18 tests PASS
+```
+
+Or use vfsh directly:
+```bash
+./vfsh --qwen-protocol-tests
+```
+
+#### State Manager Tests
+```bash
+# Build and run state manager tests
+make qwen-state-manager-test
+./qwen_state_manager_test
+# Expected: 7/8 tests PASS (1 minor stats bug)
+```
+
+Or use vfsh directly:
+```bash
+./vfsh --qwen-state-tests
+```
+
+#### Client Tests
+```bash
+# Build and run client tests
+make qwen-client-test
+./qwen_client_test
+# Expected: Integration test PASS
+```
+
+Or use vfsh directly:
+```bash
+./vfsh --qwen-client-test
+```
+
+#### Integration Test
+```bash
+./vfsh --qwen-integration-test
+```
+
+#### Echo Server (Manual Testing Utility)
+```bash
+# Start echo server for manual protocol testing
+./vfsh --qwen-echo-server
+
+# In another terminal, send test messages
+echo '{"type":"user_input","content":"hello"}' | nc localhost 7777
+```
+
+### End-to-End Test
+```bash
+# Start qwen-code TCP server
+qwen-code --server-mode tcp --tcp-port 7777
+
+# Run qwen command
+./vfsh
+vfsh> qwen --mode tcp --port 7777
+You> create a hello world program in C++
+# Expected: AI generates code, asks for tool approval, creates file
+```
+
+## Contributing
+
+When working on qwen integration:
+
+1. **Read this document first** (QWEN.md)
+2. **Check current status** in TASK_CONTEXT.md
+3. **Update documentation** when making changes
+4. **Write tests** for new features
+5. **Test end-to-end** before committing
+
+### Commit Convention
+```bash
+git commit -m "qwen: <description>"
+git commit -m "qwen(protocol): add new message type"
+git commit -m "qwen(client): fix subprocess restart"
+git commit -m "qwen(docs): update QWEN.md"
+```
+
+### Pull Request Checklist
+- [ ] All tests passing
+- [ ] Documentation updated
+- [ ] End-to-end tested
+- [ ] No regressions
+- [ ] Code follows project style
+
+---
+
+**Last Updated**: 2025-10-23
+**Status**: Phase 5 Option A COMPLETE ✅
+**Maintainer**: See AGENTS.md

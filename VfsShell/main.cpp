@@ -233,6 +233,12 @@ Notes:
 }
 
 
+int qwen_client_test(int argc, char* argv[]);
+int qwen_integration_test(int argc, char** argv);
+int qwen_echo_server();
+int qwen_protocol_tests();
+int qwen_state_tests();
+
 #ifndef CODEX_NO_MAIN
 int main(int argc, char** argv){
 	using namespace i18n;
@@ -264,6 +270,12 @@ int main(int argc, char** argv){
 
     for(int i = 1; i < argc; ++i){
         std::string arg = argv[i];
+        if(arg == "--qwen-client-test")			return qwen_client_test(argc, argv);
+        if(arg == "--qwen-integration-test")	return qwen_integration_test(argc, argv);
+        if(arg == "--qwen-echo-server")			return qwen_echo_server();
+        if(arg == "--qwen-protocol-tests")		return qwen_protocol_tests();
+        if(arg == "--qwen-state-tests")			return qwen_state_tests();
+        
         if(arg == "--solution" || arg == "-S"){
             if(i + 1 >= argc) return usage("--solution requires a file path");
             solution_arg = argv[++i];

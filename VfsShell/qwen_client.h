@@ -62,6 +62,8 @@ struct QwenClientConfig {
 
     // Enable verbose logging
     bool verbose = false;
+    
+    MessageHandlers handlers;
 };
 
 // ============================================================================

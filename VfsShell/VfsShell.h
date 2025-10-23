@@ -39,12 +39,18 @@
 #include <array>
 #include <unordered_set>
 #include <queue>
+#include <cassert>
+#include <cerrno>
 
 // System includes
 #include <dlfcn.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <sys/wait.h>
+#include <signal.h>
+#include <fcntl.h>
+#include <poll.h>
 
 // External library includes
 #include <blake3.h>
@@ -54,6 +60,21 @@
 
 // Web server
 #include <libwebsockets.h>
+
+/*
+#include <iostream>
+#include <sstream>
+#include <cstring>
+
+// POSIX headers for process management
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <signal.h>
+#include <fcntl.h>
+#include <poll.h>
+
+*/
 
 #include "vfs_common.h"
 #include "tag_system.h"
@@ -80,4 +101,10 @@
 #include "ui_backend.h"
 #include "upp_assembly.h"
 #include "upp_builder.h"
+#include "cmd_qwen.h"
+#include "qwen_protocol.h"
+#include "qwen_client.h"
+#include "qwen_state_manager.h"
+
+
 #endif

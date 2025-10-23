@@ -281,7 +281,7 @@ Run the demo script to see live performance:
 Or test manually:
 
 ```bash
-./codex << EOF
+./vfsh << EOF
 mkdir /bench
 touch /bench/test.txt
 tag.add /bench/test.txt tag1 tag2 tag3 tag4 tag5

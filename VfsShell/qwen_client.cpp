@@ -1,16 +1,4 @@
-#include "qwen_client.h"
-#include <iostream>
-#include <sstream>
-#include <cstring>
-#include <cerrno>
-
-// POSIX headers for process management
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <signal.h>
-#include <fcntl.h>
-#include <poll.h>
+#include "VfsShell.h"
 
 namespace Qwen {
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Simple test of internal make utility
 
-./codex << 'EOF'
+./vfsh << 'EOF'
 touch /Makefile
 touch /main.c
 touch /utils.h

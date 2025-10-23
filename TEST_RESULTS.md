@@ -11,7 +11,7 @@
 
 Scripts were tested using:
 1. Direct execution (if shebang present and executable)
-2. `./codex script.cx` (for non-executable scripts)
+2. `./vfsh script.cx` (for non-executable scripts)
 3. 10-second timeout per script
 4. Exit code verification (0 = pass)
 
@@ -102,7 +102,7 @@ VfsShell 🌲 VFS+AST+AI — type 'help' for available commands.
 - No crashes or segfaults detected
 - Memory usage normal (no leaks observed)
 - Output is deterministic (English-only)
-- Scripts work with both direct execution and `./codex script.cx`
+- Scripts work with both direct execution and `./vfsh script.cx`
 
 ## Test Command
 
@@ -111,12 +111,12 @@ To reproduce these results:
 ```bash
 # Test all examples
 for script in scripts/examples/*.cx; do
-    ./codex "$script" > /dev/null 2>&1 && echo "✓ $script" || echo "✗ $script"
+    ./vfsh "$script" > /dev/null 2>&1 && echo "✓ $script" || echo "✗ $script"
 done
 
 # Test all unittests
 for script in scripts/unittst/*.cx; do
-    ./codex "$script" > /dev/null 2>&1 && echo "✓ $script" || echo "✗ $script"
+    ./vfsh "$script" > /dev/null 2>&1 && echo "✓ $script" || echo "✗ $script"
 done
 ```
 

@@ -184,7 +184,7 @@ python tools/test_harness.py --target llama -v  # Llama verbose
 
 1. Modify code in VfsShell/codex.cpp or VfsShell/codex.h
 2. Rebuild: `make clean && make`
-3. Test manually: `./codex` or `make sample`
+3. Test manually: `./vfsh` or `make sample`
 4. Run test suite: `python tools/test_harness.py`
 5. Commit changes after successful tests
 
@@ -192,7 +192,7 @@ For tracing:
 ```bash
 make clean
 make CXXFLAGS="-O0 -g -DCODEX_TRACE"
-printf 'ls /\ntree /\nexit\n' | ./codex
+printf 'ls /\ntree /\nexit\n' | ./vfsh
 cat codex_trace.log
 ```
 

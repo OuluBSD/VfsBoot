@@ -153,9 +153,9 @@ build_umk() {
     # Check if ~/upp/uppsrc exists
     if [ ! -d ~/upp/uppsrc ]; then
         echo -e "${YELLOW}Warning: ~/upp/uppsrc not found, using current directory only${NC}"
-        "$umk_cmd" .,. VfsShell "$buildmethod" "$flags" ./codex
+        "$umk_cmd" .,. VfsShell "$buildmethod" "$flags" ./vfsh
     else
-        "$umk_cmd" .,~/upp/uppsrc VfsShell "$buildmethod" "$flags" ./codex
+        "$umk_cmd" .,~/upp/uppsrc VfsShell "$buildmethod" "$flags" ./vfsh
     fi
 }
 
@@ -201,9 +201,9 @@ build_cmake() {
     "$cmake_cmd" --build . $make_flags
 
     # Copy binary to root
-    if [ -f codex ]; then
-        cp codex ..
-        echo -e "${GREEN}Binary copied to: $(pwd)/../codex${NC}"
+    if [ -f vfsh ]; then
+        cp vfsh ..
+        echo -e "${GREEN}Binary copied to: $(pwd)/../vfsh${NC}"
     fi
 
     cd ..
@@ -351,30 +351,30 @@ build_bootstrap() {
 
     echo "Using compiler: $CXX"
 
-    # Compile make_main.cpp to ./codex-make
+    # Compile make_main.cpp to ./vfsh-make
     local cxx_flags="-std=c++17 -O2 -Wall -Wextra"
     if [ "$BUILD_TYPE" = "debug" ]; then
         cxx_flags="-std=c++17 -g -O0 -Wall -Wextra"
     fi
 
     if [ "$VERBOSE" = "1" ]; then
-        echo "$CXX $cxx_flags make_main.cpp -o codex-make"
+        echo "$CXX $cxx_flags make_main.cpp -o vfsh-make"
     fi
 
-    $CXX $cxx_flags make_main.cpp -o codex-make
+    $CXX $cxx_flags make_main.cpp -o vfsh-make
 
-    if [ ! -f "./codex-make" ]; then
+    if [ ! -f "./vfsh-make" ]; then
         echo -e "${RED}Error: Failed to compile internal make${NC}" >&2
         exit 1
     fi
 
     echo -e "${GREEN}✓ Internal make compiled successfully${NC}"
-    ls -lh ./codex-make
+    ls -lh ./vfsh-make
 
     echo ""
-    echo "Step 2: Using internal make to build codex..."
+    echo "Step 2: Using internal make to build vfsh..."
 
-    # Use our make to build codex
+    # Use our make to build vfsh
     local make_target="all"
     if [ "$BUILD_TYPE" = "debug" ]; then
         make_target="debug"
@@ -383,13 +383,13 @@ build_bootstrap() {
     fi
 
     if [ "$VERBOSE" = "1" ]; then
-        ./codex-make -v $make_target
+        ./vfsh-make -v $make_target
     else
-        ./codex-make $make_target
+        ./vfsh-make $make_target
     fi
 
-    if [ ! -f "./codex" ]; then
-        echo -e "${RED}Error: codex binary not created${NC}" >&2
+    if [ ! -f "./vfsh" ]; then
+        echo -e "${RED}Error: vfsh binary not created${NC}" >&2
         exit 1
     fi
 
@@ -537,11 +537,11 @@ main() {
     fi
 
     # Check if binary was created
-    if [ -f "./codex" ]; then
+    if [ -f "./vfsh" ]; then
         echo ""
         echo -e "${GREEN}✓ Build successful!${NC}"
-        echo -e "Binary: ${BLUE}./codex${NC}"
-        ls -lh ./codex
+        echo -e "Binary: ${BLUE}./vfsh${NC}"
+        ls -lh ./vfsh
 
         # Prompt for static analysis after successful build
         prompt_static_analysis

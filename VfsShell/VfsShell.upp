@@ -36,6 +36,7 @@ include(LINUX) /usr/lib/llvm/21/include;
 
 file
 	VfsShell.h,
+	main.cpp,
 	ui_backend.h,
 	ui_backend_qt_example.h,
 	vfs_common.h,
@@ -73,7 +74,6 @@ file
 	repl.h,
 	repl.cpp,
 	daemon.cpp,
-	main.cpp,
 	snippet_catalog.h,
 	snippet_catalog.cpp,
 	utils.h,
@@ -92,7 +92,21 @@ file
 	upp_workspace_build.h,
 	upp_workspace_build.cpp,
 	build_graph.h,
-	build_graph.cpp;
+	build_graph.cpp,
+	"Qwen integration" readonly separator,
+	cmd_qwen.h,
+	cmd_qwen.cpp,
+	qwen_client.h,
+	qwen_client.cpp,
+	qwen_client_test.cpp,
+	qwen_echo_server.cpp,
+	qwen_integration_test.cpp,
+	qwen_protocol.cpp,
+	qwen_protocol.h,
+	qwen_protocol_test.cpp,
+	qwen_state_manager.cpp,
+	qwen_state_manager.h,
+	qwen_state_manager_test.cpp;
 
 mainconfig
 	"" = "";

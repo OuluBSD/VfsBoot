@@ -17,7 +17,7 @@ endif
 
 VFSSHELL_SRC := VfsShell/vfs_common.cpp VfsShell/tag_system.cpp VfsShell/logic_engine.cpp VfsShell/vfs_core.cpp VfsShell/vfs_mount.cpp VfsShell/sexp.cpp VfsShell/cpp_ast.cpp VfsShell/clang_parser.cpp VfsShell/planner.cpp VfsShell/ai_bridge.cpp VfsShell/context_builder.cpp VfsShell/build_graph.cpp VfsShell/make.cpp VfsShell/hypothesis.cpp VfsShell/scope_store.cpp VfsShell/feedback.cpp VfsShell/shell_commands.cpp VfsShell/repl.cpp VfsShell/main.cpp VfsShell/snippet_catalog.cpp VfsShell/utils.cpp VfsShell/web_server.cpp VfsShell/upp_assembly.cpp VfsShell/upp_builder.cpp VfsShell/upp_workspace_build.cpp VfsShell/command.cpp VfsShell/daemon.cpp VfsShell/registry.cpp VfsShell/qwen_protocol.cpp VfsShell/qwen_client.cpp VfsShell/qwen_state_manager.cpp VfsShell/cmd_qwen.cpp
 VFSSHELL_HDR := VfsShell/vfs_common.h VfsShell/tag_system.h VfsShell/logic_engine.h VfsShell/vfs_core.h VfsShell/vfs_mount.h VfsShell/sexp.h VfsShell/cpp_ast.h VfsShell/clang_parser.h VfsShell/planner.h VfsShell/ai_bridge.h VfsShell/context_builder.h VfsShell/build_graph.h VfsShell/make.h VfsShell/hypothesis.h VfsShell/scope_store.h VfsShell/feedback.h VfsShell/shell_commands.h VfsShell/repl.h VfsShell/snippet_catalog.h VfsShell/utils.h VfsShell/upp_assembly.h VfsShell/upp_builder.h VfsShell/upp_workspace_build.h VfsShell/registry.h VfsShell/qwen_protocol.h VfsShell/qwen_client.h VfsShell/qwen_state_manager.h VfsShell/cmd_qwen.h
-VFSSHELL_BIN := codex
+VFSSHELL_BIN := vfsh
 
 HARNESS_SRC := harness/scenario.cpp harness/runner.cpp
 HARNESS_HDR := harness/scenario.h harness/runner.h
@@ -76,7 +76,7 @@ sample: $(VFSSHELL_BIN)
 		"cpp.tu /astcpp/demo" \
 		"cpp.include /astcpp/demo iostream 1" \
 		"cpp.func /astcpp/demo main int" \
-		"cpp.print /astcpp/demo/main Hello from codex-mini sample!" \
+		"cpp.print /astcpp/demo/main Hello from VfsBoot sample!" \
 		"cpp.returni /astcpp/demo/main 0" \
 		"cpp.dump /astcpp/demo /cpp/demo.cpp" \
 		"export /cpp/demo.cpp $(SAMPLE_CPP)" \
@@ -84,7 +84,7 @@ sample: $(VFSSHELL_BIN)
 	| ./$(VFSSHELL_BIN)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(SAMPLE_CPP) -o $(SAMPLE_BIN)
 	./$(SAMPLE_BIN) > $(SAMPLE_OUT)
-	@grep -q "Hello from codex-mini sample!" $(SAMPLE_OUT)
+	@grep -q "Hello from VfsBoot sample!" $(SAMPLE_OUT)
 
 # Convenience configuration targets
 release: CXXFLAGS += -DNDEBUG -O3

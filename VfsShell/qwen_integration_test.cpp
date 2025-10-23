@@ -1,20 +1,8 @@
-// Simple integration test for QwenClient with mock server
-// Bypasses the main codex REPL to test client directly
-
-#include <iostream>
-#include <thread>
-#include <chrono>
-
-#include "tag_system.h"
-#include "logic_engine.h"
-#include "vfs_core.h"
-#include "qwen_protocol.h"
-#include "qwen_client.h"
-#include "qwen_state_manager.h"
+#include "VfsShell.h"
 
 using namespace Qwen;
 
-int main() {
+int qwen_integration_test(int argc, char** argv) {
     std::cout << "=== QwenClient Integration Test ===\n\n";
 
     // Create minimal VFS

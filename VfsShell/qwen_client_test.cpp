@@ -1,12 +1,9 @@
-#include "qwen_client.h"
-#include <iostream>
-#include <chrono>
-#include <thread>
+#include "VfsShell.h"
 
 using namespace Qwen;
 
 // Simple test to verify basic stdin/stdout protocol
-int main(int argc, char* argv[]) {
+int qwen_client_test(int argc, char* argv[]) {
     std::cout << "=== Qwen Client Test ===\n\n";
 
     // Configure client
