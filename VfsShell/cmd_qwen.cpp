@@ -325,48 +325,118 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
     noecho();
     keypad(stdscr, TRUE);
     
+    // Initialize colors if supported
+    if (has_colors()) {
+        start_color();
+        init_pair(1, COLOR_GREEN, COLOR_BLACK);   // User messages
+        init_pair(2, COLOR_CYAN, COLOR_BLACK);    // AI messages
+        init_pair(3, COLOR_YELLOW, COLOR_BLACK);  // System/status messages
+        init_pair(4, COLOR_RED, COLOR_BLACK);     // Error messages
+        init_pair(5, COLOR_BLUE, COLOR_BLACK);    // Info messages
+        init_pair(6, COLOR_MAGENTA, COLOR_BLACK); // Tool messages
+    }
+    
     // Get screen dimensions
     int max_y, max_x;
     getmaxyx(stdscr, max_y, max_x);
     
     // Create windows for input and output
-    int output_height = max_y - 3;  // Leave room for input
+    int output_height = max_y - 6;  // Leave room for input and status bar
     WINDOW* output_win = newwin(output_height, max_x, 0, 0);
-    WINDOW* input_win = newwin(3, max_x, output_height, 0);
+    WINDOW* status_win = newwin(1, max_x, output_height, 0);
+    WINDOW* input_win = newwin(3, max_x, output_height + 1, 0);
     
     scrollok(output_win, TRUE);
     
-    // Print initial info
-    wprintw(output_win, "qwen - AI Assistant (NCurses Mode)\n");
-    wprintw(output_win, "Active Session: %s\n", state_mgr.get_current_session().c_str());
-    wprintw(output_win, "Model: %s\n", state_mgr.get_model().c_str());
-    wprintw(output_win, "Type /help for commands, /exit to quit\n\n");
+    // Print initial info with colors
+    if (has_colors()) {
+        wattron(output_win, COLOR_PAIR(2));
+        wprintw(output_win, "qwen - AI Assistant (NCurses Mode)\n");
+        wattroff(output_win, COLOR_PAIR(2));
+        wattron(output_win, COLOR_PAIR(5));
+        wprintw(output_win, "Active Session: %s\n", state_mgr.get_current_session().c_str());
+        wprintw(output_win, "Model: %s\n", state_mgr.get_model().c_str());
+        wattroff(output_win, COLOR_PAIR(5));
+        wattron(output_win, COLOR_PAIR(3));
+        wprintw(output_win, "Type /help for commands, /exit to quit\n\n");
+        wattroff(output_win, COLOR_PAIR(3));
+    } else {
+        wprintw(output_win, "qwen - AI Assistant (NCurses Mode)\n");
+        wprintw(output_win, "Active Session: %s\n", state_mgr.get_current_session().c_str());
+        wprintw(output_win, "Model: %s\n", state_mgr.get_model().c_str());
+        wprintw(output_win, "Type /help for commands, /exit to quit\n\n");
+    }
     wrefresh(output_win);
+    
+    // Update status bar
+    if (has_colors()) {
+        wattron(status_win, COLOR_PAIR(3));
+        mvwprintw(status_win, 0, 0, "Status: Connected | Model: %s | Session: %.10s...", 
+                  state_mgr.get_model().c_str(), state_mgr.get_current_session().c_str());
+        wattroff(status_win, COLOR_PAIR(3));
+    } else {
+        mvwprintw(status_win, 0, 0, "Status: Connected | Model: %s | Session: %.10s...", 
+                  state_mgr.get_model().c_str(), state_mgr.get_current_session().c_str());
+    }
+    wrefresh(status_win);
     
     // Message handlers for ncurses mode
     Qwen::MessageHandlers ncurses_handlers;
     
     ncurses_handlers.on_init = [&](const Qwen::InitMessage& msg) {
-        wprintw(output_win, "[Connected to qwen-code]\n");
-        if (!msg.version.empty()) {
-            wprintw(output_win, "[Version: %s]\n", msg.version.c_str());
+        if (has_colors()) {
+            wattron(output_win, COLOR_PAIR(5));
+            wprintw(output_win, "[Connected to qwen-code]\n");
+            if (!msg.version.empty()) {
+                wprintw(output_win, "[Version: %s]\n", msg.version.c_str());
+            }
+            wattroff(output_win, COLOR_PAIR(5));
+        } else {
+            wprintw(output_win, "[Connected to qwen-code]\n");
+            if (!msg.version.empty()) {
+                wprintw(output_win, "[Version: %s]\n", msg.version.c_str());
+            }
         }
         wrefresh(output_win);
     };
     
     ncurses_handlers.on_conversation = [&](const Qwen::ConversationMessage& msg) {
         if (msg.role == Qwen::MessageRole::USER) {
-            wprintw(output_win, "You: %s\n", msg.content.c_str());
+            if (has_colors()) {
+                wattron(output_win, COLOR_PAIR(1));
+                wprintw(output_win, "You: %s\n", msg.content.c_str());
+                wattroff(output_win, COLOR_PAIR(1));
+            } else {
+                wprintw(output_win, "You: %s\n", msg.content.c_str());
+            }
         } else if (msg.role == Qwen::MessageRole::ASSISTANT) {
             // Handle streaming messages
             if (msg.is_streaming.value_or(false)) {
                 // For streaming, just append to the most recent line
-                wprintw(output_win, "AI: %s", msg.content.c_str());
+                if (has_colors()) {
+                    wattron(output_win, COLOR_PAIR(2));
+                    wprintw(output_win, "AI: %s", msg.content.c_str());
+                    wattroff(output_win, COLOR_PAIR(2));
+                } else {
+                    wprintw(output_win, "AI: %s", msg.content.c_str());
+                }
             } else {
-                wprintw(output_win, "AI: %s\n", msg.content.c_str());
+                if (has_colors()) {
+                    wattron(output_win, COLOR_PAIR(2));
+                    wprintw(output_win, "AI: %s\n", msg.content.c_str());
+                    wattroff(output_win, COLOR_PAIR(2));
+                } else {
+                    wprintw(output_win, "AI: %s\n", msg.content.c_str());
+                }
             }
         } else {
-            wprintw(output_win, "[system]: %s\n", msg.content.c_str());
+            if (has_colors()) {
+                wattron(output_win, COLOR_PAIR(3));
+                wprintw(output_win, "[system]: %s\n", msg.content.c_str());
+                wattroff(output_win, COLOR_PAIR(3));
+            } else {
+                wprintw(output_win, "[system]: %s\n", msg.content.c_str());
+            }
         }
         wrefresh(output_win);
         
@@ -375,29 +445,67 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
     };
     
     ncurses_handlers.on_tool_group = [&](const Qwen::ToolGroup& group) {
-        wprintw(output_win, "\n[Tool Execution Request:]\n");
-        wprintw(output_win, "  Group ID: %d\n", group.id);
-        wprintw(output_win, "  Tools to execute:\n");
+        if (has_colors()) {
+            wattron(output_win, COLOR_PAIR(6));
+            wprintw(output_win, "\n[Tool Execution Request:]\n");
+            wprintw(output_win, "  Group ID: %d\n", group.id);
+            wprintw(output_win, "  Tools to execute:\n");
+            wattroff(output_win, COLOR_PAIR(6));
+        } else {
+            wprintw(output_win, "\n[Tool Execution Request:]\n");
+            wprintw(output_win, "  Group ID: %d\n", group.id);
+            wprintw(output_win, "  Tools to execute:\n");
+        }
         
         for (const auto& tool : group.tools) {
-            wprintw(output_win, "    - %s (ID: %s)\n", tool.tool_name.c_str(), tool.tool_id.c_str());
+            if (has_colors()) {
+                wattron(output_win, COLOR_PAIR(6));
+                wprintw(output_win, "    - %s (ID: %s)\n", tool.tool_name.c_str(), tool.tool_id.c_str());
+                wattroff(output_win, COLOR_PAIR(6));
+            } else {
+                wprintw(output_win, "    - %s (ID: %s)\n", tool.tool_name.c_str(), tool.tool_id.c_str());
+            }
             
             // Display confirmation details if present
             if (tool.confirmation_details.has_value()) {
-                wprintw(output_win, "      Details: %s\n", tool.confirmation_details->message.c_str());
+                if (has_colors()) {
+                    wattron(output_win, COLOR_PAIR(5));
+                    wprintw(output_win, "      Details: %s\n", tool.confirmation_details->message.c_str());
+                    wattroff(output_win, COLOR_PAIR(5));
+                } else {
+                    wprintw(output_win, "      Details: %s\n", tool.confirmation_details->message.c_str());
+                }
             }
             
             // Display arguments
             if (!tool.args.empty()) {
-                wprintw(output_win, "      Arguments:\n");
+                if (has_colors()) {
+                    wattron(output_win, COLOR_PAIR(5));
+                    wprintw(output_win, "      Arguments:\n");
+                    wattroff(output_win, COLOR_PAIR(5));
+                } else {
+                    wprintw(output_win, "      Arguments:\n");
+                }
                 for (const auto& [key, value] : tool.args) {
-                    wprintw(output_win, "        %s: %s\n", key.c_str(), value.c_str());
+                    if (has_colors()) {
+                        wattron(output_win, COLOR_PAIR(5));
+                        wprintw(output_win, "        %s: %s\n", key.c_str(), value.c_str());
+                        wattroff(output_win, COLOR_PAIR(5));
+                    } else {
+                        wprintw(output_win, "        %s: %s\n", key.c_str(), value.c_str());
+                    }
                 }
             }
         }
         
         // Prompt for tool approval
-        wprintw(output_win, "\nApprove tool execution? [y/n/d(details)]: ");
+        if (has_colors()) {
+            wattron(output_win, COLOR_PAIR(3));
+            wprintw(output_win, "\nApprove tool execution? [y/n/d(details)]: ");
+            wattroff(output_win, COLOR_PAIR(3));
+        } else {
+            wprintw(output_win, "\nApprove tool execution? [y/n/d(details)]: ");
+        }
         wrefresh(output_win);
         
         int ch = wgetch(input_win);
@@ -408,10 +516,22 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
             approved = true;
         } else if (response == 'd' || response == 'D') {
             // Redraw tool group for details
-            wprintw(output_win, "\nTool details shown above\n");
+            if (has_colors()) {
+                wattron(output_win, COLOR_PAIR(3));
+                wprintw(output_win, "\nTool details shown above\n");
+                wattroff(output_win, COLOR_PAIR(3));
+            } else {
+                wprintw(output_win, "\nTool details shown above\n");
+            }
             wrefresh(output_win);
             // Prompt again
-            wprintw(output_win, "Approve tool execution? [y/n]: ");
+            if (has_colors()) {
+                wattron(output_win, COLOR_PAIR(3));
+                wprintw(output_win, "Approve tool execution? [y/n]: ");
+                wattroff(output_win, COLOR_PAIR(3));
+            } else {
+                wprintw(output_win, "Approve tool execution? [y/n]: ");
+            }
             wrefresh(output_win);
             ch = wgetch(input_win);
             response = (char)ch;
@@ -423,9 +543,21 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
             client.send_tool_approval(tool.tool_id, approved);
             
             if (approved) {
-                wprintw(output_win, "  ✓ Approved: %s\n", tool.tool_name.c_str());
+                if (has_colors()) {
+                    wattron(output_win, COLOR_PAIR(1));
+                    wprintw(output_win, "  ✓ Approved: %s\n", tool.tool_name.c_str());
+                    wattroff(output_win, COLOR_PAIR(1));
+                } else {
+                    wprintw(output_win, "  ✓ Approved: %s\n", tool.tool_name.c_str());
+                }
             } else {
-                wprintw(output_win, "  ✗ Rejected: %s\n", tool.tool_name.c_str());
+                if (has_colors()) {
+                    wattron(output_win, COLOR_PAIR(4));
+                    wprintw(output_win, "  ✗ Rejected: %s\n", tool.tool_name.c_str());
+                    wattroff(output_win, COLOR_PAIR(4));
+                } else {
+                    wprintw(output_win, "  ✗ Rejected: %s\n", tool.tool_name.c_str());
+                }
             }
         }
         wrefresh(output_win);
@@ -435,36 +567,74 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
     };
     
     ncurses_handlers.on_status = [&](const Qwen::StatusUpdate& msg) {
-        wprintw(output_win, "[Status: %s]", Qwen::app_state_to_string(msg.state));
-        if (msg.message.has_value()) {
-            wprintw(output_win, " %s", msg.message.value().c_str());
+        if (has_colors()) {
+            wattron(output_win, COLOR_PAIR(3));
+            wprintw(output_win, "[Status: %s]", Qwen::app_state_to_string(msg.state));
+            if (msg.message.has_value()) {
+                wprintw(output_win, " %s", msg.message.value().c_str());
+            }
+            wprintw(output_win, "\n");
+            wattroff(output_win, COLOR_PAIR(3));
+        } else {
+            wprintw(output_win, "[Status: %s]", Qwen::app_state_to_string(msg.state));
+            if (msg.message.has_value()) {
+                wprintw(output_win, " %s", msg.message.value().c_str());
+            }
+            wprintw(output_win, "\n");
         }
-        wprintw(output_win, "\n");
         wrefresh(output_win);
     };
     
     ncurses_handlers.on_info = [&](const Qwen::InfoMessage& msg) {
-        wprintw(output_win, "[Info: %s]\n", msg.message.c_str());
+        if (has_colors()) {
+            wattron(output_win, COLOR_PAIR(5));
+            wprintw(output_win, "[Info: %s]\n", msg.message.c_str());
+            wattroff(output_win, COLOR_PAIR(5));
+        } else {
+            wprintw(output_win, "[Info: %s]\n", msg.message.c_str());
+        }
         wrefresh(output_win);
     };
     
     ncurses_handlers.on_error = [&](const Qwen::ErrorMessage& msg) {
-        wprintw(output_win, "[Error: %s]\n", msg.message.c_str());
+        if (has_colors()) {
+            wattron(output_win, COLOR_PAIR(4));
+            wprintw(output_win, "[Error: %s]\n", msg.message.c_str());
+            wattroff(output_win, COLOR_PAIR(4));
+        } else {
+            wprintw(output_win, "[Error: %s]\n", msg.message.c_str());
+        }
         wrefresh(output_win);
     };
     
     ncurses_handlers.on_completion_stats = [&](const Qwen::CompletionStats& stats) {
-        wprintw(output_win, "[Stats");
-        if (stats.prompt_tokens.has_value()) {
-            wprintw(output_win, " - Prompt: %d", stats.prompt_tokens.value());
+        if (has_colors()) {
+            wattron(output_win, COLOR_PAIR(3));
+            wprintw(output_win, "[Stats");
+            if (stats.prompt_tokens.has_value()) {
+                wprintw(output_win, " - Prompt: %d", stats.prompt_tokens.value());
+            }
+            if (stats.completion_tokens.has_value()) {
+                wprintw(output_win, ", Completion: %d", stats.completion_tokens.value());
+            }
+            if (!stats.duration.empty()) {
+                wprintw(output_win, ", Duration: %s", stats.duration.c_str());
+            }
+            wprintw(output_win, "]\n");
+            wattroff(output_win, COLOR_PAIR(3));
+        } else {
+            wprintw(output_win, "[Stats");
+            if (stats.prompt_tokens.has_value()) {
+                wprintw(output_win, " - Prompt: %d", stats.prompt_tokens.value());
+            }
+            if (stats.completion_tokens.has_value()) {
+                wprintw(output_win, ", Completion: %d", stats.completion_tokens.value());
+            }
+            if (!stats.duration.empty()) {
+                wprintw(output_win, ", Duration: %s", stats.duration.c_str());
+            }
+            wprintw(output_win, "]\n");
         }
-        if (stats.completion_tokens.has_value()) {
-            wprintw(output_win, ", Completion: %d", stats.completion_tokens.value());
-        }
-        if (!stats.duration.empty()) {
-            wprintw(output_win, ", Duration: %s", stats.duration.c_str());
-        }
-        wprintw(output_win, "]\n");
         wrefresh(output_win);
     };
     
@@ -606,6 +776,7 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
     
     // Cleanup ncurses
     delwin(output_win);
+    delwin(status_win);
     delwin(input_win);
     endwin();
     
