@@ -861,9 +861,11 @@ void cmd_qwen(const std::vector<std::string>& args,
     if (!config.workspace_root.empty()) {
         client_config.qwen_args.push_back("--workspace-root");
         client_config.qwen_args.push_back(config.workspace_root);
+    }
+
     // Add OpenAI flag if specified
     if (opts.use_openai) {
-            client_config.qwen_args.push_back("--openai");
+        client_config.qwen_args.push_back("--openai");
     }
 
     // Create client
@@ -1080,7 +1082,6 @@ void cmd_qwen(const std::vector<std::string>& args,
     std::cout << Color::YELLOW << "Saving session...\n" << Color::RESET;
     state_mgr.save_session();
     std::cout << Color::GREEN << "Session saved.\n" << Color::RESET;
-}
 }
 
 }  // namespace QwenCmd
