@@ -11,10 +11,38 @@
 
 set -e
 
+# Track server PID for cleanup
+SERVER_PID=""
+
 # Trap Ctrl+C and cleanup
 cleanup() {
   echo ""
   echo "Shutting down qwen-code server..."
+
+  # Kill the node process and its children if still running
+  if [ -n "$SERVER_PID" ]; then
+    # Check if process exists
+    if ps -p "$SERVER_PID" > /dev/null 2>&1; then
+      # Kill process group (includes children) with SIGTERM first
+      kill -TERM -"$SERVER_PID" 2>/dev/null || kill -TERM "$SERVER_PID" 2>/dev/null || true
+
+      # Wait up to 5 seconds for graceful shutdown
+      local count=0
+      while ps -p "$SERVER_PID" > /dev/null 2>&1 && [ $count -lt 50 ]; do
+        sleep 0.1
+        count=$((count + 1))
+      done
+
+      # If still running, force kill with SIGKILL
+      if ps -p "$SERVER_PID" > /dev/null 2>&1; then
+        echo "Process didn't respond to SIGTERM, forcing shutdown..."
+        kill -KILL -"$SERVER_PID" 2>/dev/null || kill -KILL "$SERVER_PID" 2>/dev/null || true
+        sleep 0.2
+      fi
+    fi
+  fi
+
+  echo "Server stopped."
   exit 0
 }
 
@@ -22,7 +50,7 @@ trap cleanup SIGINT SIGTERM
 
 # Default configuration
 QWEN_CODE_DIR="/common/active/sblo/Dev/qwen-code"
-TCP_PORT=7777
+TCP_PORT=7774
 AUTH_MODE="qwen-oauth"
 
 # Parse command line arguments
@@ -41,7 +69,7 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Options:"
       echo "  --openai        Use OpenAI (requires OPENAI_API_KEY env var)"
-      echo "  --port PORT     Use custom TCP port (default: 7777)"
+      echo "  --port PORT     Use custom TCP port (default: 7774)"
       echo "  --help          Show this help message"
       echo ""
       echo "Examples:"
@@ -116,7 +144,11 @@ echo ""
 
 # Start the server
 cd "$QWEN_CODE_DIR"
-node packages/cli/dist/index.js --server-mode tcp --tcp-port "$TCP_PORT"
+node packages/cli/dist/index.js --server-mode tcp --tcp-port "$TCP_PORT" &
+SERVER_PID=$!
+
+# Wait for the server to exit
+wait "$SERVER_PID"
 
 # If we get here, server exited normally
 echo ""

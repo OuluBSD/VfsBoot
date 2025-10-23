@@ -42,6 +42,9 @@ struct QwenOptions {
     std::string session_id;
     std::string model;
     std::string workspace_root;
+    std::string mode = "stdin";  // Connection mode: stdin, tcp, pipe
+    int port = 7777;             // TCP port (for mode=tcp)
+    std::string host = "localhost";  // TCP host (for mode=tcp)
 };
 
 // Parse command-line arguments

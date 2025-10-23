@@ -18,7 +18,8 @@ trap 'echo ""; echo "Cancelled."; exit 130' SIGINT SIGTERM
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VFSH_BIN="$SCRIPT_DIR/vfsh"
 TCP_HOST="localhost"
-TCP_PORT=7777
+TCP_PORT=7774
+DIRECT_MODE=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -31,17 +32,23 @@ while [[ $# -gt 0 ]]; do
       TCP_PORT="$2"
       shift 2
       ;;
+    --direct)
+      DIRECT_MODE=true
+      shift
+      ;;
     --help)
       echo "Usage: $0 [OPTIONS]"
       echo ""
       echo "Options:"
       echo "  --host HOST     Connect to specific host (default: localhost)"
-      echo "  --port PORT     Connect to specific TCP port (default: 7777)"
+      echo "  --port PORT     Connect to specific TCP port (default: 7774)"
+      echo "  --direct        Launch vfsh with full ncurses support (manual command entry)"
       echo "  --help          Show this help message"
       echo ""
       echo "Examples:"
-      echo "  $0                           # Connect to localhost:7777"
+      echo "  $0                           # Connect to localhost:7774 (line-based mode)"
       echo "  $0 --port 8080               # Connect to localhost:8080"
+      echo "  $0 --direct                  # Launch with full ncurses support"
       echo "  $0 --host 192.168.1.100      # Connect to remote host"
       exit 0
       ;;
@@ -83,19 +90,40 @@ echo "════════════════════════�
 echo ""
 echo "  Connecting to: $TCP_HOST:$TCP_PORT"
 echo ""
-echo "  Starting VfsBoot shell and launching qwen session..."
-echo ""
-echo "  NOTE: Using line-based stdio mode (ncurses requires direct TTY access)"
-echo "  For full ncurses interface, run: ./vfsh then type 'qwen --mode tcp --port $TCP_PORT'"
-echo ""
-echo "  Commands while in qwen session:"
-echo "    /exit   - Exit qwen session"
-echo "    /detach - Detach from session (keeps it alive)"
-echo "    /help   - Show help"
-echo ""
-echo "═══════════════════════════════════════════════════════════"
-echo ""
 
-# Start vfsh and automatically launch qwen session
-# Using printf + cat to send the qwen command then pass through stdin
-(printf "qwen --mode tcp --port %s\n" "$TCP_PORT"; cat) | "$VFSH_BIN"
+if [ "$DIRECT_MODE" = true ]; then
+  echo "  Starting VfsBoot shell in DIRECT mode..."
+  echo ""
+  echo "  Full ncurses interface enabled!"
+  echo "  Run this command after vfsh starts:"
+  echo ""
+  echo "    qwen --mode tcp --port $TCP_PORT --host $TCP_HOST"
+  echo ""
+  echo "  Commands while in qwen session:"
+  echo "    /exit   - Exit qwen session"
+  echo "    /detach - Detach from session (keeps it alive)"
+  echo "    /help   - Show help"
+  echo ""
+  echo "═══════════════════════════════════════════════════════════"
+  echo ""
+
+  # Launch vfsh directly with full TTY access
+  exec "$VFSH_BIN"
+else
+  echo "  Starting VfsBoot shell and launching qwen session..."
+  echo ""
+  echo "  NOTE: Using line-based stdio mode (ncurses requires direct TTY access)"
+  echo "  For full ncurses interface, run: $0 --direct"
+  echo ""
+  echo "  Commands while in qwen session:"
+  echo "    /exit   - Exit qwen session"
+  echo "    /detach - Detach from session (keeps it alive)"
+  echo "    /help   - Show help"
+  echo ""
+  echo "═══════════════════════════════════════════════════════════"
+  echo ""
+
+  # Start vfsh and automatically launch qwen session
+  # Using printf + cat to send the qwen command then pass through stdin
+  (printf "qwen --mode tcp --port %s --host %s\n" "$TCP_PORT" "$TCP_HOST"; cat) | "$VFSH_BIN"
+fi

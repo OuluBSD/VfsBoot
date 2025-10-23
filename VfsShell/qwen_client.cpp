@@ -1,5 +1,9 @@
 #include "VfsShell.h"
 #include "qwen_logger.h"
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
 
 namespace Qwen {
 
@@ -51,9 +55,8 @@ public:
                 break;
 
             case CommunicationMode::TCP:
-                last_error_ = "TCP mode not yet implemented";
-                logger_.error("TCP mode not implemented");
-                success = false;
+                logger_.info("Starting TCP connection to ", config_.tcp_host, ":", config_.tcp_port);
+                success = start_tcp_connection();
                 break;
         }
 
@@ -317,6 +320,57 @@ private:
 
         if (config_.verbose) {
             std::cerr << "[QwenClient] Subprocess started with PID " << pid << "\n";
+        }
+
+        return true;
+    }
+
+    bool start_tcp_connection() {
+        // Create socket
+        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        if (sockfd < 0) {
+            last_error_ = std::string("socket() failed: ") + strerror(errno);
+            logger_.error("socket() failed: ", strerror(errno));
+            return false;
+        }
+
+        // Resolve hostname
+        struct hostent* server = gethostbyname(config_.tcp_host.c_str());
+        if (server == nullptr) {
+            last_error_ = "Failed to resolve host: " + config_.tcp_host;
+            logger_.error("gethostbyname() failed for ", config_.tcp_host);
+            close(sockfd);
+            return false;
+        }
+
+        // Setup server address
+        struct sockaddr_in serv_addr;
+        memset(&serv_addr, 0, sizeof(serv_addr));
+        serv_addr.sin_family = AF_INET;
+        memcpy(&serv_addr.sin_addr.s_addr, server->h_addr, server->h_length);
+        serv_addr.sin_port = htons(config_.tcp_port);
+
+        // Connect
+        if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+            last_error_ = std::string("connect() failed: ") + strerror(errno);
+            logger_.error("connect() to ", config_.tcp_host, ":", config_.tcp_port, " failed: ", strerror(errno));
+            close(sockfd);
+            return false;
+        }
+
+        // Use socket for both read and write
+        stdin_fd_ = sockfd;
+        stdout_fd_ = sockfd;
+
+        // Set non-blocking
+        int flags = fcntl(stdout_fd_, F_GETFL, 0);
+        fcntl(stdout_fd_, F_SETFL, flags | O_NONBLOCK);
+
+        logger_.info("TCP connection established: fd=", sockfd);
+
+        if (config_.verbose) {
+            std::cerr << "[QwenClient] TCP connection established to "
+                      << config_.tcp_host << ":" << config_.tcp_port << "\n";
         }
 
         return true;

@@ -39,19 +39,6 @@
 
 ## Upcoming: Important (Ordered by Priority)
 
-### 0. qwen: Add --mode and --port Options (URGENT)
-**Status**: MISSING CRITICAL FEATURE - qwen commands ignore --mode tcp --port 7777
-**Issue**: Users expect `qwen --mode tcp --port 7777` but these options are not implemented
-**Current Behavior**: qwen always uses stdin mode with qwen-code subprocess
-**Impact**: Cannot connect to existing TCP servers, run_qwen_client.sh doesn't work as expected
-**Required Changes**:
-- Add `mode` and `port` fields to QwenOptions struct (cmd_qwen.h)
-- Parse --mode and --port in parse_args() (cmd_qwen.cpp)
-- Implement TCP client mode in QwenClient (qwen_client.cpp)
-- Update help text with --mode and --port options
-**Priority**: URGENT - This breaks expected workflow from documentation
-**See**: commit 76bb86a fixed interactive mode, but TCP mode still not implemented
-
 ### 1. Build System: Makefile Timeout Issue (Low Priority)
 **Status**: Minor annoyance, workaround exists
 **Issue**: `make` command times out after 30+ seconds with no output
@@ -172,6 +159,45 @@
 - Problem: Config.getContentGeneratorConfig() undefined
 - Solution: Call config.refreshAuth(authType) before runServerMode()
 - Files: gemini.tsx:627-656, config.ts:595
+
+### qwen TCP Mode Implementation (2025-10-23) ✅
+**COMPLETE**: Full TCP client mode for connecting to qwen-code TCP servers
+
+**What Was Implemented**:
+- ✅ Added `mode`, `port`, `host` fields to QwenOptions struct
+- ✅ Argument parsing for --mode, --port, --host in cmd_qwen.cpp
+- ✅ TCP socket client implementation in qwen_client.cpp
+- ✅ Updated help text with connection mode documentation
+- ✅ Fixed Ctrl+C handling in run_qwen_server.sh
+- ✅ Enhanced run_qwen_client.sh with --direct mode for ncurses
+- ✅ Tested TCP connection and error handling
+
+**Connection Modes**:
+- `stdin` - Spawn qwen-code as subprocess (default)
+- `tcp` - Connect to existing TCP server
+- `pipe` - Named pipes (not yet implemented)
+
+**Usage Examples**:
+```bash
+# Start TCP server
+./run_qwen_server.sh                  # Port 7777 with qwen-oauth
+./run_qwen_server.sh --openai         # Use OpenAI
+
+# Connect with vfsh
+./vfsh
+qwen --mode tcp --port 7777           # Full ncurses support
+
+# Or use client script
+./run_qwen_client.sh                  # Auto-connect (line-based)
+./run_qwen_client.sh --direct         # Manual connect (ncurses)
+```
+
+**Files Modified**:
+- VfsShell/cmd_qwen.h:36-48 - Added mode/port/host fields
+- VfsShell/cmd_qwen.cpp:78-86,123-159,875-884 - Parsing and config
+- VfsShell/qwen_client.cpp:1-6,328-377 - TCP implementation
+- run_qwen_server.sh:14-32,128-134 - Ctrl+C fix
+- run_qwen_client.sh:22,35-61,94-129 - --direct mode
 
 ### Web Server with Browser Terminal - Phases 1 & 2 (2025-10-10) ✅
 **COMPLETE**: Full web terminal with command execution

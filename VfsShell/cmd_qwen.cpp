@@ -1056,6 +1056,11 @@ void cmd_qwen(const std::vector<std::string>& args,
             if (msg_count < 0) {
                 // Error occurred
                 std::cout << Color::RED << "Error polling messages.\n" << Color::RESET;
+                // Reset the streaming state if needed to ensure clean UI on error
+                if (streaming_in_progress) {
+                    std::cout << "\n";  // Complete the line if we were streaming
+                    streaming_in_progress = false;
+                }
                 waiting_for_response = false;
                 break;
             }
@@ -1068,6 +1073,11 @@ void cmd_qwen(const std::vector<std::string>& args,
 
                 if (elapsed > total_timeout_ms) {
                     std::cout << Color::YELLOW << "\n[Response timeout]\n" << Color::RESET;
+                    // Reset the streaming state if needed to ensure clean UI on timeout
+                    if (streaming_in_progress) {
+                        std::cout << "\n";  // Complete the line if we were streaming
+                        streaming_in_progress = false;
+                    }
                     waiting_for_response = false;
                     break;
                 }
@@ -1084,7 +1094,11 @@ void cmd_qwen(const std::vector<std::string>& args,
             // We'll keep polling until we get a completion_stats or no messages for a bit
         }
 
-        std::cout << "\n";  // Add newline after response
+        // Ensure we have a newline after response completion
+        if (streaming_in_progress) {
+            std::cout << "\n";
+            streaming_in_progress = false;
+        }
     }
 
     // Cleanup

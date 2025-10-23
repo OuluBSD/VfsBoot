@@ -1,4 +1,5 @@
 #include "VfsShell.h"
+#include <iomanip>
 
 namespace Qwen {
 
@@ -287,12 +288,20 @@ std::string ProtocolParser::serialize_command(const Command& cmd) {
             ss << "user_input\"";
             if (auto* data = cmd.as_user_input()) {
                 ss << ",\"content\":\"";
-                // TODO: Properly escape string
-                for (char c : data->content) {
+                // Properly escape string for JSON
+                for (unsigned char c : data->content) {
                     if (c == '"') ss << "\\\"";
                     else if (c == '\\') ss << "\\\\";
                     else if (c == '\n') ss << "\\n";
+                    else if (c == '\r') ss << "\\r";
                     else if (c == '\t') ss << "\\t";
+                    else if (c == '\b') ss << "\\b";
+                    else if (c == '\f') ss << "\\f";
+                    else if (c < 32) {
+                        // Escape other control characters as \uXXXX
+                        ss << "\\u" << std::hex << std::setfill('0') << std::setw(4) << (int)c;
+                        ss << std::dec;  // Reset to decimal
+                    }
                     else ss << c;
                 }
                 ss << "\"";
