@@ -64,21 +64,30 @@ VfsBoot integrates with [qwen-code](https://github.com/lvce-editor/qwen-code) - 
 
 ## Quick Start
 
+### Current Interface Mode
+
+**Note**: The current implementation uses **line-based stdio mode**. An ncurses full-screen interface is planned (Priority 3 in TASKS.md) but not yet implemented. The stdio mode is fully functional but less polished than the original qwen experience.
+
 ### Using qwen in VfsBoot
 
 ```bash
 # Interactive session with default model
 $ ./vfsh
-codex> qwen
+vfsh> qwen
+
+# Special commands within qwen session:
+#   /exit   - Exit session
+#   /detach - Detach (keeps session alive)
+#   /help   - Show help
 
 # Attach to existing session
-codex> qwen --attach session-12345
+vfsh> qwen --attach session-12345
 
 # List sessions
-codex> qwen --list-sessions
+vfsh> qwen --list-sessions
 
 # Use specific model
-codex> qwen --model gpt-4o-mini
+vfsh> qwen --model gpt-4o-mini
 ```
 
 ### Running qwen-code as Standalone Server
@@ -479,8 +488,15 @@ echo '{"type":"user_input","content":"test"}' | nc localhost 7777
 
 ## Future Enhancements
 
-### Planned Features
-- ⏳ ncurses interactive mode (like original qwen)
+### Planned Features (Priority 3 in TASKS.md)
+- ⏳ **ncurses interactive mode** (Priority 3 - High priority UX improvement)
+  - Full-screen terminal interface like original qwen
+  - Auto-detect terminal capabilities
+  - Fallback to line-based stdio when ncurses unavailable
+  - `qwen --simple` flag to force stdio mode
+  - Better visual feedback for streaming responses
+  - Improved tool approval workflow
+
 - ⏳ Multi-session management (switch between sessions)
 - ⏳ Session export/import
 - ⏳ Llama backend support in qwen-code

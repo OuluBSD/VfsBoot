@@ -83,13 +83,19 @@ echo "════════════════════════�
 echo ""
 echo "  Connecting to: $TCP_HOST:$TCP_PORT"
 echo ""
-echo "  Starting VfsBoot shell..."
-echo "  Type 'qwen --mode tcp --port $TCP_PORT' to connect"
-echo "  Or just type 'qwen' if TCP mode is configured"
+echo "  Starting VfsBoot shell and launching qwen session..."
+echo ""
+echo "  NOTE: ncurses mode is not yet implemented (coming in Priority 3)"
+echo "  Current interface uses line-based stdio mode"
+echo ""
+echo "  Commands while in qwen session:"
+echo "    /exit   - Exit qwen session"
+echo "    /detach - Detach from session (keeps it alive)"
+echo "    /help   - Show help"
 echo ""
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 
-# Start vfsh with qwen command suggestion
-# We'll use a heredoc to provide initial commands, then drop to interactive mode
-exec "$VFSH_BIN"
+# Start vfsh and automatically launch qwen session
+# Using printf + cat to send the qwen command then pass through stdin
+(printf "qwen --mode tcp --port %s\n" "$TCP_PORT"; cat) | "$VFSH_BIN"
