@@ -264,6 +264,13 @@ private:
             dup2(stdin_pipe[0], STDIN_FILENO);
             dup2(stdout_pipe[1], STDOUT_FILENO);
 
+            // Redirect stderr to /dev/null to avoid polluting ncurses display
+            int devnull = open("/dev/null", O_WRONLY);
+            if (devnull >= 0) {
+                dup2(devnull, STDERR_FILENO);
+                close(devnull);
+            }
+
             // Close unused pipe ends
             close(stdin_pipe[0]);
             close(stdin_pipe[1]);

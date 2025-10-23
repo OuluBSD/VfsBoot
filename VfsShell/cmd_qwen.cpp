@@ -400,8 +400,12 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
         wrefresh(output_win);
     };
     
+    // Track if we're in the middle of streaming a response
+    static bool streaming_in_progress = false;
+
     ncurses_handlers.on_conversation = [&](const Qwen::ConversationMessage& msg) {
         if (msg.role == Qwen::MessageRole::USER) {
+            streaming_in_progress = false;  // Reset for new user message
             if (has_colors()) {
                 wattron(output_win, COLOR_PAIR(1));
                 wprintw(output_win, "You: %s\n", msg.content.c_str());
@@ -412,15 +416,25 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
         } else if (msg.role == Qwen::MessageRole::ASSISTANT) {
             // Handle streaming messages
             if (msg.is_streaming.value_or(false)) {
-                // For streaming, just append to the most recent line
+                // For streaming, only print "AI: " prefix on first chunk
                 if (has_colors()) {
                     wattron(output_win, COLOR_PAIR(2));
-                    wprintw(output_win, "AI: %s", msg.content.c_str());
+                    if (!streaming_in_progress) {
+                        wprintw(output_win, "AI: ");
+                        streaming_in_progress = true;
+                    }
+                    wprintw(output_win, "%s", msg.content.c_str());
                     wattroff(output_win, COLOR_PAIR(2));
                 } else {
-                    wprintw(output_win, "AI: %s", msg.content.c_str());
+                    if (!streaming_in_progress) {
+                        wprintw(output_win, "AI: ");
+                        streaming_in_progress = true;
+                    }
+                    wprintw(output_win, "%s", msg.content.c_str());
                 }
             } else {
+                // Non-streaming message
+                streaming_in_progress = false;
                 if (has_colors()) {
                     wattron(output_win, COLOR_PAIR(2));
                     wprintw(output_win, "AI: %s\n", msg.content.c_str());
@@ -439,7 +453,7 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
             }
         }
         wrefresh(output_win);
-        
+
         // Store in state manager
         state_mgr.add_message(msg);
     };
