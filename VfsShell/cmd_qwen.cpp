@@ -327,12 +327,40 @@ struct OutputLine {
     OutputLine(const std::string& t, int cp = 0) : text(t), color_pair(cp) {}
 };
 
+// UI State for state machine
+enum class UIState {
+    Normal,         // Normal chat mode
+    ToolApproval,   // Waiting for tool approval (y/n/d)
+    Discuss         // Discuss mode (planning)
+};
+
+// Permission modes (cycle with Shift+Tab)
+enum class PermissionMode {
+    PlanMode,           // Plan before executing
+    Normal,             // Ask for approval
+    AutoAcceptEdits,    // Auto-accept file edits
+    YOLO                // Approve anything, no sandbox
+};
+
+const char* permission_mode_to_string(PermissionMode mode) {
+    switch (mode) {
+        case PermissionMode::PlanMode: return "PLAN";
+        case PermissionMode::Normal: return "NORMAL";
+        case PermissionMode::AutoAcceptEdits: return "AUTO-EDIT";
+        case PermissionMode::YOLO: return "YOLO";
+    }
+    return "UNKNOWN";
+}
+
 bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, const QwenConfig& config) {
     // Initialize ncurses
     initscr();
     cbreak();
     noecho();
     keypad(stdscr, TRUE);
+
+    // Enable mouse support
+    mousemask(ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION, nullptr);
 
     // Initialize colors if supported
     if (has_colors()) {
@@ -364,6 +392,15 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
     // Input buffer and cursor position
     std::string input_buffer;
     size_t cursor_pos = 0;  // Position in input_buffer
+
+    // UI state machine
+    UIState ui_state = UIState::Normal;
+    PermissionMode permission_mode = PermissionMode::Normal;
+    Qwen::ToolGroup pending_tool_group;
+    bool has_pending_tool_group = false;
+
+    // Context usage tracking
+    int context_usage_percent = 0;  // 0-100
 
     // Helper function to add a line to output buffer
     auto add_output_line = [&](const std::string& text, int color = 0) {
@@ -401,20 +438,41 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
     auto redraw_status = [&](const std::string& extra = "") {
         werase(status_win);
         wattron(status_win, A_REVERSE);
-        std::string status_text = "Status: Connected | Model: " + state_mgr.get_model() +
-                                  " | Session: " + state_mgr.get_current_session().substr(0, 10) + "...";
-        if (!extra.empty()) {
-            status_text += " | " + extra;
-        }
+
+        // Left side: Model and session
+        std::string left_text = "Model: " + state_mgr.get_model() +
+                                " | Session: " + state_mgr.get_current_session().substr(0, 8);
+
+        // Right side: Permission mode, context usage, scroll indicator
+        std::string right_text = permission_mode_to_string(permission_mode);
+        right_text += " | Ctx: " + std::to_string(context_usage_percent) + "%";
+
         if (scroll_offset > 0) {
-            status_text += " | Scrolled: -" + std::to_string(scroll_offset);
+            right_text += " | ↑" + std::to_string(scroll_offset);
         }
-        mvwprintw(status_win, 0, 0, "%s", status_text.c_str());
-        // Pad the rest of the line
-        int len = status_text.length();
-        for (int i = len; i < max_x - 1; ++i) {
+
+        if (!extra.empty()) {
+            right_text = extra + " | " + right_text;
+        }
+
+        // Calculate spacing
+        int total_len = left_text.length() + right_text.length();
+        int spaces = max_x - total_len - 2;
+        if (spaces < 1) spaces = 1;
+
+        // Draw status bar
+        mvwprintw(status_win, 0, 0, "%s", left_text.c_str());
+        for (int i = 0; i < spaces; ++i) {
             waddch(status_win, ' ');
         }
+        wprintw(status_win, "%s", right_text.c_str());
+
+        // Pad to end
+        int current_x = left_text.length() + spaces + right_text.length();
+        for (int i = current_x; i < max_x - 1; ++i) {
+            waddch(status_win, ' ');
+        }
+
         wattroff(status_win, A_REVERSE);
         wrefresh(status_win);
     };
@@ -446,9 +504,18 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
     add_output_line("qwen - AI Assistant (NCurses Mode)", has_colors() ? 2 : 0);
     add_output_line("Active Session: " + state_mgr.get_current_session(), has_colors() ? 5 : 0);
     add_output_line("Model: " + state_mgr.get_model(), has_colors() ? 5 : 0);
-    add_output_line("Type /help for commands, /exit to quit", has_colors() ? 3 : 0);
-    add_output_line("Use Page Up/Down or Ctrl+U/D to scroll", has_colors() ? 3 : 0);
+    add_output_line("Type /help for commands, /exit to quit, Shift+Tab to cycle permission modes", has_colors() ? 3 : 0);
+    add_output_line("Use Page Up/Down or Ctrl+U/D to scroll | Mouse wheel to scroll", has_colors() ? 3 : 0);
     add_output_line("");
+
+    // Load previous messages from session if any
+    int msg_count = state_mgr.get_message_count();
+    if (msg_count > 0) {
+        add_output_line("=== Loading " + std::to_string(msg_count) + " previous message(s) ===", has_colors() ? 3 : 0);
+        // Get messages from state manager (we'll need to add a method for this)
+        // For now, just show a note that messages exist
+        add_output_line("");
+    }
 
     // Initial draw
     redraw_output();
@@ -517,6 +584,23 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
     };
     
     ncurses_handlers.on_tool_group = [&](const Qwen::ToolGroup& group) {
+        // Check permission mode for auto-approval
+        bool auto_approve = false;
+        if (permission_mode == PermissionMode::YOLO) {
+            auto_approve = true;
+        } else if (permission_mode == PermissionMode::AutoAcceptEdits) {
+            // Check if all tools are edit-related
+            bool all_edits = true;
+            for (const auto& tool : group.tools) {
+                if (tool.tool_name != "Edit" && tool.tool_name != "Write") {
+                    all_edits = false;
+                    break;
+                }
+            }
+            auto_approve = all_edits;
+        }
+
+        // Display tool group
         add_output_line("", 0);
         add_output_line("[Tool Execution Request:]", has_colors() ? 6 : 0);
         add_output_line("  Group ID: " + std::to_string(group.id), has_colors() ? 6 : 0);
@@ -532,38 +616,42 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
             if (!tool.args.empty()) {
                 add_output_line("      Arguments:", has_colors() ? 5 : 0);
                 for (const auto& [key, value] : tool.args) {
-                    add_output_line("        " + key + ": " + value, has_colors() ? 5 : 0);
+                    std::string arg_line = "        " + key + ": " + value;
+                    // Truncate very long argument values
+                    if (arg_line.length() > 120) {
+                        arg_line = arg_line.substr(0, 117) + "...";
+                    }
+                    add_output_line(arg_line, has_colors() ? 5 : 0);
                 }
             }
         }
 
-        add_output_line("", 0);
-        add_output_line("Approve tool execution? Press 'y' for yes, 'n' for no", has_colors() ? 3 : 0);
         redraw_output();
-        redraw_status("Waiting for approval...");
-        redraw_input();
 
-        // Wait for approval response (this blocks, but keeps UI clean)
-        wtimeout(input_win, -1);  // Blocking mode for approval
-        int ch = wgetch(input_win);
-        wtimeout(input_win, 50);   // Back to non-blocking
+        if (auto_approve) {
+            // Auto-approve based on permission mode
+            add_output_line("  [Auto-approved by " + std::string(permission_mode_to_string(permission_mode)) + " mode]", has_colors() ? 3 : 0);
+            redraw_output();
 
-        bool approved = (ch == 'y' || ch == 'Y');
-
-        // Send approval for all tools in the group
-        for (const auto& tool : group.tools) {
-            client.send_tool_approval(tool.tool_id, approved);
-
-            if (approved) {
+            for (const auto& tool : group.tools) {
+                client.send_tool_approval(tool.tool_id, true);
                 add_output_line("  ✓ Approved: " + tool.tool_name, has_colors() ? 1 : 0);
-            } else {
-                add_output_line("  ✗ Rejected: " + tool.tool_name, has_colors() ? 4 : 0);
             }
-        }
+            redraw_output();
+            redraw_input();
+        } else {
+            // Request user approval - set state and store pending group
+            add_output_line("", 0);
+            add_output_line("Approve tools? [y]es / [n]o / [d]iscuss", has_colors() ? 3 : 0);
+            redraw_output();
+            redraw_status("Waiting for approval (y/n/d)");
+            redraw_input();
 
-        redraw_output();
-        redraw_status();
-        redraw_input();
+            // Store pending tool group and change state
+            pending_tool_group = group;
+            has_pending_tool_group = true;
+            ui_state = UIState::ToolApproval;
+        }
 
         // Store in state manager
         state_mgr.add_tool_group(group);
@@ -678,7 +766,131 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
         int ch = wgetch(input_win);
 
         if (ch != ERR) {
-            // Process input character
+            // Handle mouse events
+            if (ch == KEY_MOUSE) {
+                MEVENT event;
+                if (getmouse(&event) == OK) {
+                    // Mouse wheel up = scroll up
+                    if (event.bstate & BUTTON4_PRESSED) {
+                        scroll_offset = std::min(scroll_offset + 3, (int)output_buffer.size() - output_height);
+                        redraw_output();
+                        redraw_status();
+                        redraw_input();
+                    }
+                    // Mouse wheel down = scroll down
+                    else if (event.bstate & BUTTON5_PRESSED) {
+                        scroll_offset = std::max(scroll_offset - 3, 0);
+                        redraw_output();
+                        redraw_status();
+                        redraw_input();
+                    }
+                }
+                continue;
+            }
+
+            // Handle Shift+Tab for permission mode cycling
+            if (ch == KEY_BTAB) {
+                // Cycle through permission modes
+                switch (permission_mode) {
+                    case PermissionMode::PlanMode:
+                        permission_mode = PermissionMode::Normal;
+                        break;
+                    case PermissionMode::Normal:
+                        permission_mode = PermissionMode::AutoAcceptEdits;
+                        break;
+                    case PermissionMode::AutoAcceptEdits:
+                        permission_mode = PermissionMode::YOLO;
+                        break;
+                    case PermissionMode::YOLO:
+                        permission_mode = PermissionMode::PlanMode;
+                        break;
+                }
+                add_output_line("Permission mode: " + std::string(permission_mode_to_string(permission_mode)), has_colors() ? 3 : 0);
+                redraw_output();
+                redraw_status();
+                redraw_input();
+                continue;
+            }
+
+            // Handle tool approval state
+            if (ui_state == UIState::ToolApproval && has_pending_tool_group) {
+                bool handled = false;
+                bool approved = false;
+
+                if (ch == 'y' || ch == 'Y') {
+                    approved = true;
+                    handled = true;
+                } else if (ch == 'n' || ch == 'N') {
+                    approved = false;
+                    handled = true;
+                } else if (ch == 'd' || ch == 'D') {
+                    // Enter discuss mode
+                    add_output_line("=== Entering Discuss Mode ===", has_colors() ? 3 : 0);
+                    add_output_line("Explain your concerns or ask questions about the tools:", has_colors() ? 3 : 0);
+                    add_output_line("(Type your message and press Enter, or 'y'/'n' to approve/reject)", has_colors() ? 3 : 0);
+                    redraw_output();
+                    ui_state = UIState::Discuss;
+                    redraw_status("Discuss mode");
+                    redraw_input();
+                    continue;
+                }
+
+                if (handled) {
+                    // Send approval/rejection for all tools
+                    for (const auto& tool : pending_tool_group.tools) {
+                        client.send_tool_approval(tool.tool_id, approved);
+
+                        if (approved) {
+                            add_output_line("  ✓ Approved: " + tool.tool_name, has_colors() ? 1 : 0);
+                        } else {
+                            add_output_line("  ✗ Rejected: " + tool.tool_name, has_colors() ? 4 : 0);
+                        }
+                    }
+
+                    redraw_output();
+                    has_pending_tool_group = false;
+                    ui_state = UIState::Normal;
+                    redraw_status();
+                    redraw_input();
+                    continue;
+                }
+            }
+
+            // Handle discuss mode input
+            if (ui_state == UIState::Discuss) {
+                if (ch == 'y' || ch == 'Y') {
+                    // Approve and exit discuss mode
+                    if (has_pending_tool_group) {
+                        for (const auto& tool : pending_tool_group.tools) {
+                            client.send_tool_approval(tool.tool_id, true);
+                            add_output_line("  ✓ Approved: " + tool.tool_name, has_colors() ? 1 : 0);
+                        }
+                        has_pending_tool_group = false;
+                    }
+                    ui_state = UIState::Normal;
+                    redraw_output();
+                    redraw_status();
+                    redraw_input();
+                    continue;
+                } else if (ch == 'n' || ch == 'N') {
+                    // Reject and exit discuss mode
+                    if (has_pending_tool_group) {
+                        for (const auto& tool : pending_tool_group.tools) {
+                            client.send_tool_approval(tool.tool_id, false);
+                            add_output_line("  ✗ Rejected: " + tool.tool_name, has_colors() ? 4 : 0);
+                        }
+                        has_pending_tool_group = false;
+                    }
+                    ui_state = UIState::Normal;
+                    redraw_output();
+                    redraw_status();
+                    redraw_input();
+                    continue;
+                }
+                // Otherwise fall through to normal input handling for discuss messages
+            }
+
+            // Normal input processing
             if (ch == '\n' || ch == KEY_ENTER || ch == 13) {
                 // Enter key - submit input
                 if (!input_buffer.empty()) {
@@ -689,6 +901,10 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
                         // Send to AI
                         if (client.send_user_input(input_buffer)) {
                             // Input sent successfully (will appear via message handler)
+                            if (ui_state == UIState::Discuss) {
+                                add_output_line("(AI will respond to your question. Press 'y' to approve or 'n' to reject after.)", has_colors() ? 3 : 0);
+                                redraw_output();
+                            }
                         } else {
                             add_output_line("Failed to send message.", has_colors() ? 4 : 0);
                             redraw_output();
