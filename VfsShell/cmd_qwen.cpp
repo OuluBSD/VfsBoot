@@ -910,5 +910,6 @@ void cmd_qwen(const std::vector<std::string>& args,
     state_mgr.save_session();
     std::cout << Color::GREEN << "Session saved.\n" << Color::RESET;
 }
+}
 
 }  // namespace QwenCmd

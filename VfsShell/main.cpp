@@ -271,9 +271,8 @@ int main(int argc, char** argv){
     };
 
     for(int i = 1; i < argc; ++i){
-#ifdef QWEN_TESTS_ENABLED
-#ifdef QWEN_TESTS_ENABLED
         std::string arg = argv[i];
+#ifdef QWEN_TESTS_ENABLED
         if(arg == "--qwen-client-test")			return qwen_client_test(argc, argv);
         if(arg == "--qwen-integration-test")	return qwen_integration_test(argc, argv);
         if(arg == "--qwen-echo-server")			return qwen_echo_server();
