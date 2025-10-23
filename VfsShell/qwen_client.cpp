@@ -1,4 +1,5 @@
 #include "VfsShell.h"
+#include "qwen_logger.h"
 
 namespace Qwen {
 
@@ -15,15 +16,23 @@ public:
         , stdin_fd_(-1)
         , stdout_fd_(-1)
         , restart_count_(0)
-    {}
+        , logger_("qwen-client")
+    {
+        logger_.info("QwenClient created, mode=",
+                    (config.mode == CommunicationMode::STDIN_STDOUT ? "stdin" :
+                     config.mode == CommunicationMode::TCP ? "tcp" : "pipe"));
+    }
 
     ~Impl() {
         stop();
     }
 
     bool start() {
+        logger_.info("start() called");
+
         if (running_) {
             last_error_ = "Client already running";
+            logger_.error("Cannot start: already running");
             return false;
         }
 
@@ -31,22 +40,26 @@ public:
 
         switch (config_.mode) {
             case CommunicationMode::STDIN_STDOUT:
+                logger_.info("Starting subprocess mode");
                 success = start_subprocess();
                 break;
 
             case CommunicationMode::NAMED_PIPE:
                 last_error_ = "Named pipe mode not yet implemented";
+                logger_.error("Named pipe mode not implemented");
                 success = false;
                 break;
 
             case CommunicationMode::TCP:
                 last_error_ = "TCP mode not yet implemented";
+                logger_.error("TCP mode not implemented");
                 success = false;
                 break;
         }
 
         if (success) {
             running_ = true;
+            logger_.info("Client started successfully");
             if (config_.verbose) {
                 std::cerr << "[QwenClient] Started successfully\n";
             }
@@ -56,7 +69,12 @@ public:
     }
 
     void stop() {
-        if (!running_) return;
+        if (!running_) {
+            logger_.debug("stop() called but already stopped");
+            return;
+        }
+
+        logger_.info("stop() called, terminating subprocess PID=", process_id_);
 
         if (config_.verbose) {
             std::cerr << "[QwenClient] Stopping...\n";
@@ -64,16 +82,19 @@ public:
 
         // Close file descriptors
         if (stdin_fd_ >= 0) {
+            logger_.debug("Closing stdin_fd=", stdin_fd_);
             close(stdin_fd_);
             stdin_fd_ = -1;
         }
         if (stdout_fd_ >= 0) {
+            logger_.debug("Closing stdout_fd=", stdout_fd_);
             close(stdout_fd_);
             stdout_fd_ = -1;
         }
 
         // Terminate subprocess
         if (process_id_ > 0) {
+            logger_.info("Sending SIGTERM to PID=", process_id_);
             kill(process_id_, SIGTERM);
 
             // Wait for process to exit (with timeout)
@@ -81,14 +102,19 @@ public:
             int wait_attempts = 10;
             while (wait_attempts-- > 0) {
                 pid_t result = waitpid(process_id_, &status, WNOHANG);
-                if (result != 0) break;
+                if (result != 0) {
+                    logger_.info("Process exited (status=", status, ")");
+                    break;
+                }
                 usleep(100000); // 100ms
             }
 
             // Force kill if still running
             if (waitpid(process_id_, &status, WNOHANG) == 0) {
+                logger_.warn("Process didn't respond to SIGTERM, sending SIGKILL");
                 kill(process_id_, SIGKILL);
                 waitpid(process_id_, &status, 0);
+                logger_.info("Process killed (status=", status, ")");
             }
 
             process_id_ = -1;
@@ -96,6 +122,7 @@ public:
 
         running_ = false;
         read_buffer_.clear();
+        logger_.info("Client stopped");
     }
 
     bool is_running() const {
@@ -154,11 +181,23 @@ public:
     bool send_command(const Command& cmd) {
         if (!running_) {
             last_error_ = "Client not running";
+            logger_.error("send_command() failed: client not running");
             return false;
         }
 
         std::string json = ProtocolParser::serialize_command(cmd);
         json += '\n'; // Line-buffered protocol
+
+        // Log the command type and content (truncate if too long)
+        std::string log_json = json;
+        if (log_json.size() > 200) {
+            log_json = log_json.substr(0, 197) + "...";
+        }
+        // Remove newline for logging
+        if (!log_json.empty() && log_json.back() == '\n') {
+            log_json.pop_back();
+        }
+        logger_.debug(">>> Sending command: ", log_json);
 
         if (config_.verbose) {
             std::cerr << "[QwenClient] Sending: " << json;
@@ -167,9 +206,12 @@ public:
         ssize_t written = write(stdin_fd_, json.c_str(), json.size());
         if (written != static_cast<ssize_t>(json.size())) {
             last_error_ = std::string("write() failed: ") + strerror(errno);
+            logger_.error("write() failed: ", strerror(errno),
+                        " (wanted=", json.size(), " written=", written, ")");
             return false;
         }
 
+        logger_.debug(">>> Sent ", written, " bytes");
         return true;
     }
 
@@ -263,6 +305,9 @@ private:
         int flags = fcntl(stdout_fd_, F_GETFL, 0);
         fcntl(stdout_fd_, F_SETFL, flags | O_NONBLOCK);
 
+        logger_.info("Subprocess started: PID=", pid,
+                    " stdin_fd=", stdin_fd_, " stdout_fd=", stdout_fd_);
+
         if (config_.verbose) {
             std::cerr << "[QwenClient] Subprocess started with PID " << pid << "\n";
         }
@@ -278,9 +323,11 @@ private:
         if (n < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 // No data available (shouldn't happen after poll)
+                logger_.debug("<<< read() returned EAGAIN/EWOULDBLOCK");
                 return 0;
             }
             last_error_ = std::string("read() failed: ") + strerror(errno);
+            logger_.error("<<< read() failed: ", strerror(errno));
             return -1;
         }
 
@@ -288,9 +335,11 @@ private:
             // EOF - subprocess closed stdout
             last_error_ = "Subprocess closed stdout";
             running_ = false;
+            logger_.warn("<<< EOF: Subprocess closed stdout (PID=", process_id_, ")");
 
             // Auto-restart if enabled
             if (config_.auto_restart) {
+                logger_.info("Auto-restart enabled, restarting subprocess");
                 restart();
             }
 
@@ -298,6 +347,7 @@ private:
         }
 
         chunk[n] = '\0';
+        logger_.debug("<<< Read ", n, " bytes from subprocess");
 
         if (config_.verbose) {
             std::cerr << "[QwenClient] Read " << n << " bytes from subprocess\n";
@@ -315,6 +365,13 @@ private:
             read_buffer_.erase(0, pos + 1);
 
             if (!line.empty()) {
+                // Log received message (truncate if too long)
+                std::string log_line = line;
+                if (log_line.size() > 200) {
+                    log_line = log_line.substr(0, 197) + "...";
+                }
+                logger_.debug("<<< Received message: ", log_line);
+
                 if (config_.verbose) {
                     std::cerr << "[QwenClient] Received: " << line << "\n";
                 }
@@ -325,6 +382,7 @@ private:
             }
         }
 
+        logger_.debug("<<< Processed ", message_count, " message(s)");
         return message_count;
     }
 
@@ -332,8 +390,19 @@ private:
         auto msg = ProtocolParser::parse_message(json);
         if (!msg) {
             last_error_ = "Failed to parse message: " + json;
+            logger_.error("Failed to parse message: ",
+                        json.size() > 100 ? json.substr(0, 97) + "..." : json);
             return;
         }
+
+        logger_.debug("    Dispatching message type=",
+                    (msg->type == MessageType::INIT ? "init" :
+                     msg->type == MessageType::CONVERSATION ? "conversation" :
+                     msg->type == MessageType::TOOL_GROUP ? "tool_group" :
+                     msg->type == MessageType::STATUS ? "status" :
+                     msg->type == MessageType::INFO ? "info" :
+                     msg->type == MessageType::ERROR ? "error" :
+                     msg->type == MessageType::COMPLETION_STATS ? "stats" : "unknown"));
 
         // Dispatch to appropriate handler
         switch (msg->type) {
@@ -406,6 +475,8 @@ private:
 
     std::string read_buffer_;
     std::string last_error_;
+
+    QwenLogger logger_;
 };
 
 // ============================================================================
