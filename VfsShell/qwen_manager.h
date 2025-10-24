@@ -221,15 +221,16 @@ private:
     // Manager state
     Vfs* vfs_;
     QwenManagerConfig config_;
+    std::string vfsh_binary_path_;  // Absolute path to vfsh executable
     std::atomic<bool> running_{false};
     std::atomic<bool> accounts_watcher_running_{false};
     std::thread accounts_watcher_thread_;
     std::condition_variable stop_cv_;
     std::mutex stop_mutex_;
     std::mutex watcher_mutex_;
-    
-    
-    
+
+
+
     void update_session_list();
 };
 

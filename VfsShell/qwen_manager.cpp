@@ -1,4 +1,8 @@
 #include "VfsShell.h"
+#include "registry.h"
+
+// External registry from main.cpp
+extern Registry g_registry;
 
 namespace Qwen {
 
@@ -14,7 +18,18 @@ QwenManager::~QwenManager() {
 // Initialize manager mode
 bool QwenManager::initialize(const QwenManagerConfig& config) {
     config_ = config;
-    
+
+    // Get absolute path to vfsh binary
+    char exe_path[PATH_MAX];
+    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+    if (len != -1) {
+        exe_path[len] = '\0';
+        vfsh_binary_path_ = exe_path;
+    } else {
+        // Fallback to ./vfsh if readlink fails
+        vfsh_binary_path_ = "./vfsh";
+    }
+
     // Generate special sessions for PROJECT MANAGER and TASK MANAGER
     {
         std::lock_guard<std::mutex> lock(sessions_mutex_);
@@ -2044,7 +2059,14 @@ bool QwenManager::run_ncurses_mode() {
                         } else if (input_buffer == "start-server") {
                             // Start ai-server in the manager directory
                             target_buffer->emplace_back("You: start-server", has_colors() ? 7 : 0);
+
+                            // Construct the full command
+                            std::string log_file = config_.management_repo_path + "/ai-server.log";
+                            std::string full_command = vfsh_binary_path_ + " qwen --port " + std::to_string(config_.tcp_port);
+
                             target_buffer->emplace_back("Starting ai-server in directory: " + config_.management_repo_path, has_colors() ? 3 : 0);
+                            target_buffer->emplace_back("Command: " + full_command, has_colors() ? 7 : 0);
+                            target_buffer->emplace_back("Log file: " + log_file, has_colors() ? 7 : 0);
 
                             // Fork and exec to start ai-server
                             pid_t pid = fork();
@@ -2056,7 +2078,6 @@ bool QwenManager::run_ncurses_mode() {
                                     exit(1);
                                 }
 
-                                // Start ai-server (assuming it's in PATH or in the directory)
                                 // Redirect output to a log file
                                 int fd = open("ai-server.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
                                 if (fd >= 0) {
@@ -2065,18 +2086,18 @@ bool QwenManager::run_ncurses_mode() {
                                     close(fd);
                                 }
 
-                                // Execute ai-server
+                                // Execute ai-server using absolute path
                                 std::string port_str = std::to_string(config_.tcp_port);
-                                execlp("./vfsh", "./vfsh", "qwen", "--port", port_str.c_str(), nullptr);
+                                execl(vfsh_binary_path_.c_str(), vfsh_binary_path_.c_str(), "qwen", "--port", port_str.c_str(), nullptr);
 
                                 // If exec fails
-                                std::cerr << "Failed to execute ./vfsh qwen" << std::endl;
+                                std::cerr << "Failed to execute " << vfsh_binary_path_ << std::endl;
                                 exit(1);
                             } else if (pid > 0) {
-                                // Parent process
-                                target_buffer->emplace_back("ai-server started with PID: " + std::to_string(pid), has_colors() ? 2 : 0);
-                                target_buffer->emplace_back("  Command: ./vfsh qwen --port " + std::to_string(config_.tcp_port), has_colors() ? 7 : 0);
-                                target_buffer->emplace_back("  Log file: " + config_.management_repo_path + "/ai-server.log", has_colors() ? 7 : 0);
+                                // Parent process - don't wait, just report success
+                                target_buffer->emplace_back("", 0);
+                                target_buffer->emplace_back("✓ ai-server started with PID: " + std::to_string(pid), has_colors() ? 2 : 0);
+                                target_buffer->emplace_back("  You can monitor it with: tail -f " + log_file, has_colors() ? 3 : 0);
                             } else {
                                 // Fork failed
                                 target_buffer->emplace_back("Failed to fork process for ai-server", has_colors() ? 4 : 0);
@@ -2472,10 +2493,65 @@ bool QwenManager::run_ncurses_mode() {
                                     // Offer to start ai-server for PROJECT_MANAGER and TASK_MANAGER
                                     if (active_session->type == SessionType::MANAGER_PROJECT ||
                                         active_session->type == SessionType::MANAGER_TASK) {
-                                        target_buffer->emplace_back("", 0);
-                                        target_buffer->emplace_back("Would you like to start ai-server in the manager directory?", has_colors() ? 3 : 0);
-                                        target_buffer->emplace_back("  Directory: " + config_.management_repo_path, has_colors() ? 7 : 0);
-                                        target_buffer->emplace_back("  Type 'start-server' to launch, or any other text to skip.", has_colors() ? 3 : 0);
+
+                                        // Check if auto-start is enabled in registry
+                                        std::string auto_start = g_registry.getValue("/Manager/AutoStartServer");
+                                        bool should_auto_start = (auto_start == "true" || auto_start == "1");
+
+                                        if (should_auto_start) {
+                                            // Auto-start the server
+                                            target_buffer->emplace_back("", 0);
+                                            target_buffer->emplace_back("Auto-starting ai-server (configured in registry)...", has_colors() ? 3 : 0);
+
+                                            // Construct the full command
+                                            std::string log_file = config_.management_repo_path + "/ai-server.log";
+                                            std::string full_command = vfsh_binary_path_ + " qwen --port " + std::to_string(config_.tcp_port);
+
+                                            target_buffer->emplace_back("Directory: " + config_.management_repo_path, has_colors() ? 7 : 0);
+                                            target_buffer->emplace_back("Command: " + full_command, has_colors() ? 7 : 0);
+                                            target_buffer->emplace_back("Log file: " + log_file, has_colors() ? 7 : 0);
+
+                                            // Fork and exec to start ai-server
+                                            pid_t pid = fork();
+                                            if (pid == 0) {
+                                                // Child process
+                                                if (chdir(config_.management_repo_path.c_str()) != 0) {
+                                                    std::cerr << "Failed to change directory to " << config_.management_repo_path << std::endl;
+                                                    exit(1);
+                                                }
+
+                                                // Redirect output to log file
+                                                int fd = open("ai-server.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
+                                                if (fd >= 0) {
+                                                    dup2(fd, STDOUT_FILENO);
+                                                    dup2(fd, STDERR_FILENO);
+                                                    close(fd);
+                                                }
+
+                                                // Execute ai-server using absolute path
+                                                std::string port_str = std::to_string(config_.tcp_port);
+                                                execl(vfsh_binary_path_.c_str(), vfsh_binary_path_.c_str(), "qwen", "--port", port_str.c_str(), nullptr);
+
+                                                // If exec fails
+                                                std::cerr << "Failed to execute " << vfsh_binary_path_ << std::endl;
+                                                exit(1);
+                                            } else if (pid > 0) {
+                                                // Parent process
+                                                target_buffer->emplace_back("", 0);
+                                                target_buffer->emplace_back("✓ ai-server started with PID: " + std::to_string(pid), has_colors() ? 2 : 0);
+                                                target_buffer->emplace_back("  You can monitor it with: tail -f " + log_file, has_colors() ? 3 : 0);
+                                            } else {
+                                                // Fork failed
+                                                target_buffer->emplace_back("Failed to fork process for ai-server", has_colors() ? 4 : 0);
+                                            }
+                                        } else {
+                                            // Show manual prompt
+                                            target_buffer->emplace_back("", 0);
+                                            target_buffer->emplace_back("Would you like to start ai-server in the manager directory?", has_colors() ? 3 : 0);
+                                            target_buffer->emplace_back("  Directory: " + config_.management_repo_path, has_colors() ? 7 : 0);
+                                            target_buffer->emplace_back("  Type 'start-server' to launch, or any other text to skip.", has_colors() ? 3 : 0);
+                                            target_buffer->emplace_back("  Tip: Set 'reg.set /Manager/AutoStartServer true' to auto-start", has_colors() ? 3 : 0);
+                                        }
                                     } else {
                                         target_buffer->emplace_back("  To fix: Ensure Manager directory is set (reg.set /Manager/Path ~/Dev/Manager)", has_colors() ? 3 : 0);
                                         target_buffer->emplace_back("         Then start worker sessions for your repositories.", has_colors() ? 3 : 0);
