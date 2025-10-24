@@ -489,6 +489,176 @@ bool QwenManager::enforce_concurrent_repo_limit(const std::string& account_id) {
     return active_repo_count < account.max_concurrent_repos;
 }
 
+// Track failure for a REPO WORKER session
+void QwenManager::track_worker_failure(const std::string& session_id) {
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    
+    for (auto& session : sessions_) {
+        if (session.session_id == session_id && 
+            (session.type == SessionType::REPO_WORKER || session.type == SessionType::REPO_MANAGER)) {
+            session.failure_count++;
+            
+            std::cout << "[QwenManager] Failure tracked for session " << session_id 
+                      << ", current count: " << session.failure_count << std::endl;
+            
+            // Check if we need to escalate after 3 failures
+            if (session.failure_count >= 3 && session.type == SessionType::REPO_WORKER) {
+                // Find the corresponding REPO MANAGER for this repository
+                std::string repo_path = session.repo_path;
+                for (auto& mgr_session : sessions_) {
+                    if (mgr_session.repo_path == repo_path && 
+                        mgr_session.type == SessionType::REPO_MANAGER &&
+                        mgr_session.account_id == session.account_id) {
+                        std::cout << "[QwenManager] Escalating from WORKER " << session_id 
+                                  << " to MANAGER " << mgr_session.session_id << std::endl;
+                        
+                        // Mark the manager session as needing escalation
+                        mgr_session.status = "escalated";
+                        mgr_session.failure_count = session.failure_count; // Pass on the failure count
+                        session.status = "escalated"; // Mark worker as escalated
+                        
+                        // In a real implementation, we would now send the task to the manager
+                        break;
+                    }
+                }
+            }
+            break;
+        }
+    }
+}
+
+// Reset failure count after successful operation
+void QwenManager::reset_failure_count(const std::string& session_id) {
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    
+    for (auto& session : sessions_) {
+        if (session.session_id == session_id) {
+            session.failure_count = 0;
+            session.status = "active";
+            break;
+        }
+    }
+}
+
+// Increment commit count for test interval triggers
+void QwenManager::increment_commit_count(const std::string& session_id) {
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    
+    for (auto& session : sessions_) {
+        if (session.session_id == session_id && 
+            (session.type == SessionType::REPO_WORKER || session.type == SessionType::REPO_MANAGER)) {
+            session.commit_count++;
+            
+            std::cout << "[QwenManager] Commit count for session " << session_id 
+                      << " is now: " << session.commit_count << std::endl;
+            
+            // Check if we need to trigger a review after 3 commits
+            if (session.commit_count >= 3) {
+                // Find the corresponding REPO MANAGER for this repository to trigger review
+                std::string repo_path = session.repo_path;
+                for (auto& mgr_session : sessions_) {
+                    if (mgr_session.repo_path == repo_path && 
+                        mgr_session.type == SessionType::REPO_MANAGER &&
+                        mgr_session.account_id == session.account_id) {
+                        std::cout << "[QwenManager] Triggering review for repo " << repo_path 
+                                  << " after " << session.commit_count << " commits by " << session_id << std::endl;
+                        
+                        // Mark the manager session to perform a review
+                        mgr_session.status = "review_pending";
+                        session.commit_count = 0; // Reset commit count after triggering review
+                        break;
+                    }
+                }
+            }
+            break;
+        }
+    }
+}
+
+// Update session workflow state
+void QwenManager::update_session_state(const std::string& session_id, SessionState new_state) {
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    
+    for (auto& session : sessions_) {
+        if (session.session_id == session_id) {
+            session.workflow_state = new_state;
+            
+            // Update status string based on workflow state
+            switch (new_state) {
+                case SessionState::AUTOMATIC:
+                    session.status = "automatic";
+                    break;
+                case SessionState::MANUAL:
+                    session.status = "manual";
+                    break;
+                case SessionState::TESTING:
+                    session.status = "testing";
+                    break;
+                case SessionState::BLOCKED:
+                    session.status = "blocked";
+                    break;
+                case SessionState::IDLE:
+                    session.status = "idle";
+                    break;
+            }
+            break;
+        }
+    }
+}
+
+// Check if manual override is enabled for a session
+bool QwenManager::is_manual_override(const std::string& session_id) {
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    
+    for (const auto& session : sessions_) {
+        if (session.session_id == session_id) {
+            return session.workflow_state == SessionState::MANUAL;
+        }
+    }
+    
+    return false; // Default to automatic if session not found
+}
+
+// Convert JSON task specification to natural language prompt
+std::string QwenManager::convert_json_to_prompt(const std::string& json_task_spec) {
+    // This is a simplified implementation - in a real system you'd have more sophisticated parsing
+    // Parse the JSON task specification and convert it to a natural language prompt
+    
+    // Extract key fields from the JSON
+    std::string title = extract_json_field(json_task_spec, "title");
+    std::string description = extract_json_field(json_task_spec, "description");
+    std::string repo_id = extract_json_field(json_task_spec, "repository_id");
+    
+    if (title.empty() && description.empty()) {
+        return "Perform the requested task on the repository.";
+    }
+    
+    std::string prompt = "Task: " + (title.empty() ? "Unspecified task" : title) + "\n";
+    
+    if (!description.empty()) {
+        prompt += "Description: " + description + "\n";
+    }
+    
+    if (!repo_id.empty()) {
+        prompt += "Repository: " + repo_id + "\n";
+    }
+    
+    // Extract other fields if present
+    std::string requirements_field = extract_json_field(json_task_spec, "requirements");
+    if (!requirements_field.empty() && requirements_field != "null") {
+        prompt += "Requirements: " + requirements_field + "\n";
+    }
+    
+    std::string deadline_field = extract_json_field(json_task_spec, "deadline");
+    if (!deadline_field.empty() && deadline_field != "null") {
+        prompt += "Deadline: " + deadline_field + "\n";
+    }
+    
+    prompt += "\nPlease implement this task in the specified repository, following best practices and ensuring code quality.";
+    
+    return prompt;
+}
+
 // Convert JSON task specification to natural language prompt
 std::string QwenManager::convert_json_to_prompt(const std::string& json_task_spec) {
     // This is a simplified implementation - in a real system you'd have more sophisticated parsing
@@ -1543,6 +1713,35 @@ bool QwenManager::run_ncurses_mode() {
                             target_buffer->clear();
                             target_buffer->emplace_back("Session buffer cleared", has_colors() ? 5 : 0);
                             redraw_chat_window();
+                        } else if (input_buffer == "/auto") {
+                            // Switch back to automatic mode
+                            if (!active_session_id.empty()) {
+                                update_session_state(active_session_id, SessionState::AUTOMATIC);
+                                target_buffer->emplace_back("You: /auto", has_colors() ? 7 : 0);
+                                target_buffer->emplace_back("Session returned to automatic mode", has_colors() ? 5 : 0);
+                                
+                                // Update the session's chat buffer header to reflect the state change
+                                SessionInfo* session = find_session(active_session_id);
+                                if (session) {
+                                    std::string session_type_str;
+                                    int session_color = has_colors() ? 7 : 0;
+                                    
+                                    switch (session->type) {
+                                        case SessionType::REPO_WORKER:
+                                        case SessionType::REPO_MANAGER:
+                                            session_type_str = (session->type == SessionType::REPO_MANAGER ? "REPO MANAGER" : "REPO WORKER");
+                                            session_color = has_colors() ? 3 : 0;
+                                            // Update the status in the session list to show automatic mode
+                                            break;
+                                        default:
+                                            break;
+                                    }
+                                }
+                            } else {
+                                target_buffer->emplace_back("You: /auto", has_colors() ? 7 : 0);
+                                target_buffer->emplace_back("No active session to switch to automatic mode", has_colors() ? 4 : 0);
+                            }
+                            redraw_chat_window();
                         } else if (active_session_id.empty()) {
                             // No active session, just echo the command
                             target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
@@ -1552,6 +1751,7 @@ bool QwenManager::run_ncurses_mode() {
                             // Handle session-specific commands
                             bool is_account_session = false;
                             SessionInfo* active_session = find_session(active_session_id);
+                            
                             if (active_session && active_session->type == SessionType::ACCOUNT) {
                                 is_account_session = true;
                                 
@@ -1620,8 +1820,28 @@ bool QwenManager::run_ncurses_mode() {
                                     target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
                                     target_buffer->emplace_back("ACCOUNT: Unknown command. Valid commands: list, enable <repo>, disable <repo>, status <repo>", has_colors() ? 4 : 0);
                                 }
+                            } else if (active_session && 
+                                      (active_session->type == SessionType::REPO_WORKER || 
+                                       active_session->type == SessionType::REPO_MANAGER)) {
+                                // Handle REPO session commands
+                                // Check if the session is in manual override mode
+                                if (active_session->workflow_state == SessionState::MANUAL) {
+                                    // In manual mode, pass the command directly to the AI
+                                    target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
+                                    
+                                    // In a real implementation, this is where we would send the input to the actual AI session
+                                    std::string ai_prefix = active_session->type == SessionType::REPO_MANAGER ? "REPO_MGR" : "REPO_WRK";
+                                    target_buffer->emplace_back(ai_prefix + ": Processing request in manual override mode", has_colors() ? 6 : 0);
+                                    
+                                    // Increment commit count for test interval triggers
+                                    increment_commit_count(active_session_id);
+                                } else {
+                                    // In automatic mode, we don't allow direct commands without switching to manual first
+                                    target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
+                                    target_buffer->emplace_back("Automatic mode: Use '/auto' command to return to automatic workflow or switch to manual mode first", has_colors() ? 5 : 0);
+                                }
                             } else {
-                                // Handle regular sessions
+                                // Handle regular sessions (MANAGER_PROJECT, MANAGER_TASK)
                                 target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
                                 
                                 // In a real implementation, this is where we would send the input to the appropriate AI session

@@ -43,6 +43,15 @@ struct AccountConfig {
     std::vector<RepositoryConfig> repositories;
 };
 
+// Session state for tracking workflow status
+enum class SessionState {
+    AUTOMATIC,    // Automatic mode (default)
+    MANUAL,       // Manual override mode
+    TESTING,      // Running tests
+    BLOCKED,      // Blocked waiting for resolution
+    IDLE          // Idle state
+};
+
 // Structure to represent a session in the manager
 struct SessionInfo {
     std::string session_id;
@@ -54,6 +63,10 @@ struct SessionInfo {
     std::string connection_info;
     std::string instructions;  // AI instructions for this session
     std::string account_id;    // Associated account ID (for ACCOUNT and REPO sessions)
+    SessionState workflow_state = SessionState::AUTOMATIC;  // Current workflow state
+    int failure_count = 0;      // Count of consecutive failures for escalation
+    int commit_count = 0;       // Count of commits since last review
+    int test_count = 0;         // Count of test runs
     time_t created_at;
     time_t last_activity;
     bool is_active;
@@ -115,6 +128,13 @@ private:
     // ACCOUNT and repository management
     bool spawn_repo_sessions_for_account(const std::string& account_id);
     bool enforce_concurrent_repo_limit(const std::string& account_id);
+    
+    // Workflow and escalation management
+    void track_worker_failure(const std::string& session_id);
+    void reset_failure_count(const std::string& session_id);
+    void increment_commit_count(const std::string& session_id);
+    void update_session_state(const std::string& session_id, SessionState new_state);
+    bool is_manual_override(const std::string& session_id);
     
     // JSON-to-prompt conversion
     std::string convert_json_to_prompt(const std::string& json_task_spec);
