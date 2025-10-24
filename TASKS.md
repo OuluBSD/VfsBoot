@@ -41,6 +41,406 @@
 
 ## Upcoming: Important (Ordered by Priority)
 
+### 0. qwen Manager Mode - MAJOR NEW FEATURE 🎯
+
+**Status**: Planning phase - Implementation plan ready
+**Priority**: HIGH - Multi-repository AI-driven development automation
+**Estimated Effort**: 6-8 weeks (2000+ lines of C++ code)
+
+#### Overview
+
+Manager mode (`qwen -m`) transforms qwen into a hierarchical multi-repository AI project manager with:
+- **Vertical split UI**: Top 10 rows for session list, bottom for chat/command view
+- **Session hierarchy**: MANAGERS → ACCOUNTS → REPOS (MANAGERS/WORKERS)
+- **Flipped TCP architecture**: Manager acts as TCP server, qwen instances connect as clients
+- **JSON-based communication**: ACCOUNTS.json for configuration, JSON protocols for inter-session communication
+- **Automated workflows**: Escalation from WORKER to MANAGER, test-driven development cycles
+
+#### Session Hierarchy
+
+```
+MANAGER (Management Repository)
+├── PROJECT MANAGER (qwen-openai) - expensive, high quality
+├── TASK MANAGER (qwen-auth) - cheaper, regular quality
+│
+├── ACCOUNT #1 (Computer A)
+│   ├── REPO #1 (qwen-auth WORKER + qwen-openai MANAGER)
+│   ├── REPO #2 (qwen-auth WORKER + qwen-openai MANAGER)
+│   └── REPO #3 (qwen-auth WORKER + qwen-openai MANAGER)
+│
+└── ACCOUNT #2 (Computer B)
+    ├── REPO #4 (qwen-auth WORKER + qwen-openai MANAGER)
+    └── REPO #5 (qwen-auth WORKER + qwen-openai MANAGER)
+```
+
+---
+
+#### Phase 1: Core Manager Infrastructure (Week 1-2)
+
+**Goal**: Basic manager mode with split UI and TCP server
+
+**Files to Create**:
+- `VfsShell/qwen_manager.h` - Manager mode core API
+- `VfsShell/qwen_manager.cpp` - Manager implementation
+- `VfsShell/qwen_tcp_server.h` - TCP server for incoming connections
+- `VfsShell/qwen_tcp_server.cpp` - TCP server implementation
+- `scripts/account_client.sh` - Shell script for remote account connections
+
+**Files to Modify**:
+- `VfsShell/cmd_qwen.cpp` - Add `-m` flag parsing and manager mode entry point
+- `VfsShell/cmd_qwen.h` - Add QwenManagerOptions struct
+
+**Tasks**:
+1. ✅ Implement `-m` / `--manager` CLI flag parsing
+2. ✅ Create vertical split ncurses UI:
+   - Top window: Session list (10 rows max)
+   - Status bar: Separator between top and bottom
+   - Bottom window: Chat/command view (remaining rows)
+3. ✅ Implement TAB key navigation between list and input
+4. ✅ Add TCP server infrastructure:
+   - Bind to configurable port (default: 7778)
+   - Accept multiple incoming connections
+   - Non-blocking I/O with poll()
+   - Connection lifecycle management
+5. ✅ Create session registry:
+   - Session ID generation and tracking
+   - Session type enumeration (MANAGER, ACCOUNT, REPO_MANAGER, REPO_WORKER)
+   - Basic metadata (type, id, hostname, repo_path, status)
+
+**Testing**:
+- Manual testing with `-m` flag
+- Verify vertical split renders correctly
+- TAB navigation works between list and input
+- TCP server accepts connections from `nc localhost 7778`
+
+**Dependencies**: None - builds on existing qwen_client infrastructure
+
+---
+
+#### Phase 2: Session Types & Special MANAGER Sessions (Week 2-3)
+
+**Goal**: Implement PROJECT MANAGER and TASK MANAGER special sessions
+
+**Files to Create**:
+- `PROJECT_MANAGER.md` - AI instructions for PROJECT MANAGER (qwen-openai)
+- `TASK_MANAGER.md` - AI instructions for TASK MANAGER (qwen-auth)
+
+**Files to Modify**:
+- `VfsShell/qwen_manager.cpp` - Add special session initialization
+
+**Tasks**:
+1. ✅ Define SessionType enum:
+   ```cpp
+   enum class SessionType {
+       MANAGER_PROJECT,   // qwen-openai, ID=mgr-project
+       MANAGER_TASK,      // qwen-auth, ID=mgr-task
+       ACCOUNT,           // Remote account connection
+       REPO_MANAGER,      // qwen-openai for repository
+       REPO_WORKER        // qwen-auth for repository
+   };
+   ```
+2. ✅ Auto-spawn PROJECT MANAGER and TASK MANAGER on startup:
+   - Load PROJECT_MANAGER.md and TASK_MANAGER.md from management repository
+   - Initialize both sessions with appropriate models
+   - Pin to top of session list with custom IDs
+3. ✅ Implement session list display:
+   - Show: Type | ID | Computer | Repo Path | Status
+   - Color coding: MANAGERS (cyan), ACCOUNTS (yellow), REPOS (green/magenta)
+   - Brief status indicators (active, idle, error, waiting)
+4. ✅ Implement chat view for MANAGER sessions:
+   - Selecting PROJECT/TASK MANAGER shows normal chat interface
+   - Input goes directly to selected MANAGER
+   - Streaming responses displayed in bottom window
+
+**Testing**:
+- Verify PROJECT_MANAGER.md and TASK_MANAGER.md are loaded
+- Check session list shows both managers at top
+- Chat with PROJECT MANAGER and TASK MANAGER works
+- Session switching preserves state
+
+**Dependencies**: Phase 1 complete
+
+---
+
+#### Phase 3: ACCOUNTS.json Protocol & VFSBOOT.md (Week 3-4)
+
+**Goal**: Define JSON communication protocols and auto-generated documentation
+
+**Files to Create**:
+- `docs/ACCOUNTS_JSON_SPEC.md` - ACCOUNTS.json schema documentation
+- `docs/MANAGER_PROTOCOL.md` - Manager-Account-Repo communication protocol
+- `VFSBOOT.md` (auto-generated in management repository)
+
+**Files to Modify**:
+- `VfsShell/qwen_manager.cpp` - ACCOUNTS.json parsing and monitoring
+
+**Tasks**:
+1. ✅ Define ACCOUNTS.json schema:
+   ```json
+   {
+     "accounts": [
+       {
+         "id": "account-1",
+         "hostname": "computer-a",
+         "enabled": true,
+         "max_concurrent_repos": 3,
+         "repositories": [
+           {
+             "id": "repo-1",
+             "url": "https://github.com/user/repo1.git",
+             "local_path": "/path/to/local/clone",
+             "enabled": true,
+             "worker_model": "qwen-auth",
+             "manager_model": "qwen-openai"
+           }
+         ]
+       }
+     ]
+   }
+   ```
+2. ✅ Implement ACCOUNTS.json parsing and validation
+3. ✅ Add file watching with 10-second startup delay:
+   - Monitor ACCOUNTS.json for changes
+   - Reload and update account connections on file change
+   - User can stop auto-reload before 10-second countdown
+4. ✅ Auto-generate VFSBOOT.md if missing:
+   - Include ACCOUNTS.json rules and schema
+   - Link to AGENTS.md, QWEN.md from management repo
+   - Add PROJECT_MANAGER.md and TASK_MANAGER.md references
+5. ✅ Prompt PROJECT MANAGER to link all AI files to VFSBOOT.md
+
+**Testing**:
+- Create test ACCOUNTS.json with 2 accounts
+- Verify parsing and validation
+- Test auto-reload on file change
+- Check VFSBOOT.md auto-generation
+
+**Dependencies**: Phase 2 complete
+
+---
+
+#### Phase 4: ACCOUNT Client & Repository Management (Week 4-5)
+
+**Goal**: Implement ACCOUNT connections and REPO session spawning
+
+**Files to Create**:
+- `scripts/account_client.sh` - Connect ACCOUNT to manager from remote computer
+- `VfsShell/qwen_account.h` - ACCOUNT session management
+- `VfsShell/qwen_account.cpp` - ACCOUNT implementation
+
+**Files to Modify**:
+- `VfsShell/qwen_manager.cpp` - Handle ACCOUNT connections
+- `VfsShell/cmd_qwen.cpp` - Add ACCOUNT view rendering
+
+**Tasks**:
+1. ✅ Implement `account_client.sh`:
+   ```bash
+   #!/bin/bash
+   # Usage: ./account_client.sh --manager-host <host> --manager-port <port>
+   # Connects to manager and announces ACCOUNT capabilities
+   ```
+2. ✅ ACCOUNT command view (bottom panel when ACCOUNT selected):
+   - Show list of REPO sessions spawned by this ACCOUNT
+   - Accept commands without "/" prefix (technical commands)
+   - Commands: `list`, `enable <repo>`, `disable <repo>`, `status <repo>`
+3. ✅ ACCOUNT session spawning:
+   - Read repositories from ACCOUNTS.json for this account
+   - Spawn REPO WORKER (qwen-auth) and REPO MANAGER (qwen-openai) on-demand
+   - Enforce max_concurrent_repos limit (default: 3)
+   - Keep sessions open while in use, close when idle
+4. ✅ Repository URL to local path mapping:
+   - ACCOUNT responsibility (not manager's job)
+   - Check if local clone exists, pull if needed
+   - Report clone status back to manager
+5. ✅ JSON-to-prompt conversion:
+   - ACCOUNT receives JSON task specifications from MANAGER
+   - Convert to natural language prompts for REPO sessions
+   - Send responses back as JSON
+
+**Testing**:
+- Run account_client.sh and connect to manager
+- Verify ACCOUNT view shows repositories
+- Test `enable`/`disable` commands
+- Check concurrent repo limit enforcement
+
+**Dependencies**: Phase 3 complete
+
+---
+
+#### Phase 5: Automation Workflows & Escalation (Week 5-6)
+
+**Goal**: Implement WORKER→MANAGER escalation and test-driven workflows
+
+**Files to Create**:
+- `VfsShell/qwen_workflow.h` - Workflow automation engine
+- `VfsShell/qwen_workflow.cpp` - Workflow implementation
+- `docs/QWEN_WORKFLOWS.md` - Workflow documentation
+
+**Files to Modify**:
+- `VfsShell/qwen_account.cpp` - Add workflow tracking
+
+**Tasks**:
+1. ✅ REPO WORKER failure tracking:
+   - Track test failures per REPO session
+   - Increment counter on each failed test attempt
+   - Escalate to REPO MANAGER after 3 failures
+2. ✅ REPO MANAGER escalation:
+   - Spawn REPO MANAGER (qwen-openai) for difficult tasks
+   - Pass context from WORKER failures
+   - MANAGER takes over until tests pass
+3. ✅ Test interval triggers:
+   - Count commits per REPO session
+   - After 3 WORKER commits, trigger REPO MANAGER to review and test
+   - MANAGER runs comprehensive tests and code review
+4. ✅ Manual override mode:
+   - User selects REPO from list
+   - User can type in chat to override automatic prompts
+   - Switch back to automatic mode with `/auto` command or shortcut key
+5. ✅ Status tracking:
+   - Session status: automatic, manual, testing, blocked, idle
+   - Display in session list
+   - Update in real-time
+
+**Testing**:
+- Simulate 3 WORKER failures, verify MANAGER escalation
+- Make 3 commits, verify MANAGER review triggered
+- Test manual override and `/auto` command
+- Check status updates in list
+
+**Dependencies**: Phase 4 complete
+
+---
+
+#### Phase 6: UI Polish & Integration (Week 6-7)
+
+**Goal**: Finalize UI, add shortcuts, improve UX
+
+**Files to Modify**:
+- `VfsShell/cmd_qwen.cpp` - UI enhancements
+- `VfsShell/qwen_manager.cpp` - Keyboard shortcuts
+
+**Tasks**:
+1. ✅ Keyboard shortcuts:
+   - `TAB` - Switch between list and input
+   - `Shift+TAB` - Cycle permission modes (if applicable)
+   - `/auto` - Return REPO to automatic mode
+   - `Ctrl+C` - Interrupt current operation
+   - Arrow keys - Navigate session list
+   - `Enter` - Select session from list
+2. ✅ Session list improvements:
+   - Highlight selected session
+   - Show brief activity indicator (spinner for active, checkmark for idle)
+   - Sort: MANAGERS first, then ACCOUNTS, then REPOS
+   - Filter: Show/hide disabled sessions
+3. ✅ Bottom panel context-aware rendering:
+   - MANAGER selected → chat view
+   - ACCOUNT selected → command view (list of repos, technical commands)
+   - REPO selected → chat view with override controls
+4. ✅ Status bar enhancements:
+   - Show manager mode indicator
+   - Active session count (e.g., "5/10 active")
+   - Network status (connected/disconnected)
+5. ✅ Color coding consistency:
+   - MANAGER_PROJECT: Bright cyan
+   - MANAGER_TASK: Cyan
+   - ACCOUNT: Yellow
+   - REPO_MANAGER: Bright green
+   - REPO_WORKER: Green
+   - Errors: Red
+   - System messages: Gray
+
+**Testing**:
+- Test all keyboard shortcuts
+- Verify session list sorting and filtering
+- Check color coding is consistent
+- Verify status bar shows correct information
+
+**Dependencies**: Phase 5 complete
+
+---
+
+#### Phase 7: Testing & Documentation (Week 7-8)
+
+**Goal**: Comprehensive testing and documentation
+
+**Files to Create**:
+- `tests/manager_mode_test.cpp` - Unit tests for manager mode
+- `scripts/examples/manager-mode-demo.cx` - Demo script
+- `docs/QWEN_MANAGER_MODE.md` - Complete manager mode documentation
+- `docs/QWEN_MANAGER_TUTORIAL.md` - Step-by-step tutorial
+
+**Files to Modify**:
+- `QWEN.md` - Add manager mode section
+- `README.md` - Update with manager mode quick start
+
+**Tasks**:
+1. ✅ Unit tests:
+   - Session lifecycle (create, update, destroy)
+   - ACCOUNTS.json parsing and validation
+   - Workflow state machine (escalation, test intervals)
+   - TCP server connection handling
+2. ✅ Integration tests:
+   - Full manager-account-repo workflow
+   - Multi-computer simulation (local TCP)
+   - Failure recovery and reconnection
+3. ✅ Demo script (`manager-mode-demo.cx`):
+   - Start manager mode
+   - Connect 2 accounts
+   - Enable 3 repositories
+   - Simulate workflow automation
+   - Show manual override
+4. ✅ Documentation:
+   - **QWEN_MANAGER_MODE.md**: Architecture, protocols, workflows
+   - **QWEN_MANAGER_TUTORIAL.md**: Step-by-step setup guide
+   - **PROJECT_MANAGER.md**: AI role and responsibilities
+   - **TASK_MANAGER.md**: AI role and responsibilities
+   - Update QWEN.md with manager mode overview
+   - Update README.md with quick start
+
+**Testing**:
+- Run all unit tests
+- Run integration tests
+- Execute demo script end-to-end
+- Verify documentation accuracy
+
+**Dependencies**: Phase 6 complete
+
+---
+
+#### Implementation Notes
+
+**Technical Considerations**:
+1. **Concurrency**: Use non-blocking I/O throughout (poll/epoll)
+2. **JSON Parsing**: Reuse existing lightweight JSON parser from qwen_protocol
+3. **Session State**: Store in VFS under `/qwen/manager/sessions/`
+4. **TCP Protocol**: Extend existing qwen JSON protocol with manager-specific messages
+5. **Error Handling**: Graceful degradation, reconnection logic, timeout handling
+6. **Security**: Validate all incoming JSON, rate limiting, authentication (future)
+
+**Repository Structure** (Management Repository):
+```
+Management/
+├── VFSBOOT.md (auto-generated, links all AI docs)
+├── PROJECT_MANAGER.md (qwen-openai instructions)
+├── TASK_MANAGER.md (qwen-auth instructions)
+├── ACCOUNTS.json (account configuration)
+├── .git/
+└── (other management files)
+```
+
+**Key Files Summary**:
+- **New Files**: ~12 files (headers, implementations, scripts, docs)
+- **Modified Files**: ~4 files (cmd_qwen.cpp, cmd_qwen.h, QWEN.md, README.md)
+- **Estimated LOC**: 2000-2500 lines of C++ code + 500 lines of documentation
+
+**Risks & Mitigations**:
+- **Complexity**: Break into small, testable phases
+- **Testing**: Difficult to test multi-computer setup → Use local TCP simulation
+- **JSON Schema**: Evolving schema → Version ACCOUNTS.json format
+- **Performance**: Multiple connections → Profile and optimize poll() usage
+
+---
+
 ### 1. Build System: Makefile Timeout Issue (Low Priority)
 **Status**: Minor annoyance, workaround exists
 **Issue**: `make` command times out after 30+ seconds with no output
