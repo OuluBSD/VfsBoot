@@ -1,0 +1,11 @@
+[2025-10-24 08:31:44.854194] [PID:1455590] [INFO ] [qwen-client] QwenClient created, mode=stdin
+[2025-10-24 08:31:44.854212] [PID:1455590] [INFO ] [qwen-client] start() called
+[2025-10-24 08:31:44.854215] [PID:1455590] [INFO ] [qwen-client] Starting subprocess mode
+[2025-10-24 08:31:44.854737] [PID:1455590] [INFO ] [qwen-client] Subprocess started: PID=1455602 stdin_fd=4 stdout_fd=5
+[2025-10-24 08:31:44.854762] [PID:1455590] [INFO ] [qwen-client] Client started successfully
+
+[PROTOCOL DEBUG] tool_group received:
+  id=347331695
+  tools_json='[{"type":"tool_call","tool_id":"call_301649513c4e418e8f070f4d","tool_name":"list_directory","status":"pending","args":{"path":"/common/active/sblo/Dev/VfsBoot"},"confirmation_details":{"message":"Execute list_directory with args: {\"path\":\"/common/active/sblo/Dev/VfsBoot\"}","requires_approval":true}}]'
+  Full JSON: {"type":"tool_group","id":1761283923055,"tools":[{"type":"tool_call","tool_id":"call_301649513c4e418e8f070f4d","tool_name":"list_directory","status":"pending","args":{"path":"/common/active/sblo/Dev/VfsBoot"},"confirmation_details":{"message":"Execute list_directory with args: {\"path\":\"/common/active/sblo/Dev/VfsBoot\"}","requires_approval":true}}]}
+

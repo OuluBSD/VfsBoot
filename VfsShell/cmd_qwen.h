@@ -39,6 +39,7 @@ struct QwenOptions {
     bool help = false;
     bool simple_mode = false;  // Force stdio mode instead of ncurses
     bool use_openai = false;   // Use OpenAI instead of default provider
+    bool manager_mode = false; // Enable manager mode
     std::string session_id;
     std::string model;
     std::string workspace_root;

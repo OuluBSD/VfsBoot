@@ -1,4 +1,5 @@
 #include "VfsShell.h"
+#include "qwen_manager.h"
 #include <termios.h>
 #include <unistd.h>
 
@@ -75,6 +76,9 @@ QwenOptions parse_args(const std::vector<std::string>& args) {
         else if (arg == "--openai") {
             opts.use_openai = true;
         }
+        else if (arg == "--manager" || arg == "-m") {
+            opts.manager_mode = true;
+        }
     }
 
     return opts;
@@ -119,6 +123,7 @@ void show_help() {
     std::cout << "  qwen --list-sessions          List all sessions\n";
     std::cout << "  qwen --simple                 Force stdio mode instead of ncurses\n";
     std::cout << "  qwen --openai                 Use OpenAI provider instead of default\n";
+    std::cout << "  qwen --manager, -m            Enable manager mode (multi-repository management)\n";
     std::cout << "  qwen --help                   Show this help\n\n";
     std::cout << "Options:\n";
     std::cout << "  --model <name>                AI model to use (default: coder)\n";
@@ -1100,6 +1105,34 @@ void cmd_qwen(const std::vector<std::string>& args,
 
     if (opts.help) {
         show_help();
+        return;
+    }
+
+    // Check if manager mode is requested
+    if (opts.manager_mode) {
+        Qwen::QwenManagerConfig manager_config;
+        manager_config.tcp_port = 7778;  // Default manager port
+        manager_config.management_repo_path = config.workspace_root.empty() ? 
+                                             vfs.get_cwd() : config.workspace_root;
+        
+        Qwen::QwenManager manager(&vfs);
+        if (!manager.initialize(manager_config)) {
+            std::cout << Color::RED << "Failed to initialize manager mode." << Color::RESET << "\n";
+            return;
+        }
+
+        std::cout << Color::GREEN << "Starting qwen manager mode...\n" << Color::RESET;
+        
+        // Determine whether to use ncurses mode
+        bool use_ncurses = !opts.simple_mode && supports_ncurses();
+        bool success = use_ncurses ? manager.run_ncurses_mode() : manager.run_simple_mode();
+        
+        if (success) {
+            std::cout << Color::GREEN << "Manager mode exited successfully.\n" << Color::RESET;
+        } else {
+            std::cout << Color::RED << "Manager mode encountered an error.\n" << Color::RESET;
+        }
+        
         return;
     }
 
