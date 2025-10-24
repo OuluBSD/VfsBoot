@@ -855,7 +855,13 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
                 if (handled) {
                     // Send approval/rejection for all tools
                     for (const auto& tool : pending_tool_group.tools) {
-                        client.send_tool_approval(tool.tool_id, approved);
+                        bool sent = client.send_tool_approval(tool.tool_id, approved);
+
+                        // Debug logging
+                        fprintf(stderr, "[DEBUG] send_tool_approval('%s', %s) = %s\n",
+                                tool.tool_id.c_str(),
+                                approved ? "true" : "false",
+                                sent ? "success" : "FAILED");
 
                         if (approved) {
                             add_output_line("  ✓ Approved: " + tool.tool_name, has_colors() ? 1 : 0);
