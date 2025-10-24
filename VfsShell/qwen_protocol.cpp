@@ -269,13 +269,138 @@ std::unique_ptr<StateMessage> ProtocolParser::parse_message(const std::string& j
         msg->data = ConversationMessage{role, content, id, std::nullopt, is_streaming};
     } else if (type_str == "tool_group") {
         msg->type = MessageType::TOOL_GROUP;
-        // TODO: Implement proper tools array parsing
-        // Debug logging - remove after fixing parser
-        fprintf(stderr, "\n[PROTOCOL DEBUG] tool_group received:\n");
-        fprintf(stderr, "  id=%d\n", tool_group_id);
-        fprintf(stderr, "  tools_json='%s'\n", tools_json.c_str());
-        fprintf(stderr, "  Full JSON: %s\n\n", json_str.c_str());
-        msg->data = ToolGroup{tool_group_id, {}};
+
+        // Parse tools array
+        std::vector<ToolCall> tools;
+
+        if (!tools_json.empty()) {
+            const char* tp = tools_json.c_str();
+            skip_whitespace(tp);
+
+            if (*tp == '[') {
+                tp++; // Skip '['
+
+                while (*tp && *tp != ']') {
+                    skip_whitespace(tp);
+                    if (*tp == ']') break;
+                    if (*tp == ',') {
+                        tp++;
+                        continue;
+                    }
+
+                    // Parse tool object
+                    if (*tp == '{') {
+                        tp++; // Skip '{'
+
+                        ToolCall tool;
+                        tool.status = ToolStatus::PENDING;
+
+                        // Parse tool fields
+                        while (*tp && *tp != '}') {
+                            skip_whitespace(tp);
+                            if (*tp == '}') break;
+                            if (*tp == ',') {
+                                tp++;
+                                continue;
+                            }
+
+                            // Parse key
+                            if (*tp != '"') break;
+                            std::string key = parse_string(tp);
+
+                            skip_whitespace(tp);
+                            if (*tp != ':') break;
+                            tp++; // Skip ':'
+                            skip_whitespace(tp);
+
+                            // Parse value based on key
+                            if (key == "tool_id") {
+                                tool.tool_id = parse_string(tp);
+                            } else if (key == "tool_name") {
+                                tool.tool_name = parse_string(tp);
+                            } else if (key == "status") {
+                                tool.status = parse_tool_status(parse_string(tp));
+                            } else if (key == "args") {
+                                // Parse args object into map
+                                if (*tp == '{') {
+                                    tp++; // Skip '{'
+                                    while (*tp && *tp != '}') {
+                                        skip_whitespace(tp);
+                                        if (*tp == '}') break;
+                                        if (*tp == ',') {
+                                            tp++;
+                                            continue;
+                                        }
+
+                                        if (*tp == '"') {
+                                            std::string arg_key = parse_string(tp);
+                                            skip_whitespace(tp);
+                                            if (*tp == ':') {
+                                                tp++;
+                                                skip_whitespace(tp);
+                                                if (*tp == '"') {
+                                                    std::string arg_value = parse_string(tp);
+                                                    tool.args[arg_key] = arg_value;
+                                                } else {
+                                                    skip_value(tp);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (*tp == '}') tp++; // Skip '}'
+                                }
+                            } else if (key == "confirmation_details") {
+                                // Parse confirmation_details object
+                                if (*tp == '{') {
+                                    tp++; // Skip '{'
+                                    ToolConfirmationDetails details;
+                                    details.requires_approval = true;
+
+                                    while (*tp && *tp != '}') {
+                                        skip_whitespace(tp);
+                                        if (*tp == '}') break;
+                                        if (*tp == ',') {
+                                            tp++;
+                                            continue;
+                                        }
+
+                                        if (*tp == '"') {
+                                            std::string detail_key = parse_string(tp);
+                                            skip_whitespace(tp);
+                                            if (*tp == ':') {
+                                                tp++;
+                                                skip_whitespace(tp);
+
+                                                if (detail_key == "message") {
+                                                    details.message = parse_string(tp);
+                                                } else if (detail_key == "requires_approval") {
+                                                    details.requires_approval = parse_bool(tp);
+                                                } else {
+                                                    skip_value(tp);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (*tp == '}') tp++; // Skip '}'
+                                    tool.confirmation_details = details;
+                                }
+                            } else {
+                                skip_value(tp);
+                            }
+
+                            skip_whitespace(tp);
+                        }
+
+                        if (*tp == '}') tp++; // Skip '}'
+                        tools.push_back(tool);
+                    }
+
+                    skip_whitespace(tp);
+                }
+            }
+        }
+
+        msg->data = ToolGroup{tool_group_id, tools};
     } else if (type_str == "status") {
         msg->type = MessageType::STATUS;
         msg->data = StatusUpdate{AppState::IDLE, std::nullopt, std::nullopt};
