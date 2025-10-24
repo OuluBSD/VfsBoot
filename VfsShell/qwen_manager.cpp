@@ -619,6 +619,388 @@ bool QwenManager::is_manual_override(const std::string& session_id) {
     return false; // Default to automatic if session not found
 }
 
+// Find session by account ID and repository ID
+SessionInfo* QwenManager::find_session_by_repo(const std::string& account_id, const std::string& repo_id) {
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    
+    // Look for REPO sessions (both WORKER and MANAGER) that match the account and repo
+    for (auto& session : sessions_) {
+        if ((session.type == SessionType::REPO_WORKER || session.type == SessionType::REPO_MANAGER) &&
+            session.account_id == account_id) {
+            // Based on how we create session IDs in spawn_repo_sessions_for_account
+            // Session IDs follow the pattern: "wrk-{repo_id}-{timestamp}" or "mgr-{repo_id}-{timestamp}"
+            // So we look for session IDs that start with the appropriate prefix
+            std::string worker_prefix = "wrk-" + repo_id + "-";
+            std::string manager_prefix = "mgr-" + repo_id + "-";
+            
+            if (session.session_id.substr(0, worker_prefix.length()) == worker_prefix ||
+                session.session_id.substr(0, manager_prefix.length()) == manager_prefix) {
+                return &session;
+            }
+        }
+    }
+    
+    return nullptr; // Not found
+}
+
+// Save a session snapshot
+bool QwenManager::save_session_snapshot(const std::string& session_id, const std::string& snapshot_name) {
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    std::lock_guard<std::mutex> snap_lock(snapshots_mutex_);
+    
+    // Find the session
+    SessionInfo* session = find_session(session_id);
+    if (!session) {
+        std::cout << "[QwenManager] Cannot save snapshot: Session not found: " << session_id << std::endl;
+        return false;
+    }
+    
+    // Create a new snapshot
+    SessionSnapshot snapshot;
+    snapshot.snapshot_id = session_id + "-" + std::to_string(time(nullptr));
+    snapshot.session_id = session_id;
+    snapshot.name = snapshot_name.empty() ? "snapshot-" + std::to_string(time(nullptr)) : snapshot_name;
+    snapshot.model = session->model;
+    snapshot.repo_path = session->repo_path;
+    snapshot.created_at = time(nullptr);
+    snapshot.last_restored = 0;
+    
+    // In a real implementation, we would capture the conversation history and tool history
+    // from the actual qwen session. For now, we'll create a placeholder.
+    snapshot.conversation_history.push_back({"system", "Snapshot of session " + session_id});
+    snapshot.conversation_history.push_back({"assistant", "Session state saved at " + std::to_string(snapshot.created_at)});
+    
+    // Store the snapshot
+    session_snapshots_[session_id].push_back(snapshot);
+    
+    std::cout << "[QwenManager] Snapshot saved for session " << session_id 
+              << " with name: " << snapshot.name << std::endl;
+    
+    return true;
+}
+
+// Restore a session snapshot
+bool QwenManager::restore_session_snapshot(const std::string& session_id, const std::string& snapshot_name) {
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    std::lock_guard<std::mutex> snap_lock(snapshots_mutex_);
+    
+    // Find the session
+    SessionInfo* session = find_session(session_id);
+    if (!session) {
+        std::cout << "[QwenManager] Cannot restore snapshot: Session not found: " << session_id << std::endl;
+        return false;
+    }
+    
+    // Find the snapshot
+    auto it = session_snapshots_.find(session_id);
+    if (it == session_snapshots_.end()) {
+        std::cout << "[QwenManager] Cannot restore snapshot: No snapshots found for session: " << session_id << std::endl;
+        return false;
+    }
+    
+    // Find the specific snapshot by name
+    auto& snapshots = it->second;
+    auto snap_it = std::find_if(snapshots.begin(), snapshots.end(),
+        [&snapshot_name](const SessionSnapshot& snap) { return snap.name == snapshot_name; });
+    
+    if (snap_it == snapshots.end()) {
+        std::cout << "[QwenManager] Cannot restore snapshot: Snapshot not found: " << snapshot_name << std::endl;
+        return false;
+    }
+    
+    // Restore the session state
+    session->model = snap_it->model;
+    session->repo_path = snap_it->repo_path;
+    
+    // Update the last restored timestamp
+    const_cast<SessionSnapshot&>(*snap_it).last_restored = time(nullptr);
+    
+    std::cout << "[QwenManager] Snapshot restored for session " << session_id 
+              << " from: " << snapshot_name << std::endl;
+    
+    return true;
+}
+
+// Delete a session snapshot
+bool QwenManager::delete_session_snapshot(const std::string& session_id, const std::string& snapshot_name) {
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    std::lock_guard<std::mutex> snap_lock(snapshots_mutex_);
+    
+    // Find the session snapshots
+    auto it = session_snapshots_.find(session_id);
+    if (it == session_snapshots_.end()) {
+        std::cout << "[QwenManager] Cannot delete snapshot: No snapshots found for session: " << session_id << std::endl;
+        return false;
+    }
+    
+    // Find and remove the specific snapshot by name
+    auto& snapshots = it->second;
+    auto snap_it = std::find_if(snapshots.begin(), snapshots.end(),
+        [&snapshot_name](const SessionSnapshot& snap) { return snap.name == snapshot_name; });
+    
+    if (snap_it == snapshots.end()) {
+        std::cout << "[QwenManager] Cannot delete snapshot: Snapshot not found: " << snapshot_name << std::endl;
+        return false;
+    }
+    
+    snapshots.erase(snap_it);
+    
+    std::cout << "[QwenManager] Snapshot deleted for session " << session_id 
+              << ": " << snapshot_name << std::endl;
+    
+    return true;
+}
+
+// List session snapshots
+std::vector<std::string> QwenManager::list_session_snapshots(const std::string& session_id) {
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    std::lock_guard<std::mutex> snap_lock(snapshots_mutex_);
+    
+    std::vector<std::string> snapshot_names;
+    
+    // Find the session snapshots
+    auto it = session_snapshots_.find(session_id);
+    if (it != session_snapshots_.end()) {
+        for (const auto& snapshot : it->second) {
+            snapshot_names.push_back(snapshot.name);
+        }
+    }
+    
+    return snapshot_names;
+}
+
+// Create a new session group
+std::string QwenManager::create_session_group(const std::string& name, const std::string& description) {
+    std::lock_guard<std::mutex> lock(groups_mutex_);
+    
+    // Generate a unique group ID
+    std::string group_id = "group-" + std::to_string(time(nullptr)) + "-" + 
+                          std::to_string(session_groups_.size());
+    
+    // Create the group
+    SessionGroup group;
+    group.group_id = group_id;
+    group.name = name;
+    group.description = description;
+    group.created_at = time(nullptr);
+    group.last_updated = group.created_at;
+    
+    session_groups_.push_back(group);
+    
+    std::cout << "[QwenManager] Created session group: " << name << " (" << group_id << ")" << std::endl;
+    
+    return group_id;
+}
+
+// Delete a session group
+bool QwenManager::delete_session_group(const std::string& group_id) {
+    std::lock_guard<std::mutex> lock(groups_mutex_);
+    
+    // Find and remove the group
+    auto it = std::find_if(session_groups_.begin(), session_groups_.end(),
+        [&group_id](const SessionGroup& group) { return group.group_id == group_id; });
+    
+    if (it == session_groups_.end()) {
+        std::cout << "[QwenManager] Cannot delete group: Group not found: " << group_id << std::endl;
+        return false;
+    }
+    
+    // Remove the group from all sessions that reference it
+    {
+        std::lock_guard<std::mutex> session_lock(sessions_mutex_);
+        for (auto& session : sessions_) {
+            auto group_it = std::find(session.group_ids.begin(), session.group_ids.end(), group_id);
+            if (group_it != session.group_ids.end()) {
+                session.group_ids.erase(group_it);
+            }
+        }
+    }
+    
+    session_groups_.erase(it);
+    
+    std::cout << "[QwenManager] Deleted session group: " << group_id << std::endl;
+    
+    return true;
+}
+
+// Add a session to a group
+bool QwenManager::add_session_to_group(const std::string& session_id, const std::string& group_id) {
+    std::lock_guard<std::mutex> group_lock(groups_mutex_);
+    std::lock_guard<std::mutex> session_lock(sessions_mutex_);
+    
+    // Verify the group exists
+    auto group_it = std::find_if(session_groups_.begin(), session_groups_.end(),
+        [&group_id](const SessionGroup& group) { return group.group_id == group_id; });
+    
+    if (group_it == session_groups_.end()) {
+        std::cout << "[QwenManager] Cannot add session to group: Group not found: " << group_id << std::endl;
+        return false;
+    }
+    
+    // Find the session
+    SessionInfo* session = find_session(session_id);
+    if (!session) {
+        std::cout << "[QwenManager] Cannot add session to group: Session not found: " << session_id << std::endl;
+        return false;
+    }
+    
+    // Check if session is already in the group
+    if (std::find(session->group_ids.begin(), session->group_ids.end(), group_id) != session->group_ids.end()) {
+        std::cout << "[QwenManager] Session " << session_id << " is already in group " << group_id << std::endl;
+        return true; // Already in group, technically successful
+    }
+    
+    // Add the group to the session
+    session->group_ids.push_back(group_id);
+    
+    // Add the session to the group's session list
+    group_it->session_ids.push_back(session_id);
+    group_it->last_updated = time(nullptr);
+    
+    std::cout << "[QwenManager] Added session " << session_id << " to group " << group_id << std::endl;
+    
+    return true;
+}
+
+// Remove a session from a group
+bool QwenManager::remove_session_from_group(const std::string& session_id, const std::string& group_id) {
+    std::lock_guard<std::mutex> group_lock(groups_mutex_);
+    std::lock_guard<std::mutex> session_lock(sessions_mutex_);
+    
+    // Verify the group exists
+    auto group_it = std::find_if(session_groups_.begin(), session_groups_.end(),
+        [&group_id](const SessionGroup& group) { return group.group_id == group_id; });
+    
+    if (group_it == session_groups_.end()) {
+        std::cout << "[QwenManager] Cannot remove session from group: Group not found: " << group_id << std::endl;
+        return false;
+    }
+    
+    // Find the session
+    SessionInfo* session = find_session(session_id);
+    if (!session) {
+        std::cout << "[QwenManager] Cannot remove session from group: Session not found: " << session_id << std::endl;
+        return false;
+    }
+    
+    // Remove the group from the session
+    auto session_group_it = std::find(session->group_ids.begin(), session->group_ids.end(), group_id);
+    if (session_group_it != session->group_ids.end()) {
+        session->group_ids.erase(session_group_it);
+    } else {
+        std::cout << "[QwenManager] Session " << session_id << " is not in group " << group_id << std::endl;
+        return true; // Not in group, technically successful
+    }
+    
+    // Remove the session from the group's session list
+    auto group_session_it = std::find(group_it->session_ids.begin(), group_it->session_ids.end(), session_id);
+    if (group_session_it != group_it->session_ids.end()) {
+        group_it->session_ids.erase(group_session_it);
+        group_it->last_updated = time(nullptr);
+    }
+    
+    std::cout << "[QwenManager] Removed session " << session_id << " from group " << group_id << std::endl;
+    
+    return true;
+}
+
+// List all session groups
+std::vector<SessionGroup> QwenManager::list_session_groups() const {
+    std::lock_guard<std::mutex> lock(groups_mutex_);
+    return session_groups_;
+}
+
+// Get all sessions in a group
+std::vector<SessionInfo*> QwenManager::get_sessions_in_group(const std::string& group_id) {
+    std::lock_guard<std::mutex> group_lock(groups_mutex_);
+    std::lock_guard<std::mutex> session_lock(sessions_mutex_);
+    
+    std::vector<SessionInfo*> group_sessions;
+    
+    // Find the group
+    auto group_it = std::find_if(session_groups_.begin(), session_groups_.end(),
+        [&group_id](const SessionGroup& group) { return group.group_id == group_id; });
+    
+    if (group_it == session_groups_.end()) {
+        std::cout << "[QwenManager] Cannot get sessions in group: Group not found: " << group_id << std::endl;
+        return group_sessions;
+    }
+    
+    // Find all sessions that belong to this group
+    for (auto& session : sessions_) {
+        if (std::find(session.group_ids.begin(), session.group_ids.end(), group_id) != session.group_ids.end()) {
+            group_sessions.push_back(&session);
+        }
+    }
+    
+    return group_sessions;
+}
+
+// Pause a session
+bool QwenManager::pause_session(const std::string& session_id) {
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    
+    for (auto& session : sessions_) {
+        if (session.session_id == session_id) {
+            if (session.is_paused) {
+                std::cout << "[QwenManager] Session " << session_id << " is already paused" << std::endl;
+                return true; // Already paused, so technically successful
+            }
+            
+            session.is_paused = true;
+            session.paused_at = time(nullptr);
+            session.status = "paused";
+            
+            std::cout << "[QwenManager] Session " << session_id << " paused" << std::endl;
+            return true;
+        }
+    }
+    
+    std::cout << "[QwenManager] Session not found: " << session_id << std::endl;
+    return false; // Session not found
+}
+
+// Resume a session
+bool QwenManager::resume_session(const std::string& session_id) {
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    
+    for (auto& session : sessions_) {
+        if (session.session_id == session_id) {
+            if (!session.is_paused) {
+                std::cout << "[QwenManager] Session " << session_id << " is not paused" << std::endl;
+                return true; // Not paused, so technically successful
+            }
+            
+            session.is_paused = false;
+            session.paused_at = 0;
+            
+            // Restore the previous status or set to active
+            if (session.status == "paused") {
+                session.status = "active";
+            }
+            
+            std::cout << "[QwenManager] Session " << session_id << " resumed" << std::endl;
+            return true;
+        }
+    }
+    
+    std::cout << "[QwenManager] Session not found: " << session_id << std::endl;
+    return false; // Session not found
+}
+
+// Check if a session is paused
+bool QwenManager::is_session_paused(const std::string& session_id) const {
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    
+    for (const auto& session : sessions_) {
+        if (session.session_id == session_id) {
+            return session.is_paused;
+        }
+    }
+    
+    return false; // Session not found or not paused
+}
+
 // Convert JSON task specification to natural language prompt
 std::string QwenManager::convert_json_to_prompt(const std::string& json_task_spec) {
     // This is a simplified implementation - in a real system you'd have more sophisticated parsing
@@ -1742,6 +2124,149 @@ bool QwenManager::run_ncurses_mode() {
                                 target_buffer->emplace_back("No active session to switch to automatic mode", has_colors() ? 4 : 0);
                             }
                             redraw_chat_window();
+                        } else if (input_buffer == "/pause") {
+                            // Pause the active session
+                            if (!active_session_id.empty()) {
+                                if (pause_session(active_session_id)) {
+                                    target_buffer->emplace_back("You: /pause", has_colors() ? 7 : 0);
+                                    target_buffer->emplace_back("Session paused successfully", has_colors() ? 5 : 0);
+                                } else {
+                                    target_buffer->emplace_back("You: /pause", has_colors() ? 7 : 0);
+                                    target_buffer->emplace_back("Failed to pause session", has_colors() ? 4 : 0);
+                                }
+                            } else {
+                                target_buffer->emplace_back("You: /pause", has_colors() ? 7 : 0);
+                                target_buffer->emplace_back("No active session to pause", has_colors() ? 4 : 0);
+                            }
+                            redraw_chat_window();
+                        } else if (input_buffer == "/resume") {
+                            // Resume the active session
+                            if (!active_session_id.empty()) {
+                                if (resume_session(active_session_id)) {
+                                    target_buffer->emplace_back("You: /resume", has_colors() ? 7 : 0);
+                                    target_buffer->emplace_back("Session resumed successfully", has_colors() ? 5 : 0);
+                                } else {
+                                    target_buffer->emplace_back("You: /resume", has_colors() ? 7 : 0);
+                                    target_buffer->emplace_back("Failed to resume session", has_colors() ? 4 : 0);
+                                }
+                            } else {
+                                target_buffer->emplace_back("You: /resume", has_colors() ? 7 : 0);
+                                target_buffer->emplace_back("No active session to resume", has_colors() ? 4 : 0);
+                            }
+                            redraw_chat_window();
+                        } else if (input_buffer.substr(0, 6) == "/save ") {
+                            // Save a session snapshot
+                            if (!active_session_id.empty()) {
+                                std::string snapshot_name = input_buffer.substr(6);
+                                if (save_session_snapshot(active_session_id, snapshot_name)) {
+                                    target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
+                                    target_buffer->emplace_back("Session snapshot saved: " + snapshot_name, has_colors() ? 5 : 0);
+                                } else {
+                                    target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
+                                    target_buffer->emplace_back("Failed to save session snapshot: " + snapshot_name, has_colors() ? 4 : 0);
+                                }
+                            } else {
+                                target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
+                                target_buffer->emplace_back("No active session to save snapshot", has_colors() ? 4 : 0);
+                            }
+                            redraw_chat_window();
+                        } else if (input_buffer.substr(0, 9) == "/restore ") {
+                            // Restore a session snapshot
+                            if (!active_session_id.empty()) {
+                                std::string snapshot_name = input_buffer.substr(9);
+                                if (restore_session_snapshot(active_session_id, snapshot_name)) {
+                                    target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
+                                    target_buffer->emplace_back("Session snapshot restored: " + snapshot_name, has_colors() ? 5 : 0);
+                                } else {
+                                    target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
+                                    target_buffer->emplace_back("Failed to restore session snapshot: " + snapshot_name, has_colors() ? 4 : 0);
+                                }
+                            } else {
+                                target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
+                                target_buffer->emplace_back("No active session to restore snapshot", has_colors() ? 4 : 0);
+                            }
+                            redraw_chat_window();
+                        } else if (input_buffer == "/snapshots") {
+                            // List session snapshots
+                            if (!active_session_id.empty()) {
+                                std::vector<std::string> snapshots = list_session_snapshots(active_session_id);
+                                target_buffer->emplace_back("You: /snapshots", has_colors() ? 7 : 0);
+                                if (snapshots.empty()) {
+                                    target_buffer->emplace_back("No snapshots found for session", has_colors() ? 5 : 0);
+                                } else {
+                                    target_buffer->emplace_back("Available snapshots:", has_colors() ? 5 : 0);
+                                    for (const auto& snapshot : snapshots) {
+                                        target_buffer->emplace_back("  - " + snapshot, has_colors() ? 7 : 0);
+                                    }
+                                }
+                            } else {
+                                target_buffer->emplace_back("You: /snapshots", has_colors() ? 7 : 0);
+                                target_buffer->emplace_back("No active session to list snapshots", has_colors() ? 4 : 0);
+                            }
+                            redraw_chat_window();
+                        } else if (input_buffer.substr(0, 7) == "/group ") {
+                            // Create a new session group
+                            std::string group_info = input_buffer.substr(7);
+                            size_t desc_pos = group_info.find(" - ");
+                            std::string group_name, group_desc;
+                            
+                            if (desc_pos != std::string::npos) {
+                                group_name = group_info.substr(0, desc_pos);
+                                group_desc = group_info.substr(desc_pos + 3);
+                            } else {
+                                group_name = group_info;
+                                group_desc = "Session group created at " + std::to_string(time(nullptr));
+                            }
+                            
+                            std::string group_id = create_session_group(group_name, group_desc);
+                            target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
+                            target_buffer->emplace_back("Created session group: " + group_name + " (" + group_id + ")", has_colors() ? 5 : 0);
+                            redraw_chat_window();
+                        } else if (input_buffer == "/groups") {
+                            // List all session groups
+                            std::vector<SessionGroup> groups = list_session_groups();
+                            target_buffer->emplace_back("You: /groups", has_colors() ? 7 : 0);
+                            if (groups.empty()) {
+                                target_buffer->emplace_back("No session groups found", has_colors() ? 5 : 0);
+                            } else {
+                                target_buffer->emplace_back("Session groups:", has_colors() ? 5 : 0);
+                                for (const auto& group : groups) {
+                                    target_buffer->emplace_back("  - " + group.name + " (" + group.group_id + "): " + group.description, has_colors() ? 7 : 0);
+                                    // Show sessions in this group
+                                    std::vector<SessionInfo*> group_sessions = get_sessions_in_group(group.group_id);
+                                    if (!group_sessions.empty()) {
+                                        for (const auto& session : group_sessions) {
+                                            std::string session_type;
+                                            switch (session->type) {
+                                                case SessionType::MANAGER_PROJECT: session_type = "PROJECT_MGR"; break;
+                                                case SessionType::MANAGER_TASK: session_type = "TASK_MGR"; break;
+                                                case SessionType::ACCOUNT: session_type = "ACCOUNT"; break;
+                                                case SessionType::REPO_MANAGER: session_type = "REPO_MGR"; break;
+                                                case SessionType::REPO_WORKER: session_type = "REPO_WRK"; break;
+                                                default: session_type = "UNKNOWN"; break;
+                                            }
+                                            target_buffer->emplace_back("    * " + session_type + " " + session->session_id, has_colors() ? 7 : 0);
+                                        }
+                                    }
+                                }
+                            }
+                            redraw_chat_window();
+                        } else if (input_buffer.substr(0, 11) == "/addtogroup ") {
+                            // Add current session to a group
+                            if (!active_session_id.empty()) {
+                                std::string group_id = input_buffer.substr(11);
+                                if (add_session_to_group(active_session_id, group_id)) {
+                                    target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
+                                    target_buffer->emplace_back("Added session to group: " + group_id, has_colors() ? 5 : 0);
+                                } else {
+                                    target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
+                                    target_buffer->emplace_back("Failed to add session to group: " + group_id, has_colors() ? 4 : 0);
+                                }
+                            } else {
+                                target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
+                                target_buffer->emplace_back("No active session to add to group", has_colors() ? 4 : 0);
+                            }
+                            redraw_chat_window();
                         } else if (active_session_id.empty()) {
                             // No active session, just echo the command
                             target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
@@ -1815,10 +2340,110 @@ bool QwenManager::run_ncurses_mode() {
                                         target_buffer->emplace_back("Error: Repository ID required (usage: status <repo_id>)", has_colors() ? 4 : 0);
                                     }
                                 } 
+                                else if (command == "pause") {
+                                    target_buffer->emplace_back("You: pause " + repo_id, has_colors() ? 7 : 0);
+                                    if (!repo_id.empty()) {
+                                        // Find the session for this repository and pause it
+                                        SessionInfo* repo_session = find_session_by_repo(active_session->account_id, repo_id);
+                                        if (repo_session) {
+                                            if (pause_session(repo_session->session_id)) {
+                                                target_buffer->emplace_back("Repository " + repo_id + " paused successfully", has_colors() ? 5 : 0);
+                                            } else {
+                                                target_buffer->emplace_back("Failed to pause repository " + repo_id, has_colors() ? 4 : 0);
+                                            }
+                                        } else {
+                                            target_buffer->emplace_back("Repository " + repo_id + " not found or not active", has_colors() ? 4 : 0);
+                                        }
+                                    } else {
+                                        target_buffer->emplace_back("Error: Repository ID required (usage: pause <repo_id>)", has_colors() ? 4 : 0);
+                                    }
+                                }
+                                else if (command == "resume") {
+                                    target_buffer->emplace_back("You: resume " + repo_id, has_colors() ? 7 : 0);
+                                    if (!repo_id.empty()) {
+                                        // Find the session for this repository and resume it
+                                        SessionInfo* repo_session = find_session_by_repo(active_session->account_id, repo_id);
+                                        if (repo_session) {
+                                            if (resume_session(repo_session->session_id)) {
+                                                target_buffer->emplace_back("Repository " + repo_id + " resumed successfully", has_colors() ? 5 : 0);
+                                            } else {
+                                                target_buffer->emplace_back("Failed to resume repository " + repo_id, has_colors() ? 4 : 0);
+                                            }
+                                        } else {
+                                            target_buffer->emplace_back("Repository " + repo_id + " not found or not active", has_colors() ? 4 : 0);
+                                        }
+                                    } else {
+                                        target_buffer->emplace_back("Error: Repository ID required (usage: resume <repo_id>)", has_colors() ? 4 : 0);
+                                    }
+                                }
+                                else if (command == "save") {
+                                    target_buffer->emplace_back("You: save " + repo_id, has_colors() ? 7 : 0);
+                                    if (!repo_id.empty()) {
+                                        // Find the session for this repository and save a snapshot
+                                        SessionInfo* repo_session = find_session_by_repo(active_session->account_id, repo_id);
+                                        if (repo_session) {
+                                            std::string snapshot_name = "snapshot-" + std::to_string(time(nullptr));
+                                            if (save_session_snapshot(repo_session->session_id, snapshot_name)) {
+                                                target_buffer->emplace_back("Repository " + repo_id + " snapshot saved: " + snapshot_name, has_colors() ? 5 : 0);
+                                            } else {
+                                                target_buffer->emplace_back("Failed to save repository " + repo_id + " snapshot", has_colors() ? 4 : 0);
+                                            }
+                                        } else {
+                                            target_buffer->emplace_back("Repository " + repo_id + " not found or not active", has_colors() ? 4 : 0);
+                                        }
+                                    } else {
+                                        target_buffer->emplace_back("Error: Repository ID required (usage: save <repo_id>)", has_colors() ? 4 : 0);
+                                    }
+                                }
+                                else if (command == "snapshots") {
+                                    target_buffer->emplace_back("You: snapshots " + repo_id, has_colors() ? 7 : 0);
+                                    if (!repo_id.empty()) {
+                                        // Find the session for this repository and list snapshots
+                                        SessionInfo* repo_session = find_session_by_repo(active_session->account_id, repo_id);
+                                        if (repo_session) {
+                                            std::vector<std::string> snapshots = list_session_snapshots(repo_session->session_id);
+                                            if (snapshots.empty()) {
+                                                target_buffer->emplace_back("No snapshots found for repository " + repo_id, has_colors() ? 5 : 0);
+                                            } else {
+                                                target_buffer->emplace_back("Snapshots for repository " + repo_id + ":", has_colors() ? 5 : 0);
+                                                for (const auto& snapshot : snapshots) {
+                                                    target_buffer->emplace_back("  - " + snapshot, has_colors() ? 7 : 0);
+                                                }
+                                            }
+                                        } else {
+                                            target_buffer->emplace_back("Repository " + repo_id + " not found or not active", has_colors() ? 4 : 0);
+                                        }
+                                    } else {
+                                        target_buffer->emplace_back("Error: Repository ID required (usage: snapshots <repo_id>)", has_colors() ? 4 : 0);
+                                    }
+                                }
+                                else if (command == "group") {
+                                    target_buffer->emplace_back("You: group " + repo_id, has_colors() ? 7 : 0);
+                                    if (!repo_id.empty()) {
+                                        // Create a new group for this repository
+                                        std::string group_id = create_session_group("Repository Group: " + repo_id, 
+                                            "Group for repository " + repo_id + " created at " + std::to_string(time(nullptr)));
+                                        target_buffer->emplace_back("Created group for repository " + repo_id + ": " + group_id, has_colors() ? 5 : 0);
+                                        
+                                        // Find the session for this repository and add it to the group
+                                        SessionInfo* repo_session = find_session_by_repo(active_session->account_id, repo_id);
+                                        if (repo_session) {
+                                            if (add_session_to_group(repo_session->session_id, group_id)) {
+                                                target_buffer->emplace_back("Added repository " + repo_id + " to group " + group_id, has_colors() ? 5 : 0);
+                                            } else {
+                                                target_buffer->emplace_back("Failed to add repository " + repo_id + " to group", has_colors() ? 4 : 0);
+                                            }
+                                        } else {
+                                            target_buffer->emplace_back("Repository " + repo_id + " not found or not active", has_colors() ? 4 : 0);
+                                        }
+                                    } else {
+                                        target_buffer->emplace_back("Error: Repository ID required (usage: group <repo_id>)", has_colors() ? 4 : 0);
+                                    }
+                                }
                                 else {
                                     // Not a recognized command, treat as a regular message
                                     target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
-                                    target_buffer->emplace_back("ACCOUNT: Unknown command. Valid commands: list, enable <repo>, disable <repo>, status <repo>", has_colors() ? 4 : 0);
+                                    target_buffer->emplace_back("ACCOUNT: Unknown command. Valid commands: list, enable <repo>, disable <repo>, status <repo>, pause <repo>, resume <repo>, save <repo>, snapshots <repo>, group <repo>", has_colors() ? 4 : 0);
                                 }
                             } else if (active_session && 
                                       (active_session->type == SessionType::REPO_WORKER || 

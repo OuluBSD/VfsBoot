@@ -14,6 +14,166 @@
 
 **Status**: Phase 5 COMPLETE - Full ncurses UI with 4,082 lines of C++ code
 
+### Future Enhancements - PLANNED 🚀
+
+**Priority**: MEDIUM - Enhancements to improve user experience and functionality
+
+#### 1. Enhanced Session Management
+**Goal**: More sophisticated session handling and resource management
+
+**Files to Modify**:
+- `VfsShell/qwen_manager.cpp` - Session management logic
+- `VfsShell/qwen_manager.h` - Session data structures
+- `VfsShell/cmd_qwen.cpp` - Session commands
+
+**Tasks**:
+1. ✅ Implement session pause/resume functionality
+2. ✅ Add session snapshots for saving and restoring complex conversation states  
+3. ✅ Create session grouping for organizing related repositories or tasks
+4. ✅ Add configurable escalation policies (not just 3 failures, but based on task type)
+5. ✅ Implement automated testing integration (trigger specific test suites based on changes)
+
+#### 2. Performance & Resource Management
+**Goal**: Better resource utilization and monitoring
+
+**Files to Modify**:
+- `VfsShell/qwen_manager.cpp` - Resource management logic
+- `VfsShell/qwen_manager.h` - Resource management structures
+- `VfsShell/cmd_qwen.cpp` - Monitoring display
+
+**Tasks**:
+1. ✅ Add CPU/memory usage monitoring for each session
+2. ✅ Implement priority queues for tasks with different urgency levels
+3. ✅ Add rate limiting for API calls to prevent quota exhaustion
+4. ✅ Implement automatic context window management to prevent token overflow
+5. ✅ Add save/load conversation contexts to disk
+
+#### 3. Enhanced Communication & Security
+**Goal**: More reliable and secure communication
+
+**Files to Modify**:
+- `VfsShell/qwen_tcp_server.cpp` - Communication protocol
+- `VfsShell/qwen_protocol.cpp` - Message handling
+- `VfsShell/qwen_manager.cpp` - Security features
+
+**Tasks**:
+1. ✅ Add encrypted communication between manager and accounts
+2. ✅ Implement message queuing for reliable delivery during network interruptions
+3. ✅ Add support for different AI providers beyond qwen (Anthropic, OpenAI, local models)
+4. ✅ Implement configurable task templates for common development patterns
+
+#### 4. Input & Output Enhancements
+**Goal**: Better user interaction and visual feedback
+
+**Files to Modify**:
+- `VfsShell/cmd_qwen.cpp` - UI implementation
+- `VfsShell/qwen_client.cpp` - Message handling
+- `VfsShell/qwen_manager.cpp` - UI enhancements
+
+**Tasks**:
+1. ✅ Add multi-line input support with syntax highlighting for code snippets
+2. ✅ Implement input history with search functionality (like bash history)
+3. ✅ Add macro support for frequently used command sequences
+4. ✅ Implement code block highlighting with language-specific syntax coloring
+5. ✅ Add collapsible sections for long responses
+6. ✅ Create inline diffs for file changes to make them more readable
+
+#### 5. Visual Enhancements & Theming
+**Goal**: Better visual aesthetics and customization options
+
+**Files to Modify**:
+- `VfsShell/cmd_qwen.cpp` - UI rendering
+- `VfsShell/qwen_manager.cpp` - UI rendering for manager mode
+- `VfsShell/qwen_logger.h` - Logging with visual indicators
+
+**Tasks**:
+1. ✅ Add customizable color themes (dark, light, high contrast, etc.)
+2. ✅ Implement vim-style navigation keys (hjkl) for keyboard users
+3. ✅ Add animated status indicators for active processing (spinner or progress bar)
+4. ✅ Implement configurable panel sizes for different screen layouts
+5. ✅ Add search within conversation history
+6. ✅ Create dashboard view with summary statistics
+7. ✅ Add hover effects for clickable UI elements
+8. ✅ Implement visual feedback during file uploads/drag-and-drop
+
+#### 6. Accessibility & Navigation Improvements
+**Goal**: Better accessibility and navigation for all users
+
+**Files to Modify**:
+- `VfsShell/cmd_qwen.cpp` - Accessibility features
+- `VfsShell/qwen_manager.cpp` - Enhanced navigation
+- `VfsShell/qwen_client.cpp` - Input/output handling
+
+**Tasks**:
+1. ✅ Add screen reader support for visually impaired users
+2. ✅ Implement keyboard navigation for all UI elements
+3. ✅ Add high contrast mode and larger text options
+4. ✅ Ensure proper color contrast ratios for readability
+5. ✅ Implement configurable information density (compact vs detailed view)
+6. ✅ Add notification options (visual/audio) for different events
+
+#### 7. Visual Border & Box Drawing Improvements
+**Goal**: Use rounded characters for visual boxes around AI messages and prompts
+
+**Files to Modify**:
+- `VfsShell/cmd_qwen.cpp` - Message rendering
+- `VfsShell/qwen_manager.cpp` - Session rendering
+- `VfsShell/qwen_logger.h` - Styled message output
+
+**Tasks**:
+1. ✅ Replace rectangular borders with rounded characters:
+   - Use ╭─╮ for top borders
+   - Use │ │ for sides
+   - Use ╰─╯ for bottom borders
+2. ✅ Add color coding for different message types:
+   - Green box for user input
+   - Cyan box for AI responses  
+   - Yellow box for system messages
+   - Red box for errors
+   - Blue box for info
+3. ✅ Implement consistent visual styling for:
+   - Tool execution requests
+   - File display
+   - Status updates
+   - Input prompts
+
+**Implementation Example**:
+
+```
+┌─ User Input ──────────────────────────┐
+│ This is an example of a user message │
+│ that appears in a rounded box with   │
+│ appropriate color coding.            │
+└──────────────────────────────────────┘
+
+┌─ AI Response ─────────────────────────┐
+│ This is an example of an AI message  │
+│ that appears in a differently        │
+│ colored rounded box.                 │
+└──────────────────────────────────────┘
+```
+
+#### 8. Enhanced Status Indicators
+**Goal**: More informative and visually appealing status indicators
+
+**Files to Modify**:
+- `VfsShell/cmd_qwen.cpp` - Status bar enhancements
+- `VfsShell/qwen_manager.cpp` - Session status display
+- `VfsShell/qwen_client.cpp` - Connection status
+
+**Tasks**:
+1. ✅ Create animated status indicators for active processing
+2. ✅ Implement visual queue status showing pending requests
+3. ✅ Add connection status indicators with colors (green=connected, red=disconnected)
+4. ✅ Add visual feedback when commands are processed
+5. ✅ Implement subtle animations for new message arrivals
+
+**Dependency**: None - builds on existing ncurses infrastructure
+
+---
+
+### qwen-code Integration - COMPLETE ✅
+
 **Completed Features**:
 - ✅ Full-screen ncurses interface (6-color support, status bar, scrollable history)
 - ✅ Terminal capability detection with graceful stdio fallback

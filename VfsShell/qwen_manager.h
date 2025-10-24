@@ -52,6 +52,29 @@ enum class SessionState {
     IDLE          // Idle state
 };
 
+// Structure to represent a session snapshot
+struct SessionSnapshot {
+    std::string snapshot_id;
+    std::string session_id;
+    std::string name;
+    std::string model;
+    std::string repo_path;
+    std::vector<std::pair<std::string, std::string>> conversation_history;  // role, content
+    std::vector<std::string> tool_history;  // Tool execution history
+    time_t created_at;
+    time_t last_restored;
+};
+
+// Structure to represent a session group
+struct SessionGroup {
+    std::string group_id;
+    std::string name;
+    std::string description;
+    std::vector<std::string> session_ids;  // List of session IDs in this group
+    time_t created_at;
+    time_t last_updated;
+};
+
 // Structure to represent a session in the manager
 struct SessionInfo {
     std::string session_id;
@@ -63,6 +86,7 @@ struct SessionInfo {
     std::string connection_info;
     std::string instructions;  // AI instructions for this session
     std::string account_id;    // Associated account ID (for ACCOUNT and REPO sessions)
+    std::vector<std::string> group_ids;  // List of groups this session belongs to
     SessionState workflow_state = SessionState::AUTOMATIC;  // Current workflow state
     int failure_count = 0;      // Count of consecutive failures for escalation
     int commit_count = 0;       // Count of commits since last review
@@ -70,6 +94,8 @@ struct SessionInfo {
     time_t created_at;
     time_t last_activity;
     bool is_active;
+    bool is_paused = false;     // Whether the session is paused
+    time_t paused_at = 0;       // When the session was paused (0 if not paused)
 };
 
 // Manager mode configuration
@@ -136,6 +162,26 @@ private:
     void update_session_state(const std::string& session_id, SessionState new_state);
     bool is_manual_override(const std::string& session_id);
     
+    // Session management
+    bool pause_session(const std::string& session_id);
+    bool resume_session(const std::string& session_id);
+    bool is_session_paused(const std::string& session_id) const;
+    SessionInfo* find_session_by_repo(const std::string& account_id, const std::string& repo_id);
+    
+    // Session grouping
+    std::string create_session_group(const std::string& name, const std::string& description);
+    bool delete_session_group(const std::string& group_id);
+    bool add_session_to_group(const std::string& session_id, const std::string& group_id);
+    bool remove_session_from_group(const std::string& session_id, const std::string& group_id);
+    std::vector<SessionGroup> list_session_groups() const;
+    std::vector<SessionInfo*> get_sessions_in_group(const std::string& group_id);
+    
+    // Session snapshots
+    bool save_session_snapshot(const std::string& session_id, const std::string& snapshot_name);
+    bool restore_session_snapshot(const std::string& session_id, const std::string& snapshot_name);
+    bool delete_session_snapshot(const std::string& session_id, const std::string& snapshot_name);
+    std::vector<std::string> list_session_snapshots(const std::string& session_id);
+    
     // JSON-to-prompt conversion
     std::string convert_json_to_prompt(const std::string& json_task_spec);
     
@@ -154,6 +200,14 @@ private:
     // Session registry
     std::vector<SessionInfo> sessions_;
     std::mutex sessions_mutex_;
+    
+    // Session groups
+    std::vector<SessionGroup> session_groups_;
+    std::mutex groups_mutex_;
+    
+    // Session snapshots
+    std::map<std::string, std::vector<SessionSnapshot>> session_snapshots_;  // session_id -> list of snapshots
+    std::mutex snapshots_mutex_;
     
     // Account configurations
     std::vector<AccountConfig> account_configs_;

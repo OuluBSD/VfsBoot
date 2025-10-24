@@ -328,9 +328,59 @@ bool handle_special_command(const std::string& input, QwenStateManager& state_mg
 struct OutputLine {
     std::string text;
     int color_pair;
+    bool is_box_content = false;  // Whether this line is inside a visual box
 
-    OutputLine(const std::string& t, int cp = 0) : text(t), color_pair(cp) {}
+    OutputLine(const std::string& t, int cp = 0, bool box_content = false) : text(t), color_pair(cp), is_box_content(box_content) {}
 };
+
+// Helper function to draw rounded bordered boxes with color
+void draw_rounded_box(WINDOW* win, int y, int x, int height, int width, int color_pair, const std::string& title = "") {
+    if (height < 2 || width < 4) return; // Minimum size to draw a box
+    
+    // Set color if available
+    if (has_colors() && color_pair > 0) {
+        wattron(win, COLOR_PAIR(color_pair));
+    }
+    
+    // Draw top border
+    mvwaddch(win, y, x, ACS_ULCORNER); // ╭ or ┌
+    mvwaddch(win, y, x + width - 1, ACS_URCORNER); // ╮ or ┐
+    
+    // Draw top horizontal line with optional title
+    for (int i = 1; i < width - 1; ++i) {
+        mvwaddch(win, y, x + i, ACS_HLINE); // ─
+    }
+    
+    // Add title if provided
+    if (!title.empty() && (int)title.length() + 4 < width) {
+        std::string title_str = " " + title + " ";
+        mvwaddstr(win, y, x + 2, const_cast<char*>(title_str.c_str()));
+    }
+    
+    // Draw sides and content area
+    for (int i = 1; i < height - 1; ++i) {
+        mvwaddch(win, y + i, x, ACS_VLINE); // │
+        mvwaddch(win, y + i, x + width - 1, ACS_VLINE); // │
+        
+        // Clear the content area
+        for (int j = 1; j < width - 1; ++j) {
+            mvwaddch(win, y + i, x + j, ' ');
+        }
+    }
+    
+    // Draw bottom border
+    mvwaddch(win, y + height - 1, x, ACS_LLCORNER); // ╰ or └
+    mvwaddch(win, y + height - 1, x + width - 1, ACS_LRCORNER); // ╯ or ┘
+    
+    for (int i = 1; i < width - 1; ++i) {
+        mvwaddch(win, y + height - 1, x + i, ACS_HLINE); // ─
+    }
+    
+    // Reset attributes
+    if (has_colors() && color_pair > 0) {
+        wattroff(win, COLOR_PAIR(color_pair));
+    }
+}
 
 // UI State for state machine
 enum class UIState {
@@ -418,8 +468,8 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
     bool ctrl_c_pressed_recently = false;
 
     // Helper function to add a line to output buffer
-    auto add_output_line = [&](const std::string& text, int color = 0) {
-        output_buffer.emplace_back(text, color);
+    auto add_output_line = [&](const std::string& text, int color = 0, bool box_content = false) {
+        output_buffer.emplace_back(text, color, box_content);
         scroll_offset = 0;  // Auto-scroll to bottom on new output
     };
 
@@ -435,14 +485,121 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
 
         // Draw visible lines
         int y = 0;
-        for (int i = start_line; i < end_line; ++i) {
-            const auto& line = output_buffer[i];
-            if (has_colors() && line.color_pair > 0) {
-                wattron(output_win, COLOR_PAIR(line.color_pair));
-                mvwprintw(output_win, y++, 0, "%s", line.text.c_str());
-                wattroff(output_win, COLOR_PAIR(line.color_pair));
+        int output_width = max_x; // Get the width of the output window
+        int current_line = start_line;
+        
+        while (y < output_height && current_line < end_line) {
+            const auto& line = output_buffer[current_line];
+            
+            if (line.is_box_content) {
+                // Find the complete box by collecting all lines that belong to the same box
+                std::vector<std::string> box_lines;
+                int box_start_line = current_line;
+                
+                // Collect all consecutive box content lines
+                while (current_line < end_line && 
+                       output_buffer[current_line].is_box_content) {
+                    // Handle line wrapping for long text
+                    std::string text = output_buffer[current_line].text;
+                    int max_line_width = output_width - 6; // Account for borders and margin
+                    
+                    if (text.length() <= max_line_width) {
+                        box_lines.push_back(text);
+                    } else {
+                        // Wrap the line if it's too long
+                        int pos = 0;
+                        while (pos < text.length()) {
+                            int len = std::min(max_line_width, (int)text.length() - pos);
+                            box_lines.push_back(text.substr(pos, len));
+                            pos += len;
+                        }
+                    }
+                    current_line++;
+                }
+                
+                // Calculate box dimensions
+                int box_height = box_lines.size() + 2; // +2 for top and bottom borders
+                int box_width = output_width - 2; // Leave margin
+                
+                // Adjust if box is too large
+                if (box_height > output_height - y) {
+                    box_height = output_height - y;
+                }
+                
+                // Find the title for the box - look for context in previous lines
+                std::string title = "Response";
+                if (box_start_line > 0) {
+                    // Look back for context that would determine the title
+                    int search_back = std::min(5, box_start_line); // Search at most 5 lines back
+                    for (int i = box_start_line - 1; i >= box_start_line - search_back && i >= 0; i--) {
+                        const std::string& prev_text = output_buffer[i].text;
+                        if (prev_text.find("Tool Execution Request:") != std::string::npos) {
+                            title = "Tool Request";
+                            break;
+                        } else if (prev_text.find("[Info:") != std::string::npos) {
+                            title = "Info";
+                            break;
+                        } else if (prev_text.find("[Error:") != std::string::npos) {
+                            title = "Error";
+                            break;
+                        } else if (prev_text.find("[Status:") != std::string::npos) {
+                            title = "Status";
+                            break;
+                        }
+                    }
+                    // If no special context found, determine from the content itself
+                    if (title == "Response") {
+                        if (box_start_line < output_buffer.size()) {
+                            if (output_buffer[box_start_line].text.find("You:") == 0) {
+                                title = "User Input";
+                            } else if (output_buffer[box_start_line].text.find("AI:") == 0) {
+                                title = "AI Response";
+                            } else if (output_buffer[box_start_line].text.find("[system]:") == 0) {
+                                title = "System";
+                            }
+                        }
+                    }
+                }
+                
+                // Draw the box with appropriate color based on content type
+                int box_color = line.color_pair;
+                if (title == "Error") {
+                    box_color = has_colors() ? 4 : 0;  // Red for errors
+                } else if (title == "Tool Request") {
+                    box_color = has_colors() ? 6 : 0;  // Magenta for tools
+                } else if (title == "Info") {
+                    box_color = has_colors() ? 5 : 0;  // Blue for info
+                } else if (title == "User Input") {
+                    box_color = has_colors() ? 1 : 0;  // Green for user
+                } else if (title == "AI Response") {
+                    box_color = has_colors() ? 2 : 0;  // Cyan for AI
+                }
+                
+                // Draw the box
+                draw_rounded_box(output_win, y, 1, box_height, box_width, box_color, title);
+                
+                // Add the box content lines inside the box
+                for (size_t i = 0; i < box_lines.size() && (int)i + 1 < box_height; ++i) {
+                    if (has_colors() && box_color > 0) {
+                        wattron(output_win, COLOR_PAIR(box_color));
+                        mvwprintw(output_win, y + 1 + i, 3, "%s", box_lines[i].c_str());
+                        wattroff(output_win, COLOR_PAIR(box_color));
+                    } else {
+                        mvwprintw(output_win, y + 1 + i, 3, "%s", box_lines[i].c_str());
+                    }
+                }
+                
+                y += box_height; // Move y position by the box height
             } else {
-                mvwprintw(output_win, y++, 0, "%s", line.text.c_str());
+                // Regular line (not in a box)
+                if (has_colors() && line.color_pair > 0) {
+                    wattron(output_win, COLOR_PAIR(line.color_pair));
+                    mvwprintw(output_win, y++, 0, "%s", line.text.c_str());
+                    wattroff(output_win, COLOR_PAIR(line.color_pair));
+                } else {
+                    mvwprintw(output_win, y++, 0, "%s", line.text.c_str());
+                }
+                current_line++;
             }
         }
 
@@ -583,13 +740,18 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
                     streaming_in_progress = false;
                     streaming_buffer.clear();
                 } else if (!msg.content.empty()) {
-                    add_output_line("AI: " + msg.content, has_colors() ? 2 : 0);
+                    // Create a box for AI responses
+                    // Add a marker line to indicate the start of box content
+                    output_buffer.emplace_back("", 0); // Empty line to separate
+                    // Add the AI response as box content
+                    output_buffer.emplace_back(msg.content, has_colors() ? 2 : 0, true); // Mark as box content
                     redraw_output();
                     redraw_input();
                 }
             }
         } else {
-            add_output_line("[system]: " + msg.content, has_colors() ? 3 : 0);
+            // For system messages, add as box content for distinction
+            output_buffer.emplace_back("[system]: " + msg.content, has_colors() ? 3 : 0, true);
             redraw_output();
             redraw_input();
         }
@@ -615,27 +777,28 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
             auto_approve = all_edits;
         }
 
-        // Display tool group
-        add_output_line("", 0);
-        add_output_line("[Tool Execution Request:]", has_colors() ? 6 : 0);
-        add_output_line("  Group ID: " + std::to_string(group.id), has_colors() ? 6 : 0);
+        // Display tool group in a box
+        // Add a marker line to indicate the start of a new section
+        output_buffer.emplace_back("", 0); // Empty line to separate
+        output_buffer.emplace_back("[Tool Execution Request:]", has_colors() ? 6 : 0, true);
+        output_buffer.emplace_back("  Group ID: " + std::to_string(group.id), has_colors() ? 6 : 0, true);
 
         for (const auto& tool : group.tools) {
-            add_output_line("    - " + tool.tool_name + " (ID: " + tool.tool_id + ")", has_colors() ? 6 : 0);
+            output_buffer.emplace_back("    - " + tool.tool_name + " (ID: " + tool.tool_id + ")", has_colors() ? 6 : 0, true);
 
             if (tool.confirmation_details.has_value()) {
-                add_output_line("      Details: " + tool.confirmation_details->message, has_colors() ? 5 : 0);
+                output_buffer.emplace_back("      Details: " + tool.confirmation_details->message, has_colors() ? 5 : 0, true);
             }
 
             if (!tool.args.empty()) {
-                add_output_line("      Arguments:", has_colors() ? 5 : 0);
+                output_buffer.emplace_back("      Arguments:", has_colors() ? 5 : 0, true);
                 for (const auto& [key, value] : tool.args) {
                     std::string arg_line = "        " + key + ": " + value;
                     // Truncate very long argument values
                     if (arg_line.length() > 120) {
                         arg_line = arg_line.substr(0, 117) + "...";
                     }
-                    add_output_line(arg_line, has_colors() ? 5 : 0);
+                    output_buffer.emplace_back(arg_line, has_colors() ? 5 : 0, true);
                 }
             }
         }
@@ -644,19 +807,19 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
 
         if (auto_approve) {
             // Auto-approve based on permission mode
-            add_output_line("  [Auto-approved by " + std::string(permission_mode_to_string(permission_mode)) + " mode]", has_colors() ? 3 : 0);
+            output_buffer.emplace_back("  [Auto-approved by " + std::string(permission_mode_to_string(permission_mode)) + " mode]", has_colors() ? 3 : 0, true);
             redraw_output();
 
             for (const auto& tool : group.tools) {
                 client.send_tool_approval(tool.tool_id, true);
-                add_output_line("  ✓ Approved: " + tool.tool_name, has_colors() ? 1 : 0);
+                output_buffer.emplace_back("  ✓ Approved: " + tool.tool_name, has_colors() ? 1 : 0, true);
             }
             redraw_output();
             redraw_input();
         } else {
             // Request user approval - set state and store pending group
-            add_output_line("", 0);
-            add_output_line("Approve tools? [y]es / [n]o / [d]iscuss", has_colors() ? 3 : 0);
+            output_buffer.emplace_back("", 0); // Empty line to separate
+            output_buffer.emplace_back("Approve tools? [y]es / [n]o / [d]iscuss", has_colors() ? 3 : 0, true);
             redraw_output();
             redraw_status("Waiting for approval (y/n/d)");
 
@@ -680,19 +843,19 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
         if (msg.message.has_value()) {
             status_line += " " + msg.message.value();
         }
-        add_output_line(status_line, has_colors() ? 3 : 0);
+        output_buffer.emplace_back(status_line, has_colors() ? 3 : 0, true);
         redraw_output();
         redraw_input();
     };
 
     ncurses_handlers.on_info = [&](const Qwen::InfoMessage& msg) {
-        add_output_line("[Info: " + msg.message + "]", has_colors() ? 5 : 0);
+        output_buffer.emplace_back("[Info: " + msg.message + "]", has_colors() ? 5 : 0, true);
         redraw_output();
         redraw_input();
     };
 
     ncurses_handlers.on_error = [&](const Qwen::ErrorMessage& msg) {
-        add_output_line("[Error: " + msg.message + "]", has_colors() ? 4 : 0);
+        output_buffer.emplace_back("[Error: " + msg.message + "]", has_colors() ? 4 : 0, true);
         redraw_output();
         redraw_input();
     };
@@ -709,7 +872,7 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
             stats_line += ", Duration: " + stats.duration;
         }
         stats_line += "]";
-        add_output_line(stats_line, has_colors() ? 3 : 0);
+        output_buffer.emplace_back(stats_line, has_colors() ? 3 : 0, true);
         redraw_output();
         redraw_input();
     };
