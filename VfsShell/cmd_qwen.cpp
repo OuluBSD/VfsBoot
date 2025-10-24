@@ -655,6 +655,10 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
             add_output_line("Approve tools? [y]es / [n]o / [d]iscuss", has_colors() ? 3 : 0);
             redraw_output();
             redraw_status("Waiting for approval (y/n/d)");
+
+            // Clear input buffer and disable input field while waiting
+            input_buffer.clear();
+            cursor_pos = 0;
             redraw_input();
 
             // Store pending tool group and change state
@@ -822,7 +826,7 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
                 continue;
             }
 
-            // Handle tool approval state
+            // Handle tool approval state - BLOCKS all other input!
             if (ui_state == UIState::ToolApproval && has_pending_tool_group) {
                 bool handled = false;
                 bool approved = false;
@@ -842,6 +846,10 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
                     ui_state = UIState::Discuss;
                     redraw_status("Discuss mode");
                     redraw_input();
+                    continue;
+                } else {
+                    // In ToolApproval state but got a different key - ignore it completely
+                    // This prevents keys from being added to input buffer
                     continue;
                 }
 
