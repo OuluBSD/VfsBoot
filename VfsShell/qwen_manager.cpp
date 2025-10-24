@@ -1569,7 +1569,8 @@ bool QwenManager::run_ncurses_mode() {
             // Highlight selected session
             if (i == selected_session_idx) {
                 line = "> " + line;  // Add selection indicator
-                session_list_buffer.emplace_back(line, has_colors() ? 7 : 0);  // White for selected
+                // Use negative color_pair as a flag to enable A_REVERSE attribute
+                session_list_buffer.emplace_back(line, -(has_colors() ? color_pair : 7));
             } else {
                 session_list_buffer.emplace_back("  " + line, color_pair);
             }
@@ -1590,7 +1591,21 @@ bool QwenManager::run_ncurses_mode() {
         int y = 0;
         for (int i = start_line; i < end_line; ++i) {
             const auto& line = session_list_buffer[i];
-            if (has_colors() && line.color_pair > 0) {
+            // Negative color_pair means selected (use A_REVERSE)
+            if (line.color_pair < 0) {
+                int actual_color = -line.color_pair;
+                if (has_colors() && actual_color > 0) {
+                    wattron(list_win, COLOR_PAIR(actual_color) | A_REVERSE);
+                } else {
+                    wattron(list_win, A_REVERSE);
+                }
+                mvwprintw(list_win, y++, 0, "%s", line.text.c_str());
+                if (has_colors() && actual_color > 0) {
+                    wattroff(list_win, COLOR_PAIR(actual_color) | A_REVERSE);
+                } else {
+                    wattroff(list_win, A_REVERSE);
+                }
+            } else if (has_colors() && line.color_pair > 0) {
                 wattron(list_win, COLOR_PAIR(line.color_pair));
                 mvwprintw(list_win, y++, 0, "%s", line.text.c_str());
                 wattroff(list_win, COLOR_PAIR(line.color_pair));
@@ -1804,11 +1819,21 @@ bool QwenManager::run_ncurses_mode() {
                     if (list_focused && next_ch == 65) {  // Up arrow
                         if (selected_session_idx > 1) {  // Skip header lines
                             selected_session_idx--;
+                        } else {
+                            // Rollover to bottom
+                            selected_session_idx = sessions_.size();  // Last session
                         }
+                        update_session_list();
+                        redraw_session_list();
                     } else if (list_focused && next_ch == 66) {  // Down arrow
-                        if (selected_session_idx < (int)sessions_.size() - 1) {
+                        if (selected_session_idx < (int)sessions_.size()) {
                             selected_session_idx++;
+                        } else {
+                            // Rollover to top (first session after header)
+                            selected_session_idx = 1;
                         }
+                        update_session_list();
+                        redraw_session_list();
                     }
                     continue;
                 }
@@ -1854,15 +1879,21 @@ bool QwenManager::run_ncurses_mode() {
                 if (ch == KEY_UP || ch == 65) {  // Up arrow
                     if (selected_session_idx > 1) {  // Skip header lines
                         selected_session_idx--;
-                        update_session_list();  // Redraw with new selection
-                        redraw_session_list();
+                    } else {
+                        // Rollover to bottom
+                        selected_session_idx = sessions_.size();  // Last session
                     }
+                    update_session_list();  // Redraw with new selection
+                    redraw_session_list();
                 } else if (ch == KEY_DOWN || ch == 66) {  // Down arrow
-                    if (selected_session_idx < (int)sessions_.size() + 1) {  // +1 to account for headers
+                    if (selected_session_idx < (int)sessions_.size()) {
                         selected_session_idx++;
-                        update_session_list();  // Redraw with new selection
-                        redraw_session_list();
+                    } else {
+                        // Rollover to top (first session after header)
+                        selected_session_idx = 1;
                     }
+                    update_session_list();  // Redraw with new selection
+                    redraw_session_list();
                 } else if (ch == '\n' || ch == KEY_ENTER || ch == 13) {
                     // Enter on a selected session to switch to that session's chat view
                     if (selected_session_idx >= 2 && selected_session_idx < (int)sessions_.size() + 2) {  // Account for header
@@ -2008,6 +2039,47 @@ bool QwenManager::run_ncurses_mode() {
                         } else if (input_buffer == "/clear") {
                             target_buffer->clear();
                             target_buffer->emplace_back("Session buffer cleared", has_colors() ? 5 : 0);
+                            redraw_chat_window();
+                        } else if (input_buffer == "start-server") {
+                            // Start ai-server in the manager directory
+                            target_buffer->emplace_back("You: start-server", has_colors() ? 7 : 0);
+                            target_buffer->emplace_back("Starting ai-server in directory: " + config_.management_repo_path, has_colors() ? 3 : 0);
+
+                            // Fork and exec to start ai-server
+                            pid_t pid = fork();
+                            if (pid == 0) {
+                                // Child process
+                                // Change to manager directory
+                                if (chdir(config_.management_repo_path.c_str()) != 0) {
+                                    std::cerr << "Failed to change directory to " << config_.management_repo_path << std::endl;
+                                    exit(1);
+                                }
+
+                                // Start ai-server (assuming it's in PATH or in the directory)
+                                // Redirect output to a log file
+                                int fd = open("ai-server.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
+                                if (fd >= 0) {
+                                    dup2(fd, STDOUT_FILENO);
+                                    dup2(fd, STDERR_FILENO);
+                                    close(fd);
+                                }
+
+                                // Execute ai-server
+                                std::string port_str = std::to_string(config_.tcp_port);
+                                execlp("./vfsh", "./vfsh", "qwen", "--port", port_str.c_str(), nullptr);
+
+                                // If exec fails
+                                std::cerr << "Failed to execute ./vfsh qwen" << std::endl;
+                                exit(1);
+                            } else if (pid > 0) {
+                                // Parent process
+                                target_buffer->emplace_back("ai-server started with PID: " + std::to_string(pid), has_colors() ? 2 : 0);
+                                target_buffer->emplace_back("  Command: ./vfsh qwen --port " + std::to_string(config_.tcp_port), has_colors() ? 7 : 0);
+                                target_buffer->emplace_back("  Log file: " + config_.management_repo_path + "/ai-server.log", has_colors() ? 7 : 0);
+                            } else {
+                                // Fork failed
+                                target_buffer->emplace_back("Failed to fork process for ai-server", has_colors() ? 4 : 0);
+                            }
                             redraw_chat_window();
                         } else if (input_buffer == "/auto") {
                             // Switch back to automatic mode
@@ -2395,8 +2467,18 @@ bool QwenManager::run_ncurses_mode() {
                                     // Better error message explaining why commands can't be executed
                                     target_buffer->emplace_back(ai_prefix + ": Cannot execute command - actual AI integration not yet available.", has_colors() ? 4 : 0);
                                     target_buffer->emplace_back("  Reason: Worker sessions are not running.", has_colors() ? 4 : 0);
-                                    target_buffer->emplace_back("  To fix: Ensure Manager directory is set (reg.set /Manager/Path ~/Dev/Manager)", has_colors() ? 3 : 0);
-                                    target_buffer->emplace_back("         Then start worker sessions for your repositories.", has_colors() ? 3 : 0);
+
+                                    // Offer to start ai-server for PROJECT_MANAGER and TASK_MANAGER
+                                    if (active_session->type == SessionType::MANAGER_PROJECT ||
+                                        active_session->type == SessionType::MANAGER_TASK) {
+                                        target_buffer->emplace_back("", 0);
+                                        target_buffer->emplace_back("Would you like to start ai-server in the manager directory?", has_colors() ? 3 : 0);
+                                        target_buffer->emplace_back("  Directory: " + config_.management_repo_path, has_colors() ? 7 : 0);
+                                        target_buffer->emplace_back("  Type 'start-server' to launch, or any other text to skip.", has_colors() ? 3 : 0);
+                                    } else {
+                                        target_buffer->emplace_back("  To fix: Ensure Manager directory is set (reg.set /Manager/Path ~/Dev/Manager)", has_colors() ? 3 : 0);
+                                        target_buffer->emplace_back("         Then start worker sessions for your repositories.", has_colors() ? 3 : 0);
+                                    }
                                 } else {
                                     target_buffer->emplace_back("AI: Cannot execute command - session not found.", has_colors() ? 4 : 0);
                                 }
