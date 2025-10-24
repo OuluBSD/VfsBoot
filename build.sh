@@ -139,9 +139,11 @@ build_umk() {
     # -d = debug, -r = release, -s = shared, -v = verbose
     local flags=""
     local buildmethod="CLANG.bm"
+    local defines=""
 
     if [ "$BUILD_TYPE" = "debug" ]; then
         flags="-ds"  # debug + shared
+        defines="+DEBUG_FULL"
     else
         flags="-rs"  # release + shared
     fi
@@ -153,9 +155,9 @@ build_umk() {
     # Check if ~/upp/uppsrc exists
     if [ ! -d ~/upp/uppsrc ]; then
         echo -e "${YELLOW}Warning: ~/upp/uppsrc not found, using current directory only${NC}"
-        "$umk_cmd" .,. VfsShell "$buildmethod" "$flags" ./vfsh
+        "$umk_cmd" .,. VfsShell "$buildmethod" "$flags" "$defines" ./vfsh
     else
-        "$umk_cmd" .,~/upp/uppsrc VfsShell "$buildmethod" "$flags" ./vfsh
+        "$umk_cmd" .,~/upp/uppsrc VfsShell "$buildmethod" "$flags" "$defines" ./vfsh
     fi
 }
 
@@ -177,36 +179,41 @@ build_cmake() {
     fi
 
     mkdir -p "$build_dir"
-    cd "$build_dir"
 
-    # Configure
-    local cmake_build_type="Release"
-    if [ "$BUILD_TYPE" = "debug" ]; then
-        cmake_build_type="Debug"
-    fi
+    # Use subshell to ensure we return to original directory
+    (
+        cd "$build_dir" || exit 1
 
-    local cmake_flags="-DCMAKE_BUILD_TYPE=$cmake_build_type"
-    if [ "$VERBOSE" = "1" ]; then
-        cmake_flags="$cmake_flags -DCMAKE_VERBOSE_MAKEFILE=ON"
-    fi
+        # Configure
+        local cmake_build_type="Release"
+        if [ "$BUILD_TYPE" = "debug" ]; then
+            cmake_build_type="Debug"
+        fi
 
-    "$cmake_cmd" .. $cmake_flags
+        local cmake_flags="-DCMAKE_BUILD_TYPE=$cmake_build_type"
+        if [ "$VERBOSE" = "1" ]; then
+            cmake_flags="$cmake_flags -DCMAKE_VERBOSE_MAKEFILE=ON"
+        fi
 
-    # Build
-    local make_flags="-j$(nproc 2>/dev/null || echo 4)"
-    if [ "$VERBOSE" = "1" ]; then
-        make_flags="$make_flags VERBOSE=1"
-    fi
+        "$cmake_cmd" .. $cmake_flags || exit 1
 
-    "$cmake_cmd" --build . $make_flags
+        # Build
+        local make_flags=""
+        if [ "$VERBOSE" = "1" ]; then
+            make_flags="-- VERBOSE=1"
+        fi
 
-    # Copy binary to root
-    if [ -f vfsh ]; then
-        cp vfsh ..
-        echo -e "${GREEN}Binary copied to: $(pwd)/../vfsh${NC}"
-    fi
+        "$cmake_cmd" --build . -j$(nproc 2>/dev/null || echo 4) $make_flags || exit 1
 
-    cd ..
+        # Copy binary to root
+        if [ -f vfsh ]; then
+            cp vfsh .. || exit 1
+            echo -e "${GREEN}Binary copied to: $(pwd)/../vfsh${NC}"
+        else
+            echo -e "${RED}Error: vfsh binary not found after build${NC}" >&2
+            exit 1
+        fi
+    ) || return 1
 }
 
 # Build with Make
