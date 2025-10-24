@@ -150,7 +150,16 @@ echo ""
 
 # Start the server
 cd "$QWEN_CODE_DIR"
-node packages/cli/dist/index.js --server-mode tcp --tcp-port "$TCP_PORT" &
+
+# Build command line args
+SERVER_ARGS="--server-mode tcp --tcp-port $TCP_PORT"
+
+# Add model override for OpenAI (OpenAI expects gpt-* models, not coder-model)
+if [ "$AUTH_MODE" = "openai" ]; then
+  SERVER_ARGS="$SERVER_ARGS --model gpt-4o-mini"
+fi
+
+node packages/cli/dist/index.js $SERVER_ARGS &
 SERVER_PID=$!
 
 # Wait for the server to exit
