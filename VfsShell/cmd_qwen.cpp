@@ -2,6 +2,8 @@
 #include "qwen_manager.h"
 #include <termios.h>
 #include <unistd.h>
+#include <csignal>
+#include <atomic>
 
 #ifdef CODEX_UI_NCURSES
 #include <ncurses.h>
@@ -407,7 +409,31 @@ const char* permission_mode_to_string(PermissionMode mode) {
     return "UNKNOWN";
 }
 
+// Signal handling for ncurses mode
+static std::atomic<bool> g_ncurses_sigint_received{false};
+static struct sigaction g_old_sigint_handler;
+
+static void ncurses_sigint_handler(int /*sig*/) {
+    g_ncurses_sigint_received.store(true);
+}
+
+static void install_ncurses_signal_handler() {
+    g_ncurses_sigint_received.store(false);
+    struct sigaction sa;
+    sa.sa_handler = ncurses_sigint_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGINT, &sa, &g_old_sigint_handler);
+}
+
+static void restore_signal_handler() {
+    sigaction(SIGINT, &g_old_sigint_handler, nullptr);
+}
+
 bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, const QwenConfig& config) {
+    // Install signal handler to catch Ctrl+C
+    install_ncurses_signal_handler();
+
     // Initialize ncurses
     initscr();
     cbreak();
@@ -940,6 +966,15 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
 
     // Main event loop
     while (!should_exit && client.is_running()) {
+        // Check for SIGINT (Ctrl+C from terminal)
+        if (g_ncurses_sigint_received.load()) {
+            add_output_line("^C (received interrupt signal, exiting qwen...)", has_colors() ? 3 : 0);
+            redraw_output();
+            state_mgr.save_session();
+            should_exit = true;
+            break;
+        }
+
         // Poll for incoming messages (non-blocking)
         client.poll_messages(0);
 
@@ -1255,7 +1290,10 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
     delwin(status_win);
     delwin(input_win);
     endwin();
-    
+
+    // Restore original signal handler
+    restore_signal_handler();
+
     return true;
 }
 #endif
@@ -1275,8 +1313,8 @@ void cmd_qwen(const std::vector<std::string>& args,
     if (opts.manager_mode) {
         Qwen::QwenManagerConfig manager_config;
         manager_config.tcp_port = 7778;  // Default manager port
-        manager_config.management_repo_path = config.workspace_root.empty() ? 
-                                             vfs.get_cwd() : config.workspace_root;
+        manager_config.management_repo_path = opts.workspace_root.empty() ?
+                                             "." : opts.workspace_root;
         
         Qwen::QwenManager manager(&vfs);
         if (!manager.initialize(manager_config)) {
