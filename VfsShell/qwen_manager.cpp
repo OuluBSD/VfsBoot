@@ -2382,7 +2382,7 @@ bool QwenManager::run_ncurses_mode() {
                             } else {
                                 // Handle regular sessions (MANAGER_PROJECT, MANAGER_TASK)
                                 target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
-                                
+
                                 // In a real implementation, this is where we would send the input to the appropriate AI session
                                 // For now, we'll just show a response placeholder
                                 if (active_session) {
@@ -2391,11 +2391,14 @@ bool QwenManager::run_ncurses_mode() {
                                                            active_session->type == SessionType::ACCOUNT ? "ACCOUNT" :
                                                            active_session->type == SessionType::REPO_MANAGER ? "REPO_MGR" :
                                                            active_session->type == SessionType::REPO_WORKER ? "REPO_WRK" : "AI";
-                                    
-                                    // Placeholder response - in a real implementation, this would go to the actual qwen session
-                                    target_buffer->emplace_back(ai_prefix + ": Processing request (actual AI integration pending)", has_colors() ? 6 : 0);
+
+                                    // Better error message explaining why commands can't be executed
+                                    target_buffer->emplace_back(ai_prefix + ": Cannot execute command - actual AI integration not yet available.", has_colors() ? 4 : 0);
+                                    target_buffer->emplace_back("  Reason: Worker sessions are not running.", has_colors() ? 4 : 0);
+                                    target_buffer->emplace_back("  To fix: Ensure Manager directory is set (reg.set /Manager/Path ~/Dev/Manager)", has_colors() ? 3 : 0);
+                                    target_buffer->emplace_back("         Then start worker sessions for your repositories.", has_colors() ? 3 : 0);
                                 } else {
-                                    target_buffer->emplace_back("AI: Processing request (session not found)", has_colors() ? 6 : 0);
+                                    target_buffer->emplace_back("AI: Cannot execute command - session not found.", has_colors() ? 4 : 0);
                                 }
                             }
                             
@@ -2441,12 +2444,25 @@ bool QwenManager::run_ncurses_mode() {
                 else if (ch == KEY_HOME || ch == 1) {
                     cursor_pos = 0;
                     redraw_input();
-                } 
+                }
                 // Handle END or Ctrl+E
                 else if (ch == KEY_END || ch == 5) {
                     cursor_pos = input_buffer.length();
                     redraw_input();
-                } 
+                }
+                // Handle Ctrl+U (clear entire line)
+                else if (ch == 21) {  // Ctrl+U
+                    input_buffer.clear();
+                    cursor_pos = 0;
+                    redraw_input();
+                }
+                // Handle Ctrl+K (kill to end of line)
+                else if (ch == 11) {  // Ctrl+K
+                    if (cursor_pos < input_buffer.length()) {
+                        input_buffer.erase(cursor_pos);
+                        redraw_input();
+                    }
+                }
                 // Handle Ctrl+C
                 else if (ch == 3) {  // Ctrl+C
                     // Double Ctrl+C pattern: first press clears input, second press exits

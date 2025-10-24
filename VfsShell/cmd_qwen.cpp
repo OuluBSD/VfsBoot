@@ -1,5 +1,6 @@
 #include "VfsShell.h"
 #include "qwen_manager.h"
+#include "registry.h"
 #include <termios.h>
 #include <unistd.h>
 #include <csignal>
@@ -8,6 +9,9 @@
 #ifdef CODEX_UI_NCURSES
 #include <ncurses.h>
 #endif
+
+// External registry from main.cpp
+extern Registry g_registry;
 
 namespace QwenCmd {
 
@@ -1210,6 +1214,17 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
                 // End or Ctrl+E - move to end
                 cursor_pos = input_buffer.length();
                 redraw_input();
+            } else if (ch == 21) {  // Ctrl+U
+                // Clear entire line
+                input_buffer.clear();
+                cursor_pos = 0;
+                redraw_input();
+            } else if (ch == 11) {  // Ctrl+K
+                // Kill to end of line
+                if (cursor_pos < input_buffer.length()) {
+                    input_buffer.erase(cursor_pos);
+                    redraw_input();
+                }
             } else if (ch == 3) {  // Ctrl+C
                 // Double Ctrl+C pattern: first press detaches, second press exits vfsh
                 auto now = std::chrono::steady_clock::now();
@@ -1348,9 +1363,17 @@ void cmd_qwen(const std::vector<std::string>& args,
     if (opts.manager_mode) {
         Qwen::QwenManagerConfig manager_config;
         manager_config.tcp_port = opts.port;  // Use port from command-line args
-        manager_config.management_repo_path = opts.workspace_root.empty() ?
-                                             "." : opts.workspace_root;
-        
+
+        // Try to read /Manager/Path from registry first, then fall back to command-line or default
+        std::string registry_path = g_registry.getValue("/Manager/Path");
+        if (!registry_path.empty()) {
+            manager_config.management_repo_path = registry_path;
+        } else if (!opts.workspace_root.empty()) {
+            manager_config.management_repo_path = opts.workspace_root;
+        } else {
+            manager_config.management_repo_path = ".";
+        }
+
         Qwen::QwenManager manager(&vfs);
         if (!manager.initialize(manager_config)) {
             std::cout << Color::RED << "Failed to initialize manager mode." << Color::RESET << "\n";
