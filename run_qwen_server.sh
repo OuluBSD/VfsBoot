@@ -14,9 +14,6 @@ set -e
 # Track server PID for cleanup
 SERVER_PID=""
 
-# Track settings file backup
-SETTINGS_BACKUP=""
-
 # Trap Ctrl+C and cleanup
 cleanup() {
   echo ""
@@ -43,12 +40,6 @@ cleanup() {
         sleep 0.2
       fi
     fi
-  fi
-
-  # Restore settings file if we backed it up
-  if [ -n "$SETTINGS_BACKUP" ] && [ -f "$SETTINGS_BACKUP" ]; then
-    echo "Restoring original settings..."
-    mv "$SETTINGS_BACKUP" ~/.qwen/settings.json
   fi
 
   echo "Server stopped."
@@ -129,13 +120,11 @@ if [ "$AUTH_MODE" = "openai" ]; then
     export OPENAI_API_KEY=$(cat ~/openai-key.txt)
   fi
 
-  # Temporarily override qwen-code settings to use OpenAI
-  if [ -f ~/.qwen/settings.json ]; then
-    SETTINGS_BACKUP=$(mktemp)
-    cp ~/.qwen/settings.json "$SETTINGS_BACKUP"
-    echo "Temporarily switching qwen-code to OpenAI mode..."
-    echo '{"selectedAuthType":"openai"}' > ~/.qwen/settings.json
-  fi
+  # Set QWEN_AUTH_TYPE to override settings (allows running both auth modes simultaneously)
+  export QWEN_AUTH_TYPE="openai"
+else
+  # For qwen-oauth, explicitly set the auth type
+  export QWEN_AUTH_TYPE="qwen-oauth"
 fi
 
 # Print startup message
