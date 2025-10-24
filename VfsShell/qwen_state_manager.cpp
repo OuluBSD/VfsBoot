@@ -279,6 +279,27 @@ bool QwenStateManager::session_exists(const std::string& session_id) const {
     return node && node->isDir();
 }
 
+bool QwenStateManager::set_session_model(const std::string& model) {
+    if (current_session_id_.empty()) {
+        return false;
+    }
+
+    // Load current session info
+    auto info_opt = get_session_info(current_session_id_);
+    if (!info_opt) {
+        return false;
+    }
+
+    // Update model
+    SessionInfo info = *info_opt;
+    info.model = model;
+    info.last_modified = get_current_timestamp();
+
+    // Write updated metadata
+    std::string metadata_json = serialize_session_info(info);
+    return write_json_file(get_metadata_path(current_session_id_), metadata_json);
+}
+
 // ============================================================================
 // Conversation History Management
 // ============================================================================

@@ -97,6 +97,9 @@ public:
     // Check if a session exists
     bool session_exists(const std::string& session_id) const;
 
+    // Update model for current session
+    bool set_session_model(const std::string& model);
+
     // ========================================================================
     // Conversation History Management
     // ========================================================================

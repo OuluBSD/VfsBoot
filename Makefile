@@ -98,10 +98,10 @@ sample: $(VFSSHELL_BIN)
 
 # Convenience configuration targets
 release: CXXFLAGS += -DNDEBUG -O3
-release: clean all
+release: all
 
 debug: CXXFLAGS += -O0 -g
-debug: clean all
+debug: all
 
 # Test library
 TEST_LIB := tests/libtest.so

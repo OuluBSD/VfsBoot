@@ -52,6 +52,7 @@ trap cleanup SIGINT SIGTERM
 QWEN_CODE_DIR="/common/active/sblo/Dev/qwen-code"
 TCP_PORT=7774
 AUTH_MODE="qwen-oauth"
+WORKSPACE_DIR=""
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -64,18 +65,24 @@ while [[ $# -gt 0 ]]; do
       TCP_PORT="$2"
       shift 2
       ;;
+    --workspace)
+      WORKSPACE_DIR="$2"
+      shift 2
+      ;;
     --help)
       echo "Usage: $0 [OPTIONS]"
       echo ""
       echo "Options:"
-      echo "  --openai        Use OpenAI (requires OPENAI_API_KEY env var)"
-      echo "  --port PORT     Use custom TCP port (default: 7774)"
-      echo "  --help          Show this help message"
+      echo "  --openai            Use OpenAI (requires OPENAI_API_KEY env var)"
+      echo "  --port PORT         Use custom TCP port (default: 7774)"
+      echo "  --workspace DIR     Set workspace directory (default: current directory)"
+      echo "  --help              Show this help message"
       echo ""
       echo "Examples:"
-      echo "  $0                    # Start with qwen-oauth"
-      echo "  $0 --openai           # Start with OpenAI"
-      echo "  $0 --port 8080        # Start on port 8080"
+      echo "  cd /path/to/project && $0 --openai  # Start in project directory"
+      echo "  $0 --openai                         # Start in current directory"
+      echo "  $0 --port 8080                      # Start on port 8080"
+      echo "  $0 --workspace /path/to/project     # Explicit workspace directory"
       exit 0
       ;;
     *)
@@ -127,6 +134,17 @@ else
   export QWEN_AUTH_TYPE="qwen-oauth"
 fi
 
+# Set workspace directory (default to current directory if not specified)
+if [ -z "$WORKSPACE_DIR" ]; then
+  WORKSPACE_DIR="$(pwd)"
+fi
+
+# Validate workspace directory exists
+if [ ! -d "$WORKSPACE_DIR" ]; then
+  echo "Error: Workspace directory not found: $WORKSPACE_DIR"
+  exit 1
+fi
+
 # Print startup message
 echo "═══════════════════════════════════════════════════════════"
 echo "  qwen-code TCP Server"
@@ -134,6 +152,7 @@ echo "════════════════════════�
 echo ""
 echo "  Authentication: $AUTH_MODE"
 echo "  Port: $TCP_PORT"
+echo "  Workspace: $WORKSPACE_DIR"
 echo ""
 echo "  Connect from VfsBoot:"
 echo "    ./vfsh"
@@ -148,8 +167,8 @@ echo ""
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 
-# Start the server
-cd "$QWEN_CODE_DIR"
+# Start the server (run from workspace directory)
+cd "$WORKSPACE_DIR"
 
 # Build command line args
 SERVER_ARGS="--server-mode tcp --tcp-port $TCP_PORT"
@@ -159,7 +178,7 @@ if [ "$AUTH_MODE" = "openai" ]; then
   SERVER_ARGS="$SERVER_ARGS --model gpt-4o-mini"
 fi
 
-node packages/cli/dist/index.js $SERVER_ARGS &
+node "$QWEN_CODE_DIR/packages/cli/dist/index.js" $SERVER_ARGS &
 SERVER_PID=$!
 
 # Wait for the server to exit

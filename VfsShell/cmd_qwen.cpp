@@ -81,6 +81,15 @@ QwenOptions parse_args(const std::vector<std::string>& args) {
         else if (arg == "--manager" || arg == "-m") {
             opts.manager_mode = true;
         }
+        else if (arg == "--mode" && i + 1 < args.size()) {
+            opts.mode = args[++i];
+        }
+        else if (arg == "--port" && i + 1 < args.size()) {
+            opts.port = std::stoi(args[++i]);
+        }
+        else if (arg == "--host" && i + 1 < args.size()) {
+            opts.host = args[++i];
+        }
     }
 
     return opts;
@@ -129,11 +138,15 @@ void show_help() {
     std::cout << "  qwen --help                   Show this help\n\n";
     std::cout << "Options:\n";
     std::cout << "  --model <name>                AI model to use (default: coder)\n";
-    std::cout << "  --workspace <path>            Workspace root directory\n\n";
+    std::cout << "  --workspace <path>            Workspace root directory\n";
+    std::cout << "  --mode <mode>                 Connection mode: stdin, tcp (default: stdin)\n";
+    std::cout << "  --port <port>                 TCP port for tcp mode (default: 7777)\n";
+    std::cout << "  --host <host>                 TCP host for tcp mode (default: localhost)\n\n";
     std::cout << "Interactive Commands:\n";
     std::cout << "  /detach                       Detach from current session\n";
     std::cout << "  /exit                         Exit and close session\n";
     std::cout << "  /save                         Save session immediately\n";
+    std::cout << "  /clear                        Clear conversation history\n";
     std::cout << "  /help                         Show help\n";
     std::cout << "  /status                       Show session status\n\n";
     std::cout << "Environment Variables:\n";
@@ -308,11 +321,21 @@ bool handle_special_command(const std::string& input, QwenStateManager& state_mg
         return true;
     }
 
+    if (input == "/clear") {
+        if (state_mgr.clear_history()) {
+            std::cout << Color::GREEN << "Conversation history cleared." << Color::RESET << "\n";
+        } else {
+            std::cout << Color::RED << "Failed to clear history." << Color::RESET << "\n";
+        }
+        return true;
+    }
+
     if (input == "/help") {
         std::cout << Color::CYAN << "Interactive Commands:\n" << Color::RESET;
         std::cout << "  /detach   - Detach from session (keeps it running)\n";
         std::cout << "  /exit     - Exit and close session\n";
         std::cout << "  /save     - Save session immediately\n";
+        std::cout << "  /clear    - Clear conversation history\n";
         std::cout << "  /status   - Show session status\n";
         std::cout << "  /help     - Show this help\n";
         return true;
@@ -732,6 +755,11 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
         if (!msg.version.empty()) {
             add_output_line("[Version: " + msg.version + "]", has_colors() ? 5 : 0);
         }
+        // Update session model from server
+        if (!msg.model.empty()) {
+            state_mgr.set_session_model(msg.model);
+            add_output_line("[Model: " + msg.model + "]", has_colors() ? 5 : 0);
+        }
         redraw_output();
         redraw_input();  // Restore cursor to input
     };
@@ -938,6 +966,18 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
             }
             redraw_output();
             return true;
+        } else if (cmd == "/clear") {
+            if (state_mgr.clear_history()) {
+                add_output_line("Conversation history cleared.", has_colors() ? 1 : 0);
+                // Also clear the output buffer to reflect the clean slate
+                output_buffer.clear();
+                scroll_offset = 0;
+                add_output_line("Type /help for commands, /exit to quit, Shift+Tab to cycle permission modes", has_colors() ? 3 : 0);
+            } else {
+                add_output_line("Failed to clear history.", has_colors() ? 4 : 0);
+            }
+            redraw_output();
+            return true;
         } else if (cmd == "/status") {
             add_output_line("Session Status:", has_colors() ? 2 : 0);
             add_output_line("  Session ID: " + state_mgr.get_current_session(), 0);
@@ -952,6 +992,7 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
             add_output_line("  /detach   - Detach from session (keeps it running)", 0);
             add_output_line("  /exit     - Exit and close session", 0);
             add_output_line("  /save     - Save session immediately", 0);
+            add_output_line("  /clear    - Clear conversation history", 0);
             add_output_line("  /status   - Show session status", 0);
             add_output_line("  /help     - Show this help", 0);
             redraw_output();
@@ -1058,13 +1099,7 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
                 if (handled) {
                     // Send approval/rejection for all tools
                     for (const auto& tool : pending_tool_group.tools) {
-                        bool sent = client.send_tool_approval(tool.tool_id, approved);
-
-                        // Debug logging
-                        fprintf(stderr, "[DEBUG] send_tool_approval('%s', %s) = %s\n",
-                                tool.tool_id.c_str(),
-                                approved ? "true" : "false",
-                                sent ? "success" : "FAILED");
+                        client.send_tool_approval(tool.tool_id, approved);
 
                         if (approved) {
                             add_output_line("  ✓ Approved: " + tool.tool_name, has_colors() ? 1 : 0);
@@ -1391,23 +1426,32 @@ void cmd_qwen(const std::vector<std::string>& args,
     client_config.auto_restart = true;
     client_config.verbose = false;  // Disable verbose logging for clean output
 
-    // Note: --server-mode stdin is hardcoded in QwenClient, no need to add it here
+    // Configure connection mode
+    if (opts.mode == "tcp") {
+        client_config.mode = Qwen::CommunicationMode::TCP;
+        client_config.tcp_host = opts.host;
+        client_config.tcp_port = opts.port;
+        std::cout << "Using TCP mode: " << opts.host << ":" << opts.port << "\n";
+    } else {
+        // Default to stdin/stdout mode - spawn qwen-code process
+        client_config.mode = Qwen::CommunicationMode::STDIN_STDOUT;
 
-    // Add model if specified
-    if (!config.model.empty()) {
-        client_config.qwen_args.push_back("--model");
-        client_config.qwen_args.push_back(config.model);
-    }
+        // Add model if specified (only for spawned process)
+        if (!config.model.empty()) {
+            client_config.qwen_args.push_back("--model");
+            client_config.qwen_args.push_back(config.model);
+        }
 
-    // Add workspace argument if specified
-    if (!config.workspace_root.empty()) {
-        client_config.qwen_args.push_back("--workspace-root");
-        client_config.qwen_args.push_back(config.workspace_root);
-    }
+        // Add workspace argument if specified (only for spawned process)
+        if (!config.workspace_root.empty()) {
+            client_config.qwen_args.push_back("--workspace-root");
+            client_config.qwen_args.push_back(config.workspace_root);
+        }
 
-    // Add OpenAI flag if specified
-    if (opts.use_openai) {
-        client_config.qwen_args.push_back("--openai");
+        // Add OpenAI flag if specified (only for spawned process)
+        if (opts.use_openai) {
+            client_config.qwen_args.push_back("--openai");
+        }
     }
 
     // Create client
@@ -1450,6 +1494,11 @@ void cmd_qwen(const std::vector<std::string>& args,
         std::cout << Color::GRAY << "[Connected to qwen-code]" << Color::RESET << "\n";
         if (!msg.version.empty()) {
             std::cout << Color::GRAY << "[Version: " << msg.version << "]" << Color::RESET << "\n";
+        }
+        // Update session model from server
+        if (!msg.model.empty()) {
+            state_mgr.set_session_model(msg.model);
+            std::cout << Color::GRAY << "[Model: " << msg.model << "]" << Color::RESET << "\n";
         }
     };
 
