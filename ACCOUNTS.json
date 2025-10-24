@@ -1,0 +1,20 @@
+{
+  "accounts": [
+    {
+      "id": "account-1",
+      "hostname": "computer-a",
+      "enabled": true,
+      "max_concurrent_repos": 3,
+      "repositories": [
+        {
+          "id": "repo-1",
+          "url": "https://github.com/user/repo1.git",
+          "local_path": "/path/to/local/clone",
+          "enabled": true,
+          "worker_model": "qwen-auth",
+          "manager_model": "qwen-openai"
+        }
+      ]
+    }
+  ]
+}

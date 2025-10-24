@@ -70,10 +70,21 @@ bool QwenManager::initialize(const QwenManagerConfig& config) {
         sessions_.push_back(task_manager);
     }
     
+    // Load account configurations from ACCOUNTS.json
+    if (!load_accounts_config()) {
+        std::cout << "[QwenManager] Warning: Could not load ACCOUNTS.json, continuing with empty config\n";
+    }
+    
     // Start TCP server
     if (!start_tcp_server()) {
         return false;
     }
+    
+    // Start accounts.json watcher with a delay
+    start_accounts_json_watcher();
+    
+    // Generate VFSBOOT.md documentation
+    generate_vfsboot_doc();
     
     running_ = true;
     return true;
@@ -185,6 +196,9 @@ void QwenManager::stop() {
     
     running_ = false;
     
+    // Stop accounts json watcher
+    stop_accounts_json_watcher();
+    
     // Stop TCP server
     stop_tcp_server();
 }
@@ -193,6 +207,106 @@ void QwenManager::stop() {
 void QwenManager::stop_tcp_server() {
     if (tcp_server_) {
         tcp_server_->stop();
+    }
+}
+
+// Auto-generate VFSBOOT.md documentation
+void QwenManager::generate_vfsboot_doc() {
+    std::string content = R"(# VFSBOOT - qwen Manager Documentation
+
+This document provides an overview of the qwen Manager Mode and its components.
+
+## Overview
+
+The qwen Manager Mode enables hierarchical multi-repository AI project management with the following components:
+
+- **PROJECT MANAGER**: Expensive, high-quality AI for strategic decisions (qwen-openai)
+- **TASK MANAGER**: Regular quality AI for task coordination (qwen-auth) 
+- **ACCOUNTS**: Remote computers that connect to the manager
+- **REPOSITORIES**: Individual project repositories managed by worker/manager pairs
+
+## Configuration
+
+The system is configured using `ACCOUNTS.json` which defines accounts, repositories, and their properties.
+
+### ACCOUNTS.json Schema
+
+The configuration file follows this schema:
+
+```json
+{
+  "accounts": [
+    {
+      "id": "unique-account-identifier",
+      "hostname": "computer-hostname-or-ip",
+      "enabled": true,
+      "max_concurrent_repos": 3,
+      "repositories": [
+        {
+          "id": "unique-repo-identifier", 
+          "url": "git-repository-url",
+          "local_path": "/local/path/to/clone",
+          "enabled": true,
+          "worker_model": "qwen-auth",
+          "manager_model": "qwen-openai"
+        }
+      ]
+    }
+  ]
+}
+```
+
+For more details about the schema, see [docs/ACCOUNTS_JSON_SPEC.md](docs/ACCOUNTS_JSON_SPEC.md).
+
+## Communication Protocol
+
+The manager, accounts, and repositories communicate using a JSON-based protocol. For the detailed specification, see [docs/MANAGER_PROTOCOL.md](docs/MANAGER_PROTOCOL.md).
+
+## AI Role Definitions
+
+This system uses specialized AI roles with specific responsibilities:
+
+- [PROJECT_MANAGER.md](PROJECT_MANAGER.md) - Instructions for PROJECT MANAGER AI (qwen-openai)
+- [TASK_MANAGER.md](TASK_MANAGER.md) - Instructions for TASK MANAGER AI (qwen-auth)
+
+## File Locations
+
+- `ACCOUNTS.json` - Main configuration file for defining accounts and repositories
+- `PROJECT_MANAGER.md` - AI instructions for project-level management
+- `TASK_MANAGER.md` - AI instructions for task-level coordination  
+- `docs/ACCOUNTS_JSON_SPEC.md` - Schema specification for configuration
+- `docs/MANAGER_PROTOCOL.md` - Communication protocol specification
+
+## Usage
+
+To start the manager mode:
+
+```bash
+qwen --manager
+# or
+qwen -m
+```
+
+This will initialize the manager, load the account configurations, start the TCP server for account connections, and provide the UI for managing the multi-repository setup.
+)";
+
+    // Write the content to VFSBOOT.md in the VFS
+    if (vfs_) {
+        // Check if VFSBOOT.md already exists
+        Vfs::ReadResult existing = vfs_->read_file("VFSBOOT.md");
+        if (!existing.success || existing.content != content) {
+            // Only write if the file doesn't exist or content has changed
+            vfs_->write_file("VFSBOOT.md", content);
+            std::cout << "[QwenManager] VFSBOOT.md generated successfully\n";
+        }
+    }
+    
+    // Also try to write to the local filesystem as a fallback
+    std::ofstream file("VFSBOOT.md");
+    if (file.is_open()) {
+        file << content;
+        file.close();
+        std::cout << "[QwenManager] VFSBOOT.md written to local filesystem\n";
     }
 }
 
@@ -262,6 +376,458 @@ std::string QwenManager::load_instructions_from_file(const std::string& filename
     // File not found
     std::cout << "[QwenManager] Warning: Could not load instructions file: " << filename << std::endl;
     return "";
+}
+
+// Load accounts configuration from ACCOUNTS.json
+bool QwenManager::load_accounts_config() {
+    std::string json_content = load_instructions_from_file("ACCOUNTS.json");
+    if (json_content.empty()) {
+        std::cout << "[QwenManager] ACCOUNTS.json not found, will create default configuration\n";
+        // Optionally create a default ACCOUNTS.json structure
+        return true;
+    }
+    
+    parse_accounts_json(json_content);
+    return validate_accounts_config();
+}
+
+// Parse ACCOUNTS.json content
+void QwenManager::parse_accounts_json(const std::string& json_content) {
+    // Reset existing configurations
+    std::lock_guard<std::mutex> lock(account_configs_mutex_);
+    account_configs_.clear();
+    
+    if (json_content.empty()) {
+        return;
+    }
+    
+    // Find the start of the accounts array
+    size_t accounts_start = json_content.find("\"accounts\"");
+    if (accounts_start == std::string::npos) {
+        std::cout << "[QwenManager] Warning: No 'accounts' field found in ACCOUNTS.json\n";
+        return;
+    }
+    
+    // Find the beginning of the array after "accounts":
+    size_t array_start = json_content.find('[', accounts_start);
+    if (array_start == std::string::npos) {
+        std::cout << "[QwenManager] Warning: No accounts array found in ACCOUNTS.json\n";
+        return;
+    }
+    
+    // Simple JSON parsing - look for account objects within the array
+    size_t pos = array_start + 1; // After the opening bracket
+    
+    while (pos < json_content.length()) {
+        // Find the start of an account object
+        size_t obj_start = json_content.find('{', pos);
+        if (obj_start == std::string::npos) break;
+        
+        // Find the matching closing brace for this account object
+        int brace_count = 1;
+        size_t obj_end = obj_start + 1;
+        while (obj_end < json_content.length() && brace_count > 0) {
+            if (json_content[obj_end] == '{') {
+                brace_count++;
+            } else if (json_content[obj_end] == '}') {
+                brace_count--;
+            } else if (json_content[obj_end] == '"' && json_content[obj_end-1] != '\\') {
+                // Skip content inside quotes
+                obj_end++;
+                while (obj_end < json_content.length() && json_content[obj_end] != '"') {
+                    if (json_content[obj_end] == '\\' && obj_end + 1 < json_content.length()) {
+                        obj_end += 2; // Skip escaped character
+                        continue;
+                    }
+                    obj_end++;
+                }
+            }
+            obj_end++;
+        }
+        
+        if (brace_count != 0) {
+            std::cout << "[QwenManager] Warning: Mismatched braces in ACCOUNTS.json\n";
+            break;
+        }
+        
+        obj_end--; // Move back to the closing brace
+        
+        // Extract the account object JSON string
+        std::string account_json = json_content.substr(obj_start, obj_end - obj_start + 1);
+        
+        // Parse this account object
+        AccountConfig account = parse_account_object(account_json);
+        if (!account.id.empty()) {  // Only add if parsing was successful
+            account_configs_.push_back(account);
+        }
+        
+        // Look for the next object after a comma
+        pos = json_content.find(',', obj_end);
+        if (pos != std::string::npos) {
+            pos++; // Move past comma
+        } else {
+            break; // No more objects
+        }
+    }
+}
+
+// Parse a single account object from JSON
+AccountConfig QwenManager::parse_account_object(const std::string& account_json) {
+    AccountConfig account;
+    
+    // Extract id
+    std::string id_val = extract_json_field(account_json, "id");
+    if (!id_val.empty()) {
+        account.id = id_val;
+    }
+    
+    // Extract hostname
+    std::string hostname_val = extract_json_field(account_json, "hostname");
+    if (!hostname_val.empty()) {
+        account.hostname = hostname_val;
+    }
+    
+    // Extract enabled status
+    std::string enabled_val = extract_json_field(account_json, "enabled");
+    if (!enabled_val.empty()) {
+        account.enabled = (enabled_val == "true");
+    }
+    
+    // Extract max_concurrent_repos
+    std::string max_concurrent_val = extract_json_field(account_json, "max_concurrent_repos");
+    if (!max_concurrent_val.empty()) {
+        try {
+            account.max_concurrent_repos = std::stoi(max_concurrent_val);
+        } catch (...) {
+            account.max_concurrent_repos = 3; // default
+        }
+    }
+    
+    // Extract repositories array
+    size_t repos_start = account_json.find("\"repositories\"");
+    if (repos_start != std::string::npos) {
+        size_t array_start = account_json.find('[', repos_start);
+        if (array_start != std::string::npos) {
+            size_t pos = array_start + 1;
+            
+            while (pos < account_json.length()) {
+                size_t obj_start = account_json.find('{', pos);
+                if (obj_start == std::string::npos) break;
+                
+                // Find the matching closing brace for this repo object
+                int brace_count = 1;
+                size_t obj_end = obj_start + 1;
+                while (obj_end < account_json.length() && brace_count > 0) {
+                    if (account_json[obj_end] == '{') {
+                        brace_count++;
+                    } else if (account_json[obj_end] == '}') {
+                        brace_count--;
+                    } else if (account_json[obj_end] == '"' && 
+                              (obj_end == 0 || account_json[obj_end-1] != '\\')) {
+                        // Skip content inside quotes
+                        obj_end++;
+                        while (obj_end < account_json.length() && account_json[obj_end] != '"') {
+                            if (account_json[obj_end] == '\\' && obj_end + 1 < account_json.length()) {
+                                obj_end += 2; // Skip escaped character
+                                continue;
+                            }
+                            obj_end++;
+                        }
+                    }
+                    obj_end++;
+                }
+                
+                if (brace_count != 0) {
+                    break;
+                }
+                
+                obj_end--; // Move back to the closing brace
+                
+                // Extract the repo object JSON string
+                std::string repo_json = account_json.substr(obj_start, obj_end - obj_start + 1);
+                
+                // Parse this repo object
+                RepositoryConfig repo = parse_repository_object(repo_json);
+                if (!repo.id.empty()) {  // Only add if parsing was successful
+                    account.repositories.push_back(repo);
+                }
+                
+                // Look for the next object after a comma
+                pos = account_json.find(',', obj_end);
+                if (pos != std::string::npos) {
+                    pos++; // Move past comma
+                } else {
+                    break; // No more objects
+                }
+            }
+        }
+    }
+    
+    return account;
+}
+
+// Parse a single repository object from JSON
+RepositoryConfig QwenManager::parse_repository_object(const std::string& repo_json) {
+    RepositoryConfig repo;
+    
+    // Extract id
+    std::string id_val = extract_json_field(repo_json, "id");
+    if (!id_val.empty()) {
+        repo.id = id_val;
+    }
+    
+    // Extract url
+    std::string url_val = extract_json_field(repo_json, "url");
+    if (!url_val.empty()) {
+        repo.url = url_val;
+    }
+    
+    // Extract local_path
+    std::string path_val = extract_json_field(repo_json, "local_path");
+    if (!path_val.empty()) {
+        repo.local_path = path_val;
+    }
+    
+    // Extract enabled status
+    std::string enabled_val = extract_json_field(repo_json, "enabled");
+    if (!enabled_val.empty()) {
+        repo.enabled = (enabled_val == "true");
+    }
+    
+    // Extract worker_model
+    std::string worker_model_val = extract_json_field(repo_json, "worker_model");
+    if (!worker_model_val.empty()) {
+        repo.worker_model = worker_model_val;
+    }
+    
+    // Extract manager_model
+    std::string manager_model_val = extract_json_field(repo_json, "manager_model");
+    if (!manager_model_val.empty()) {
+        repo.manager_model = manager_model_val;
+    }
+    
+    return repo;
+}
+
+// Helper to extract a field value from JSON string
+std::string QwenManager::extract_json_field(const std::string& json_str, const std::string& field_name) {
+    std::string search = "\"" + field_name + "\"";
+    size_t pos = json_str.find(search);
+    if (pos == std::string::npos) {
+        return "";
+    }
+    
+    pos += search.length();
+    // Skip colon and whitespace
+    while (pos < json_str.length() && (json_str[pos] == ':' || std::isspace(json_str[pos]))) {
+        pos++;
+    }
+    
+    if (pos >= json_str.length()) {
+        return "";
+    }
+    
+    char start_char = json_str[pos];
+    if (start_char == '"') {
+        // String value
+        pos++;
+        size_t end_pos = pos;
+        while (end_pos < json_str.length() && json_str[end_pos] != '"') {
+            if (json_str[end_pos] == '\\' && end_pos + 1 < json_str.length()) {
+                end_pos += 2; // Skip escaped character
+                continue;
+            }
+            end_pos++;
+        }
+        
+        if (end_pos < json_str.length()) {
+            return json_str.substr(pos, end_pos - pos);
+        }
+    } else if (start_char == 't' || start_char == 'f') {
+        // Boolean value
+        if (json_str.substr(pos, 4) == "true") {
+            return "true";
+        } else if (json_str.substr(pos, 5) == "false") {
+            return "false";
+        }
+    } else if (std::isdigit(start_char) || start_char == '-') {
+        // Numeric value
+        size_t end_pos = pos;
+        while (end_pos < json_str.length() && 
+               (std::isdigit(json_str[end_pos]) || json_str[end_pos] == '.' || 
+                json_str[end_pos] == '-' || json_str[end_pos] == '+' || 
+                json_str[end_pos] == 'e' || json_str[end_pos] == 'E')) {
+            end_pos++;
+        }
+        return json_str.substr(pos, end_pos - pos);
+    } else if (start_char == '[' || start_char == '{') {
+        // Array or object - return the entire structure
+        int brace_count = 1;
+        size_t end_pos = pos + 1;
+        char match_char = (start_char == '[') ? ']' : '}';
+        
+        while (end_pos < json_str.length() && brace_count > 0) {
+            if (json_str[end_pos] == '{' || json_str[end_pos] == '[') {
+                brace_count++;
+            } else if (json_str[end_pos] == '}' || json_str[end_pos] == ']') {
+                brace_count--;
+            } else if (json_str[end_pos] == '"' && json_str[end_pos-1] != '\\') {
+                // Skip content inside quotes
+                end_pos++;
+                while (end_pos < json_str.length() && json_str[end_pos] != '"') {
+                    if (json_str[end_pos] == '\\' && end_pos + 1 < json_str.length()) {
+                        end_pos += 2; // Skip escaped character
+                        continue;
+                    }
+                    end_pos++;
+                }
+            }
+            if (brace_count > 0) end_pos++;
+        }
+        
+        if (brace_count == 0) {
+            return json_str.substr(pos, end_pos - pos + 1);
+        }
+    }
+    
+    return "";
+}
+
+// Validate accounts configuration
+bool QwenManager::validate_accounts_config() {
+    std::lock_guard<std::mutex> lock(account_configs_mutex_);
+    
+    for (const auto& account : account_configs_) {
+        if (!validate_account_config(account)) {
+            std::cout << "[QwenManager] Invalid account configuration: " << account.id << std::endl;
+            return false;
+        }
+        
+        for (const auto& repo : account.repositories) {
+            if (!validate_repository_config(repo)) {
+                std::cout << "[QwenManager] Invalid repository configuration: " << repo.id << std::endl;
+                return false;
+            }
+        }
+    }
+    
+    std::cout << "[QwenManager] Account configurations validated successfully (" 
+              << account_configs_.size() << " accounts)" << std::endl;
+    return true;
+}
+
+// Validate account configuration
+bool QwenManager::validate_account_config(const AccountConfig& account) {
+    if (account.id.empty()) {
+        std::cout << "[QwenManager] Account ID cannot be empty" << std::endl;
+        return false;
+    }
+    
+    if (account.hostname.empty()) {
+        std::cout << "[QwenManager] Account hostname cannot be empty" << std::endl;
+        return false;
+    }
+    
+    if (account.max_concurrent_repos <= 0) {
+        std::cout << "[QwenManager] max_concurrent_repos must be positive" << std::endl;
+        return false;
+    }
+    
+    return true;
+}
+
+// Validate repository configuration
+bool QwenManager::validate_repository_config(const RepositoryConfig& repo) {
+    if (repo.id.empty()) {
+        std::cout << "[QwenManager] Repository ID cannot be empty" << std::endl;
+        return false;
+    }
+    
+    if (repo.url.empty()) {
+        std::cout << "[QwenManager] Repository URL cannot be empty" << std::endl;
+        return false;
+    }
+    
+    if (repo.local_path.empty()) {
+        std::cout << "[QwenManager] Repository local path cannot be empty" << std::endl;
+        return false;
+    }
+    
+    return true;
+}
+
+// Start the ACCOUNTS.json file watcher
+void QwenManager::start_accounts_json_watcher() {
+    accounts_watcher_running_ = true;
+    accounts_watcher_thread_ = std::thread(&QwenManager::accounts_json_watcher_thread, this);
+}
+
+// Stop the ACCOUNTS.json file watcher
+void QwenManager::stop_accounts_json_watcher() {
+    if (accounts_watcher_running_) {
+        accounts_watcher_running_ = false;
+        
+        // Notify the watcher thread to stop
+        std::unique_lock<std::mutex> lock(watcher_mutex_);
+        stop_cv_.notify_all();
+    }
+    
+    if (accounts_watcher_thread_.joinable()) {
+        accounts_watcher_thread_.join();
+    }
+}
+
+// Thread function for watching ACCOUNTS.json file changes
+void QwenManager::accounts_json_watcher_thread() {
+    // Initial delay of 10 seconds as specified
+    std::this_thread::sleep_for(std::chrono::seconds(10));
+    
+    std::string last_content;
+    
+    if (vfs_) {
+        Vfs::ReadResult result = vfs_->read_file("ACCOUNTS.json");
+        if (result.success) {
+            last_content = result.content;
+        }
+    }
+    
+    std::cout << "[QwenManager] ACCOUNTS.json watcher started\n";
+    
+    while (accounts_watcher_running_) {
+        // Check if the file has been modified
+        std::string current_content;
+        if (vfs_) {
+            Vfs::ReadResult result = vfs_->read_file("ACCOUNTS.json");
+            if (result.success) {
+                current_content = result.content;
+            }
+        }
+        
+        if (current_content != last_content) {
+            std::cout << "[QwenManager] ACCOUNTS.json has been modified, reloading configuration\n";
+            last_content = current_content;
+            
+            // Parse and validate the new configuration
+            if (!current_content.empty()) {
+                parse_accounts_json(current_content);
+                if (validate_accounts_config()) {
+                    std::cout << "[QwenManager] New ACCOUNTS.json configuration loaded successfully\n";
+                    // TODO: Update any active account connections based on new config
+                } else {
+                    std::cout << "[QwenManager] New ACCOUNTS.json configuration failed validation\n";
+                }
+            }
+        }
+        
+        // Check every 5 seconds
+        std::unique_lock<std::mutex> lock(watcher_mutex_);
+        if (stop_cv_.wait_for(lock, std::chrono::seconds(5), [this] { return !accounts_watcher_running_; })) {
+            // Stop requested
+            break;
+        }
+    }
+    
+    std::cout << "[QwenManager] ACCOUNTS.json watcher stopped\n";
 }
 
 // Helper struct to store colored output lines
