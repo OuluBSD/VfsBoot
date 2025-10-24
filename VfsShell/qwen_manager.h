@@ -76,7 +76,7 @@ struct SessionGroup {
 };
 
 // Structure to represent a session in the manager
-struct SessionInfo {
+struct ManagerSessionInfo {
     std::string session_id;
     SessionType type;
     std::string hostname;
@@ -135,8 +135,8 @@ public:
 private:
     // Session management
     void generate_session_id(std::string& session_id);
-    SessionInfo* find_session(const std::string& session_id);
-    const SessionInfo* find_session(const std::string& session_id) const;
+    ManagerSessionInfo* find_session(const std::string& session_id);
+    const ManagerSessionInfo* find_session(const std::string& session_id) const;
     
     // File I/O
     std::string load_instructions_from_file(const std::string& filename);
@@ -166,7 +166,7 @@ private:
     bool pause_session(const std::string& session_id);
     bool resume_session(const std::string& session_id);
     bool is_session_paused(const std::string& session_id) const;
-    SessionInfo* find_session_by_repo(const std::string& account_id, const std::string& repo_id);
+    ManagerSessionInfo* find_session_by_repo(const std::string& account_id, const std::string& repo_id);
     
     // Session grouping
     std::string create_session_group(const std::string& name, const std::string& description);
@@ -174,7 +174,7 @@ private:
     bool add_session_to_group(const std::string& session_id, const std::string& group_id);
     bool remove_session_from_group(const std::string& session_id, const std::string& group_id);
     std::vector<SessionGroup> list_session_groups() const;
-    std::vector<SessionInfo*> get_sessions_in_group(const std::string& group_id);
+    std::vector<ManagerSessionInfo*> get_sessions_in_group(const std::string& group_id);
     
     // Session snapshots
     bool save_session_snapshot(const std::string& session_id, const std::string& snapshot_name);
@@ -198,20 +198,20 @@ private:
     void stop_tcp_server();
     
     // Session registry
-    std::vector<SessionInfo> sessions_;
-    std::mutex sessions_mutex_;
-    
+    std::vector<ManagerSessionInfo> sessions_;
+    mutable std::mutex sessions_mutex_;
+
     // Session groups
     std::vector<SessionGroup> session_groups_;
-    std::mutex groups_mutex_;
-    
+    mutable std::mutex groups_mutex_;
+
     // Session snapshots
     std::map<std::string, std::vector<SessionSnapshot>> session_snapshots_;  // session_id -> list of snapshots
-    std::mutex snapshots_mutex_;
-    
+    mutable std::mutex snapshots_mutex_;
+
     // Account configurations
     std::vector<AccountConfig> account_configs_;
-    std::mutex account_configs_mutex_;
+    mutable std::mutex account_configs_mutex_;
     
     // TCP server
     std::unique_ptr<QwenTCPServer> tcp_server_;
@@ -227,6 +227,10 @@ private:
     std::condition_variable stop_cv_;
     std::mutex stop_mutex_;
     std::mutex watcher_mutex_;
+    
+    
+    
+    void update_session_list();
 };
 
 } // namespace Qwen

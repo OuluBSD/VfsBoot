@@ -1,22 +1,4 @@
-#include "qwen_manager.h"
-#include "qwen_tcp_server.h"
 #include "VfsShell.h"
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <poll.h>
-#include <thread>
-#include <chrono>
-#include <random>
-#include <sstream>
-#include <iostream>
-#include <fstream>
-
-#ifdef CODEX_UI_NCURSES
-#include <ncurses.h>
-#endif
 
 namespace Qwen {
 
@@ -38,7 +20,7 @@ bool QwenManager::initialize(const QwenManagerConfig& config) {
         std::lock_guard<std::mutex> lock(sessions_mutex_);
         
         // Create PROJECT MANAGER session
-        SessionInfo project_manager;
+        ManagerSessionInfo project_manager;
         project_manager.session_id = "mgr-project";
         project_manager.type = SessionType::MANAGER_PROJECT;
         project_manager.hostname = "local";
@@ -54,7 +36,7 @@ bool QwenManager::initialize(const QwenManagerConfig& config) {
         sessions_.push_back(project_manager);
         
         // Create TASK MANAGER session
-        SessionInfo task_manager;
+        ManagerSessionInfo task_manager;
         task_manager.session_id = "mgr-task";
         task_manager.type = SessionType::MANAGER_TASK;
         task_manager.hostname = "local";
@@ -104,7 +86,7 @@ bool QwenManager::start_tcp_server() {
         {
             std::lock_guard<std::mutex> lock(sessions_mutex_);
             
-            SessionInfo account_session;
+            ManagerSessionInfo account_session;
             account_session.session_id = "acc-" + std::to_string(client_fd);
             account_session.type = SessionType::ACCOUNT;
             account_session.hostname = client_addr;
@@ -147,45 +129,6 @@ bool QwenManager::start_tcp_server() {
     }
     
     return success;
-}
-
-// Generate unique session ID
-void QwenManager::generate_session_id(std::string& session_id) {
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-    static std::uniform_int_distribution<> dis(0, 15);
-    
-    std::stringstream ss;
-    ss << "session-";
-    
-    for (int i = 0; i < 16; ++i) {
-        ss << std::hex << dis(gen);
-        if (i == 7 || i == 11) {
-            ss << '-';
-        }
-    }
-    
-    session_id = ss.str();
-}
-
-// Find session by ID (non-const)
-SessionInfo* QwenManager::find_session(const std::string& session_id) {
-    for (auto& session : sessions_) {
-        if (session.session_id == session_id) {
-            return &session;
-        }
-    }
-    return nullptr;
-}
-
-// Find session by ID (const)
-const SessionInfo* QwenManager::find_session(const std::string& session_id) const {
-    for (const auto& session : sessions_) {
-        if (session.session_id == session_id) {
-            return &session;
-        }
-    }
-    return nullptr;
 }
 
 // Stop the manager
@@ -293,10 +236,18 @@ This will initialize the manager, load the account configurations, start the TCP
     // Write the content to VFSBOOT.md in the VFS
     if (vfs_) {
         // Check if VFSBOOT.md already exists
-        Vfs::ReadResult existing = vfs_->read_file("VFSBOOT.md");
-        if (!existing.success || existing.content != content) {
-            // Only write if the file doesn't exist or content has changed
-            vfs_->write_file("VFSBOOT.md", content);
+        bool should_write = true;
+        try {
+            std::string existing = vfs_->read("VFSBOOT.md");
+            if (existing == content) {
+                should_write = false;
+            }
+        } catch (const std::runtime_error&) {
+            // File doesn't exist, will create it
+        }
+
+        if (should_write) {
+            vfs_->write("VFSBOOT.md", content);
             std::cout << "[QwenManager] VFSBOOT.md generated successfully\n";
         }
     }
@@ -330,7 +281,7 @@ void QwenManager::generate_session_id(std::string& session_id) {
 }
 
 // Find session by ID (non-const)
-SessionInfo* QwenManager::find_session(const std::string& session_id) {
+ManagerSessionInfo* QwenManager::find_session(const std::string& session_id) {
     for (auto& session : sessions_) {
         if (session.session_id == session_id) {
             return &session;
@@ -340,7 +291,7 @@ SessionInfo* QwenManager::find_session(const std::string& session_id) {
 }
 
 // Find session by ID (const)
-const SessionInfo* QwenManager::find_session(const std::string& session_id) const {
+const ManagerSessionInfo* QwenManager::find_session(const std::string& session_id) const {
     for (const auto& session : sessions_) {
         if (session.session_id == session_id) {
             return &session;
@@ -356,9 +307,10 @@ std::string QwenManager::load_instructions_from_file(const std::string& filename
     }
 
     // Try to load the file from VFS
-    Vfs::ReadResult result = vfs_->read_file(filename);
-    if (result.success) {
-        return result.content;
+    try {
+        return vfs_->read(filename);
+    } catch (const std::runtime_error&) {
+        // File not found in VFS, will try filesystem
     }
 
     // If not in VFS, try to load from the local filesystem
@@ -419,7 +371,7 @@ bool QwenManager::spawn_repo_sessions_for_account(const std::string& account_id)
         {
             std::lock_guard<std::mutex> lock_sessions(sessions_mutex_);
             
-            SessionInfo repo_worker;
+            ManagerSessionInfo repo_worker;
             repo_worker.session_id = "wrk-" + repo.id + "-" + std::to_string(time(nullptr));
             repo_worker.type = SessionType::REPO_WORKER;
             repo_worker.hostname = account.hostname;
@@ -438,7 +390,7 @@ bool QwenManager::spawn_repo_sessions_for_account(const std::string& account_id)
         {
             std::lock_guard<std::mutex> lock_sessions(sessions_mutex_);
             
-            SessionInfo repo_manager;
+            ManagerSessionInfo repo_manager;
             repo_manager.session_id = "mgr-" + repo.id + "-" + std::to_string(time(nullptr));
             repo_manager.type = SessionType::REPO_MANAGER;
             repo_manager.hostname = account.hostname;
@@ -620,7 +572,7 @@ bool QwenManager::is_manual_override(const std::string& session_id) {
 }
 
 // Find session by account ID and repository ID
-SessionInfo* QwenManager::find_session_by_repo(const std::string& account_id, const std::string& repo_id) {
+ManagerSessionInfo* QwenManager::find_session_by_repo(const std::string& account_id, const std::string& repo_id) {
     std::lock_guard<std::mutex> lock(sessions_mutex_);
     
     // Look for REPO sessions (both WORKER and MANAGER) that match the account and repo
@@ -649,7 +601,7 @@ bool QwenManager::save_session_snapshot(const std::string& session_id, const std
     std::lock_guard<std::mutex> snap_lock(snapshots_mutex_);
     
     // Find the session
-    SessionInfo* session = find_session(session_id);
+    ManagerSessionInfo* session = find_session(session_id);
     if (!session) {
         std::cout << "[QwenManager] Cannot save snapshot: Session not found: " << session_id << std::endl;
         return false;
@@ -685,7 +637,7 @@ bool QwenManager::restore_session_snapshot(const std::string& session_id, const 
     std::lock_guard<std::mutex> snap_lock(snapshots_mutex_);
     
     // Find the session
-    SessionInfo* session = find_session(session_id);
+    ManagerSessionInfo* session = find_session(session_id);
     if (!session) {
         std::cout << "[QwenManager] Cannot restore snapshot: Session not found: " << session_id << std::endl;
         return false;
@@ -838,7 +790,7 @@ bool QwenManager::add_session_to_group(const std::string& session_id, const std:
     }
     
     // Find the session
-    SessionInfo* session = find_session(session_id);
+    ManagerSessionInfo* session = find_session(session_id);
     if (!session) {
         std::cout << "[QwenManager] Cannot add session to group: Session not found: " << session_id << std::endl;
         return false;
@@ -877,7 +829,7 @@ bool QwenManager::remove_session_from_group(const std::string& session_id, const
     }
     
     // Find the session
-    SessionInfo* session = find_session(session_id);
+    ManagerSessionInfo* session = find_session(session_id);
     if (!session) {
         std::cout << "[QwenManager] Cannot remove session from group: Session not found: " << session_id << std::endl;
         return false;
@@ -911,11 +863,11 @@ std::vector<SessionGroup> QwenManager::list_session_groups() const {
 }
 
 // Get all sessions in a group
-std::vector<SessionInfo*> QwenManager::get_sessions_in_group(const std::string& group_id) {
+std::vector<ManagerSessionInfo*> QwenManager::get_sessions_in_group(const std::string& group_id) {
     std::lock_guard<std::mutex> group_lock(groups_mutex_);
     std::lock_guard<std::mutex> session_lock(sessions_mutex_);
     
-    std::vector<SessionInfo*> group_sessions;
+    std::vector<ManagerSessionInfo*> group_sessions;
     
     // Find the group
     auto group_it = std::find_if(session_groups_.begin(), session_groups_.end(),
@@ -999,46 +951,6 @@ bool QwenManager::is_session_paused(const std::string& session_id) const {
     }
     
     return false; // Session not found or not paused
-}
-
-// Convert JSON task specification to natural language prompt
-std::string QwenManager::convert_json_to_prompt(const std::string& json_task_spec) {
-    // This is a simplified implementation - in a real system you'd have more sophisticated parsing
-    // Parse the JSON task specification and convert it to a natural language prompt
-    
-    // Extract key fields from the JSON
-    std::string title = extract_json_field(json_task_spec, "title");
-    std::string description = extract_json_field(json_task_spec, "description");
-    std::string repo_id = extract_json_field(json_task_spec, "repository_id");
-    
-    if (title.empty() && description.empty()) {
-        return "Perform the requested task on the repository.";
-    }
-    
-    std::string prompt = "Task: " + (title.empty() ? "Unspecified task" : title) + "\n";
-    
-    if (!description.empty()) {
-        prompt += "Description: " + description + "\n";
-    }
-    
-    if (!repo_id.empty()) {
-        prompt += "Repository: " + repo_id + "\n";
-    }
-    
-    // Extract other fields if present
-    std::string requirements_field = extract_json_field(json_task_spec, "requirements");
-    if (!requirements_field.empty() && requirements_field != "null") {
-        prompt += "Requirements: " + requirements_field + "\n";
-    }
-    
-    std::string deadline_field = extract_json_field(json_task_spec, "deadline");
-    if (!deadline_field.empty() && deadline_field != "null") {
-        prompt += "Deadline: " + deadline_field + "\n";
-    }
-    
-    prompt += "\nPlease implement this task in the specified repository, following best practices and ensuring code quality.";
-    
-    return prompt;
 }
 
 // Convert JSON task specification to natural language prompt
@@ -1486,11 +1398,12 @@ void QwenManager::accounts_json_watcher_thread() {
     std::this_thread::sleep_for(std::chrono::seconds(10));
     
     std::string last_content;
-    
+
     if (vfs_) {
-        Vfs::ReadResult result = vfs_->read_file("ACCOUNTS.json");
-        if (result.success) {
-            last_content = result.content;
+        try {
+            last_content = vfs_->read("ACCOUNTS.json");
+        } catch (const std::runtime_error&) {
+            // File doesn't exist yet
         }
     }
     
@@ -1500,9 +1413,10 @@ void QwenManager::accounts_json_watcher_thread() {
         // Check if the file has been modified
         std::string current_content;
         if (vfs_) {
-            Vfs::ReadResult result = vfs_->read_file("ACCOUNTS.json");
-            if (result.success) {
-                current_content = result.content;
+            try {
+                current_content = vfs_->read("ACCOUNTS.json");
+            } catch (const std::runtime_error&) {
+                // File doesn't exist yet
             }
         }
         
@@ -1971,7 +1885,7 @@ bool QwenManager::run_ncurses_mode() {
                                         session_color = has_colors() ? 1 : 0; // Cyan
                                         session_chat_buffers[active_session_id].emplace_back("PROJECT MANAGER Session: " + session.session_id, session_color);
                                         session_chat_buffers[active_session_id].emplace_back("Model: " + session.model, has_colors() ? 7 : 0);
-                                        session_chat_buffers[active_session_id].emplace_back("Instructions: " + (session.instructions.empty() ? "No instructions loaded" : "Loaded"), has_colors() ? 6 : 0);
+                                        session_chat_buffers[active_session_id].emplace_back(std::string("Instructions: ") + (session.instructions.empty() ? "No instructions loaded" : "Loaded"), has_colors() ? 6 : 0);
                                         session_chat_buffers[active_session_id].emplace_back("", has_colors() ? 7 : 0);
                                         session_chat_buffers[active_session_id].emplace_back("Use this session for high-level project planning and architectural decisions", has_colors() ? 5 : 0);
                                         break;
@@ -1980,7 +1894,7 @@ bool QwenManager::run_ncurses_mode() {
                                         session_color = has_colors() ? 6 : 0; // Magenta
                                         session_chat_buffers[active_session_id].emplace_back("TASK MANAGER Session: " + session.session_id, session_color);
                                         session_chat_buffers[active_session_id].emplace_back("Model: " + session.model, has_colors() ? 7 : 0);
-                                        session_chat_buffers[active_session_id].emplace_back("Instructions: " + (session.instructions.empty() ? "No instructions loaded" : "Loaded"), has_colors() ? 6 : 0);
+                                        session_chat_buffers[active_session_id].emplace_back(std::string("Instructions: ") + (session.instructions.empty() ? "No instructions loaded" : "Loaded"), has_colors() ? 6 : 0);
                                         session_chat_buffers[active_session_id].emplace_back("", has_colors() ? 7 : 0);
                                         session_chat_buffers[active_session_id].emplace_back("Use this session for task coordination and issue resolution", has_colors() ? 5 : 0);
                                         break;
@@ -2103,7 +2017,7 @@ bool QwenManager::run_ncurses_mode() {
                                 target_buffer->emplace_back("Session returned to automatic mode", has_colors() ? 5 : 0);
                                 
                                 // Update the session's chat buffer header to reflect the state change
-                                SessionInfo* session = find_session(active_session_id);
+                                ManagerSessionInfo* session = find_session(active_session_id);
                                 if (session) {
                                     std::string session_type_str;
                                     int session_color = has_colors() ? 7 : 0;
@@ -2233,7 +2147,7 @@ bool QwenManager::run_ncurses_mode() {
                                 for (const auto& group : groups) {
                                     target_buffer->emplace_back("  - " + group.name + " (" + group.group_id + "): " + group.description, has_colors() ? 7 : 0);
                                     // Show sessions in this group
-                                    std::vector<SessionInfo*> group_sessions = get_sessions_in_group(group.group_id);
+                                    std::vector<ManagerSessionInfo*> group_sessions = get_sessions_in_group(group.group_id);
                                     if (!group_sessions.empty()) {
                                         for (const auto& session : group_sessions) {
                                             std::string session_type;
@@ -2275,7 +2189,7 @@ bool QwenManager::run_ncurses_mode() {
                         } else {
                             // Handle session-specific commands
                             bool is_account_session = false;
-                            SessionInfo* active_session = find_session(active_session_id);
+                            ManagerSessionInfo* active_session = find_session(active_session_id);
                             
                             if (active_session && active_session->type == SessionType::ACCOUNT) {
                                 is_account_session = true;
@@ -2344,7 +2258,7 @@ bool QwenManager::run_ncurses_mode() {
                                     target_buffer->emplace_back("You: pause " + repo_id, has_colors() ? 7 : 0);
                                     if (!repo_id.empty()) {
                                         // Find the session for this repository and pause it
-                                        SessionInfo* repo_session = find_session_by_repo(active_session->account_id, repo_id);
+                                        ManagerSessionInfo* repo_session = find_session_by_repo(active_session->account_id, repo_id);
                                         if (repo_session) {
                                             if (pause_session(repo_session->session_id)) {
                                                 target_buffer->emplace_back("Repository " + repo_id + " paused successfully", has_colors() ? 5 : 0);
@@ -2362,7 +2276,7 @@ bool QwenManager::run_ncurses_mode() {
                                     target_buffer->emplace_back("You: resume " + repo_id, has_colors() ? 7 : 0);
                                     if (!repo_id.empty()) {
                                         // Find the session for this repository and resume it
-                                        SessionInfo* repo_session = find_session_by_repo(active_session->account_id, repo_id);
+                                        ManagerSessionInfo* repo_session = find_session_by_repo(active_session->account_id, repo_id);
                                         if (repo_session) {
                                             if (resume_session(repo_session->session_id)) {
                                                 target_buffer->emplace_back("Repository " + repo_id + " resumed successfully", has_colors() ? 5 : 0);
@@ -2380,7 +2294,7 @@ bool QwenManager::run_ncurses_mode() {
                                     target_buffer->emplace_back("You: save " + repo_id, has_colors() ? 7 : 0);
                                     if (!repo_id.empty()) {
                                         // Find the session for this repository and save a snapshot
-                                        SessionInfo* repo_session = find_session_by_repo(active_session->account_id, repo_id);
+                                        ManagerSessionInfo* repo_session = find_session_by_repo(active_session->account_id, repo_id);
                                         if (repo_session) {
                                             std::string snapshot_name = "snapshot-" + std::to_string(time(nullptr));
                                             if (save_session_snapshot(repo_session->session_id, snapshot_name)) {
@@ -2399,7 +2313,7 @@ bool QwenManager::run_ncurses_mode() {
                                     target_buffer->emplace_back("You: snapshots " + repo_id, has_colors() ? 7 : 0);
                                     if (!repo_id.empty()) {
                                         // Find the session for this repository and list snapshots
-                                        SessionInfo* repo_session = find_session_by_repo(active_session->account_id, repo_id);
+                                        ManagerSessionInfo* repo_session = find_session_by_repo(active_session->account_id, repo_id);
                                         if (repo_session) {
                                             std::vector<std::string> snapshots = list_session_snapshots(repo_session->session_id);
                                             if (snapshots.empty()) {
@@ -2426,7 +2340,7 @@ bool QwenManager::run_ncurses_mode() {
                                         target_buffer->emplace_back("Created group for repository " + repo_id + ": " + group_id, has_colors() ? 5 : 0);
                                         
                                         // Find the session for this repository and add it to the group
-                                        SessionInfo* repo_session = find_session_by_repo(active_session->account_id, repo_id);
+                                        ManagerSessionInfo* repo_session = find_session_by_repo(active_session->account_id, repo_id);
                                         if (repo_session) {
                                             if (add_session_to_group(repo_session->session_id, group_id)) {
                                                 target_buffer->emplace_back("Added repository " + repo_id + " to group " + group_id, has_colors() ? 5 : 0);
