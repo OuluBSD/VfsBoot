@@ -1509,7 +1509,8 @@ bool QwenManager::run_ncurses_mode() {
     size_t cursor_pos = 0;
     
     // Currently selected session (for list navigation)
-    int selected_session_idx = 0;
+    // 1-based indexing: 1 = first session, 2 = second session, etc.
+    int selected_session_idx = 1;
     bool list_focused = false;  // Whether the session list currently has focus
     
     // Current active session for chat view
@@ -1566,8 +1567,8 @@ bool QwenManager::run_ncurses_mode() {
                               session.repo_path.substr(0, 26) + " | " +
                               status_str;
             
-            // Highlight selected session
-            if (i == selected_session_idx) {
+            // Highlight selected session (selected_session_idx is 1-based)
+            if ((int)i + 1 == selected_session_idx) {
                 line = "> " + line;  // Add selection indicator
                 // Use negative color_pair as a flag to enable A_REVERSE attribute
                 session_list_buffer.emplace_back(line, -(has_colors() ? color_pair : 7));
