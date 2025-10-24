@@ -1347,7 +1347,7 @@ void cmd_qwen(const std::vector<std::string>& args,
     // Check if manager mode is requested
     if (opts.manager_mode) {
         Qwen::QwenManagerConfig manager_config;
-        manager_config.tcp_port = 7778;  // Default manager port
+        manager_config.tcp_port = opts.port;  // Use port from command-line args
         manager_config.management_repo_path = opts.workspace_root.empty() ?
                                              "." : opts.workspace_root;
         
