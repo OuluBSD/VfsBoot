@@ -112,6 +112,13 @@ private:
     bool validate_account_config(const AccountConfig& account);
     bool validate_repository_config(const RepositoryConfig& repo);
     
+    // ACCOUNT and repository management
+    bool spawn_repo_sessions_for_account(const std::string& account_id);
+    bool enforce_concurrent_repo_limit(const std::string& account_id);
+    
+    // JSON-to-prompt conversion
+    std::string convert_json_to_prompt(const std::string& json_task_spec);
+    
     // File watching
     void start_accounts_json_watcher();
     void stop_accounts_json_watcher();

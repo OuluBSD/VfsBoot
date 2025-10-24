@@ -142,42 +142,81 @@ while true; do
             echo "Received from manager: $message"
             
             # Process manager commands here
-            case "$message" in
-                *"command"*)
-                    # Parse command from manager (simplified)
-                    command=$(echo "$message" | grep -o '"command":"[^"]*"' | cut -d'"' -f4)
-                    if [ -n "$command" ]; then
-                        echo "Processing manager command: $command"
-                        
-                        # Example: handle a command from the manager
-                        case "$command" in
-                            "ping")
-                                # Respond to ping
-                                response="{\"type\": \"ping_response\", \"account_id\": \"$ACCOUNT_ID\", \"timestamp\": $(date +%s)}"
+            # First, check if the message is a command
+            if [[ "$message" == *"command"* ]]; then
+                # Parse command from manager (simplified)
+                command=$(echo "$message" | grep -o '"command":"[^\"]*"' | cut -d'"' -f4)
+                repo_id=$(echo "$message" | grep -o '"repository_id":"[^\"]*"' | cut -d'"' -f4)
+                
+                if [ -n "$command" ]; then
+                    echo "Processing manager command: $command"
+                    
+                    # Example: handle a command from the manager
+                    case "$command" in
+                        "ping")
+                            # Respond to ping
+                            response="{\"type\": \"ping_response\", \"account_id\": \"$ACCOUNT_ID\", \"timestamp\": $(date +%s)}"
+                            printf "$response\n" >&3
+                            ;;
+                        "list_repos")
+                            # Response with repository list
+                            repo_list="{\"type\": \"repository_list\", \"account_id\": \"$ACCOUNT_ID\", \"repositories\": ["
+                            first_repo=true
+                            for repo in "${REPOSITORIES[@]}"; do
+                                if [ "$first_repo" = true ]; then
+                                    repo_list="${repo_list}{\"path\": \"$repo\", \"enabled\": true, \"status\": \"active\"}"
+                                    first_repo=false
+                                else
+                                    repo_list="${repo_list}, {\"path\": \"$repo\", \"enabled\": true, \"status\": \"active\"}"
+                                fi
+                            done
+                            repo_list="${repo_list} ]}"
+                            printf "$repo_list\n" >&3
+                            ;;
+                        "enable_repo")
+                            # Enable a specific repository
+                            if [ -n "$repo_id" ]; then
+                                # Update the repo status (in a real implementation, update the actual repo)
+                                echo "Enabling repository: $repo_id"
+                                response="{\"type\": \"repo_status_change\", \"account_id\": \"$ACCOUNT_ID\", \"repository_id\": \"$repo_id\", \"status\": \"enabled\", \"timestamp\": $(date +%s)}"
                                 printf "$response\n" >&3
-                                ;;
-                            "list_repos")
-                                # Response with repository list
-                                repo_list="{\"type\": \"repository_list\", \"account_id\": \"$ACCOUNT_ID\", \"repositories\": ["
-                                first_repo=true
-                                for repo in "${REPOSITORIES[@]}"; do
-                                    if [ "$first_repo" = true ]; then
-                                        repo_list="${repo_list}{\"path\": \"$repo\", \"enabled\": true, \"status\": \"active\"}"
-                                        first_repo=false
-                                    else
-                                        repo_list="${repo_list}, {\"path\": \"$repo\", \"enabled\": true, \"status\": \"active\"}"
-                                    fi
-                                done
-                                repo_list="${repo_list} ]}"
-                                printf "$repo_list\n" >&3
-                                ;;
-                            *)
-                                echo "Unknown command from manager: $command"
-                                ;;
-                        esac
-                    fi
-                    ;;
-            esac
+                            fi
+                            ;;
+                        "disable_repo")
+                            # Disable a specific repository
+                            if [ -n "$repo_id" ]; then
+                                echo "Disabling repository: $repo_id"
+                                response="{\"type\": \"repo_status_change\", \"account_id\": \"$ACCOUNT_ID\", \"repository_id\": \"$repo_id\", \"status\": \"disabled\", \"timestamp\": $(date +%s)}"
+                                printf "$response\n" >&3
+                            fi
+                            ;;
+                        *)
+                            echo "Unknown command from manager: $command"
+                            ;;
+                    esac
+                fi
+            elif [[ "$message" == *"task_assignment"* ]]; then
+                # Handle task assignment from manager
+                echo "Received task assignment: $message"
+                
+                # Extract task information
+                task_id=$(echo "$message" | grep -o '"task_id":"[^\"]*"' | cut -d'"' -f4)
+                repo_id=$(echo "$message" | grep -o '"repository_id":"[^\"]*"' | cut -d'"' -f4)
+                task_desc=$(echo "$message" | grep -o '"description":"[^\"]*"' | cut -d'"' -f4)
+                
+                if [ -n "$task_id" ] && [ -n "$repo_id" ]; then
+                    echo "Processing task $task_id for repository $repo_id: $task_desc"
+                    
+                    # In a real implementation, this would start a qwen session to handle the task
+                    # For now, just send a status update
+                    
+                    # Send status update to manager
+                    status_msg="{\"type\": \"status_update\", \"account_id\": \"$ACCOUNT_ID\", \"repository_id\": \"$repo_id\", \"status\": {\"state\": \"working\", \"progress\": 0.1, \"active_sessions\": [\"worker-$(date +%s)\"], \"last_activity\": $(date +%s)}}"
+                    printf "$status_msg\n" >&3
+                fi
+            else
+                echo "Received other message type: $message"
+            fi
         fi
     else
         # Timeout occurred, send a heartbeat to keep the connection alive

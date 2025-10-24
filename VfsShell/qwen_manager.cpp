@@ -378,6 +378,157 @@ std::string QwenManager::load_instructions_from_file(const std::string& filename
     return "";
 }
 
+// Spawn REPO sessions for an account
+bool QwenManager::spawn_repo_sessions_for_account(const std::string& account_id) {
+    std::lock_guard<std::mutex> lock(account_configs_mutex_);
+    
+    // Find the account configuration
+    auto account_it = std::find_if(account_configs_.begin(), account_configs_.end(),
+        [&account_id](const AccountConfig& acc) { return acc.id == account_id; });
+    
+    if (account_it == account_configs_.end()) {
+        std::cout << "[QwenManager] Account not found: " << account_id << std::endl;
+        return false;
+    }
+    
+    const AccountConfig& account = *account_it;
+    
+    // Check concurrent repo limit
+    int active_repo_count = 0;
+    {
+        std::lock_guard<std::mutex> lock_sessions(sessions_mutex_);
+        for (const auto& session : sessions_) {
+            if (session.account_id == account_id && 
+                (session.type == SessionType::REPO_MANAGER || session.type == SessionType::REPO_WORKER)) {
+                active_repo_count++;
+            }
+        }
+    }
+    
+    if (active_repo_count >= account.max_concurrent_repos) {
+        std::cout << "[QwenManager] Max concurrent repos limit reached for account " << account_id 
+                  << " (" << active_repo_count << "/" << account.max_concurrent_repos << ")" << std::endl;
+        return false;
+    }
+    
+    // Spawn sessions for each repository in the account
+    for (const auto& repo : account.repositories) {
+        if (!repo.enabled) continue; // Skip disabled repositories
+        
+        // Spawn REPO_WORKER session
+        {
+            std::lock_guard<std::mutex> lock_sessions(sessions_mutex_);
+            
+            SessionInfo repo_worker;
+            repo_worker.session_id = "wrk-" + repo.id + "-" + std::to_string(time(nullptr));
+            repo_worker.type = SessionType::REPO_WORKER;
+            repo_worker.hostname = account.hostname;
+            repo_worker.repo_path = repo.local_path;
+            repo_worker.status = "idle";
+            repo_worker.model = repo.worker_model;
+            repo_worker.account_id = account.id;
+            repo_worker.created_at = time(nullptr);
+            repo_worker.last_activity = repo_worker.created_at;
+            repo_worker.is_active = true;
+            
+            sessions_.push_back(repo_worker);
+        }
+        
+        // Spawn REPO_MANAGER session
+        {
+            std::lock_guard<std::mutex> lock_sessions(sessions_mutex_);
+            
+            SessionInfo repo_manager;
+            repo_manager.session_id = "mgr-" + repo.id + "-" + std::to_string(time(nullptr));
+            repo_manager.type = SessionType::REPO_MANAGER;
+            repo_manager.hostname = account.hostname;
+            repo_manager.repo_path = repo.local_path;
+            repo_manager.status = "idle";
+            repo_manager.model = repo.manager_model;
+            repo_manager.account_id = account.id;
+            repo_manager.created_at = time(nullptr);
+            repo_manager.last_activity = repo_manager.created_at;
+            repo_manager.is_active = true;
+            
+            sessions_.push_back(repo_manager);
+        }
+        
+        std::cout << "[QwenManager] Spawned sessions for repo: " << repo.id 
+                  << " (worker: wrk-" << repo.id << ", manager: mgr-" << repo.id << ")" << std::endl;
+    }
+    
+    return true;
+}
+
+// Enforce concurrent repository limit
+bool QwenManager::enforce_concurrent_repo_limit(const std::string& account_id) {
+    std::lock_guard<std::mutex> lock(account_configs_mutex_);
+    
+    // Find the account configuration
+    auto account_it = std::find_if(account_configs_.begin(), account_configs_.end(),
+        [&account_id](const AccountConfig& acc) { return acc.id == account_id; });
+    
+    if (account_it == account_configs_.end()) {
+        return false; // Account not found
+    }
+    
+    const AccountConfig& account = *account_it;
+    
+    // Count active repo sessions for this account
+    int active_repo_count = 0;
+    {
+        std::lock_guard<std::mutex> lock_sessions(sessions_mutex_);
+        for (const auto& session : sessions_) {
+            if (session.account_id == account_id && 
+                (session.type == SessionType::REPO_MANAGER || session.type == SessionType::REPO_WORKER)) {
+                active_repo_count++;
+            }
+        }
+    }
+    
+    return active_repo_count < account.max_concurrent_repos;
+}
+
+// Convert JSON task specification to natural language prompt
+std::string QwenManager::convert_json_to_prompt(const std::string& json_task_spec) {
+    // This is a simplified implementation - in a real system you'd have more sophisticated parsing
+    // Parse the JSON task specification and convert it to a natural language prompt
+    
+    // Extract key fields from the JSON
+    std::string title = extract_json_field(json_task_spec, "title");
+    std::string description = extract_json_field(json_task_spec, "description");
+    std::string repo_id = extract_json_field(json_task_spec, "repository_id");
+    
+    if (title.empty() && description.empty()) {
+        return "Perform the requested task on the repository.";
+    }
+    
+    std::string prompt = "Task: " + (title.empty() ? "Unspecified task" : title) + "\n";
+    
+    if (!description.empty()) {
+        prompt += "Description: " + description + "\n";
+    }
+    
+    if (!repo_id.empty()) {
+        prompt += "Repository: " + repo_id + "\n";
+    }
+    
+    // Extract other fields if present
+    std::string requirements_field = extract_json_field(json_task_spec, "requirements");
+    if (!requirements_field.empty() && requirements_field != "null") {
+        prompt += "Requirements: " + requirements_field + "\n";
+    }
+    
+    std::string deadline_field = extract_json_field(json_task_spec, "deadline");
+    if (!deadline_field.empty() && deadline_field != "null") {
+        prompt += "Deadline: " + deadline_field + "\n";
+    }
+    
+    prompt += "\nPlease implement this task in the specified repository, following best practices and ensuring code quality.";
+    
+    return prompt;
+}
+
 // Load accounts configuration from ACCOUNTS.json
 bool QwenManager::load_accounts_config() {
     std::string json_content = load_instructions_from_file("ACCOUNTS.json");
@@ -1288,7 +1439,28 @@ bool QwenManager::run_ncurses_mode() {
                                         session_chat_buffers[active_session_id].emplace_back("Host: " + session.hostname, has_colors() ? 7 : 0);
                                         session_chat_buffers[active_session_id].emplace_back("Status: " + session.status, has_colors() ? 7 : 0);
                                         session_chat_buffers[active_session_id].emplace_back("", has_colors() ? 7 : 0);
-                                        session_chat_buffers[active_session_id].emplace_back("Use this session for account-specific commands and status checks", has_colors() ? 5 : 0);
+                                        
+                                        // Look up account configuration to show associated repositories
+                                        {
+                                            std::lock_guard<std::mutex> lock(account_configs_mutex_);
+                                            auto account_it = std::find_if(account_configs_.begin(), account_configs_.end(),
+                                                [&session](const AccountConfig& acc) { return acc.id == session.account_id; });
+                                            
+                                            if (account_it != account_configs_.end()) {
+                                                session_chat_buffers[active_session_id].emplace_back("Configured Repositories:", has_colors() ? 2 : 0);
+                                                for (const auto& repo : account_it->repositories) {
+                                                    session_chat_buffers[active_session_id].emplace_back("  - " + repo.id + " (" + (repo.enabled ? "enabled" : "disabled") + ")", has_colors() ? 7 : 0);
+                                                }
+                                                session_chat_buffers[active_session_id].emplace_back("", has_colors() ? 7 : 0);
+                                                session_chat_buffers[active_session_id].emplace_back("Available Commands:", has_colors() ? 2 : 0);
+                                                session_chat_buffers[active_session_id].emplace_back("  - list              : Show all repositories", has_colors() ? 7 : 0);
+                                                session_chat_buffers[active_session_id].emplace_back("  - enable <repo_id>  : Enable a repository", has_colors() ? 7 : 0);
+                                                session_chat_buffers[active_session_id].emplace_back("  - disable <repo_id> : Disable a repository", has_colors() ? 7 : 0);
+                                                session_chat_buffers[active_session_id].emplace_back("  - status <repo_id>  : Check repository status", has_colors() ? 7 : 0);
+                                            } else {
+                                                session_chat_buffers[active_session_id].emplace_back("No configuration found for this account", has_colors() ? 4 : 0);
+                                            }
+                                        }
                                         break;
                                     case SessionType::REPO_MANAGER:
                                     case SessionType::REPO_WORKER:
@@ -1371,25 +1543,101 @@ bool QwenManager::run_ncurses_mode() {
                             target_buffer->clear();
                             target_buffer->emplace_back("Session buffer cleared", has_colors() ? 5 : 0);
                             redraw_chat_window();
+                        } else if (active_session_id.empty()) {
+                            // No active session, just echo the command
+                            target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
+                            target_buffer->emplace_back("AI: No active session selected", has_colors() ? 6 : 0);
+                            redraw_chat_window();
                         } else {
-                            // Add the user message to the active session's buffer
-                            std::string user_prefix = active_session_id.empty() ? "You" : active_session_id.substr(0, 10);
-                            target_buffer->emplace_back(user_prefix + ": " + input_buffer, has_colors() ? 7 : 0);
-                            
-                            // In a real implementation, this is where we would send the input to the appropriate AI session
-                            // For now, we'll just show a response placeholder
+                            // Handle session-specific commands
+                            bool is_account_session = false;
                             SessionInfo* active_session = find_session(active_session_id);
-                            if (active_session) {
-                                std::string ai_prefix = active_session->type == SessionType::MANAGER_PROJECT ? "PROJECT_MGR" :
-                                                       active_session->type == SessionType::MANAGER_TASK ? "TASK_MGR" :
-                                                       active_session->type == SessionType::ACCOUNT ? "ACCOUNT" :
-                                                       active_session->type == SessionType::REPO_MANAGER ? "REPO_MGR" :
-                                                       active_session->type == SessionType::REPO_WORKER ? "REPO_WRK" : "AI";
+                            if (active_session && active_session->type == SessionType::ACCOUNT) {
+                                is_account_session = true;
                                 
-                                // Placeholder response - in a real implementation, this would go to the actual qwen session
-                                target_buffer->emplace_back(ai_prefix + ": Processing request (actual AI integration pending)", has_colors() ? 6 : 0);
+                                // Handle ACCOUNT-specific commands without slash prefix
+                                std::istringstream iss(input_buffer);
+                                std::string command;
+                                iss >> command;
+                                
+                                // Extract repository ID if present
+                                std::string repo_id;
+                                iss >> repo_id;
+                                
+                                if (command == "list") {
+                                    target_buffer->emplace_back("You: list", has_colors() ? 7 : 0);
+                                    target_buffer->emplace_back("Listing repositories for account " + active_session->session_id + ":", has_colors() ? 5 : 0);
+                                    
+                                    // Find the account configuration to display repositories
+                                    std::lock_guard<std::mutex> lock(account_configs_mutex_);
+                                    auto account_it = std::find_if(account_configs_.begin(), account_configs_.end(),
+                                        [active_session](const AccountConfig& acc) { return acc.id == active_session->account_id; });
+                                    
+                                    if (account_it != account_configs_.end()) {
+                                        for (const auto& repo : account_it->repositories) {
+                                            std::string status = repo.enabled ? "enabled" : "disabled";
+                                            target_buffer->emplace_back("  - " + repo.id + " (" + status + ")", has_colors() ? 7 : 0);
+                                        }
+                                    } else {
+                                        target_buffer->emplace_back("  No repository configuration found", has_colors() ? 4 : 0);
+                                    }
+                                } 
+                                else if (command == "enable") {
+                                    target_buffer->emplace_back("You: enable " + repo_id, has_colors() ? 7 : 0);
+                                    if (!repo_id.empty()) {
+                                        target_buffer->emplace_back("Enabling repository: " + repo_id, has_colors() ? 5 : 0);
+                                        
+                                        // In a real implementation, this would send an enable command to the account
+                                        // via the TCP connection
+                                    } else {
+                                        target_buffer->emplace_back("Error: Repository ID required (usage: enable <repo_id>)", has_colors() ? 4 : 0);
+                                    }
+                                } 
+                                else if (command == "disable") {
+                                    target_buffer->emplace_back("You: disable " + repo_id, has_colors() ? 7 : 0);
+                                    if (!repo_id.empty()) {
+                                        target_buffer->emplace_back("Disabling repository: " + repo_id, has_colors() ? 5 : 0);
+                                        
+                                        // In a real implementation, this would send a disable command to the account
+                                        // via the TCP connection
+                                    } else {
+                                        target_buffer->emplace_back("Error: Repository ID required (usage: disable <repo_id>)", has_colors() ? 4 : 0);
+                                    }
+                                } 
+                                else if (command == "status") {
+                                    target_buffer->emplace_back("You: status " + repo_id, has_colors() ? 7 : 0);
+                                    if (!repo_id.empty()) {
+                                        target_buffer->emplace_back("Getting status for repository: " + repo_id, has_colors() ? 5 : 0);
+                                        
+                                        // In a real implementation, this would query the status from the account
+                                        // via the TCP connection
+                                    } else {
+                                        target_buffer->emplace_back("Error: Repository ID required (usage: status <repo_id>)", has_colors() ? 4 : 0);
+                                    }
+                                } 
+                                else {
+                                    // Not a recognized command, treat as a regular message
+                                    target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
+                                    target_buffer->emplace_back("ACCOUNT: Unknown command. Valid commands: list, enable <repo>, disable <repo>, status <repo>", has_colors() ? 4 : 0);
+                                }
                             } else {
-                                target_buffer->emplace_back("AI: Processing request (no active session selected)", has_colors() ? 6 : 0);
+                                // Handle regular sessions
+                                target_buffer->emplace_back("You: " + input_buffer, has_colors() ? 7 : 0);
+                                
+                                // In a real implementation, this is where we would send the input to the appropriate AI session
+                                // For now, we'll just show a response placeholder
+                                if (active_session) {
+                                    std::string ai_prefix = active_session->type == SessionType::MANAGER_PROJECT ? "PROJECT_MGR" :
+                                                           active_session->type == SessionType::MANAGER_TASK ? "TASK_MGR" :
+                                                           active_session->type == SessionType::ACCOUNT ? "ACCOUNT" :
+                                                           active_session->type == SessionType::REPO_MANAGER ? "REPO_MGR" :
+                                                           active_session->type == SessionType::REPO_WORKER ? "REPO_WRK" : "AI";
+                                    
+                                    // Placeholder response - in a real implementation, this would go to the actual qwen session
+                                    target_buffer->emplace_back(ai_prefix + ": Processing request (actual AI integration pending)", has_colors() ? 6 : 0);
+                                } else {
+                                    target_buffer->emplace_back("AI: Processing request (session not found)", has_colors() ? 6 : 0);
+                                }
                             }
                             
                             redraw_chat_window();
