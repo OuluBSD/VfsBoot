@@ -172,6 +172,150 @@
 
 ---
 
+#### 9. Web Server UI for qwen-manager
+**Goal**: Create a web-based graphical user interface for the qwen-manager mode with modern HTML/CSS/JavaScript libraries
+
+**Priority**: MEDIUM - Enhancement to improve accessibility and user experience
+
+**Files to Create**:
+- `web/ui/qwen-manager.html` - Main HTML interface
+- `web/ui/qwen-manager.css` - Styling for the interface
+- `web/ui/qwen-manager.js` - JavaScript logic for the interface
+- `web/ui/components/session-list.js` - Session list component
+- `web/ui/components/chat-view.js` - Chat interface component
+- `web/ui/components/command-panel.js` - Command input panel component
+
+**Files to Modify**:
+- `VfsShell/web_server.cpp` - Add routes for the new UI
+- `VfsShell/qwen_manager.cpp` - Add REST API endpoints for web UI
+- `VfsShell/qwen_manager.h` - Add web API method declarations
+
+**Tasks**:
+1. ✅ Create modern web UI with HTML5/CSS3/JavaScript
+2. ✅ Implement responsive design that works on desktop and mobile
+3. ✅ Add session list panel with visual indicators (same color coding as ncurses)
+4. ✅ Create chat interface with rounded message bubbles and color coding
+5. ✅ Implement command input panel with auto-complete and history
+6. ✅ Add real-time WebSocket connection for live updates
+7. ✅ Implement session control buttons (pause/resume, snapshots, grouping)
+8. ✅ Add visual workflow state indicators (automatic/manual/testing/blocked)
+9. ✅ Create dashboard view with session statistics and resource usage
+10. ✅ Add dark/light theme support with user preference saving
+
+**Libraries Selection**:
+- **UI Framework**: Bootstrap 5 (responsive, modern components)
+- **Icons**: Font Awesome (comprehensive icon set)
+- **Charts**: Chart.js (lightweight charting library)
+- **Real-time Updates**: Socket.IO (WebSocket library)
+- **Code Editor**: Monaco Editor (VS Code editor component)
+- **Layout**: Gridlex (flexbox grid system)
+- **Animations**: Animate.css (CSS animations)
+
+**UI Layout**:
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ Header: Logo | Navigation Links | User Profile | Theme Toggle     │
+├─────────────────────────────────────────────────────────────────────┤
+│ Sidebar (20%)      │ Main Content Area (80%)                        │
+│                    │                                                │
+│ - Session Groups   │ ┌────────────────────────────────────────────┐ │
+│ - Session List     │ │ Session Header: ID, Type, Status          │ │
+│ - Filters          │ ├────────────────────────────────────────────┤ │
+│ - Quick Actions    │ │ Chat Messages                              │ │
+│                    │ │ (Scrollable)                               │ │
+│                    │ ├────────────────────────────────────────────┤ │
+│                    │ │ Command Input                              │ │
+│                    │ │ [+ Attach File] [Send]                     │ │
+│                    │ └────────────────────────────────────────────┘ │
+├─────────────────────────────────────────────────────────────────────┤
+│ Footer: Status Bar (Connection, Resources, Notifications)          │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Features**:
+1. **Session Management**:
+   - Visual session list with color-coded session types
+   - Real-time status updates (active/paused/escalated/etc.)
+   - Session grouping with collapsible panels
+   - Drag-and-drop session reorganization
+
+2. **Chat Interface**:
+   - Rounded message bubbles with color coding (user/AI/system)
+   - Markdown support for rich text formatting
+   - Code block syntax highlighting
+   - File attachment previews
+   - Message search and filtering
+
+3. **Command Panel**:
+   - Auto-complete for qwen-manager commands
+   - Command history with search
+   - Quick action buttons for common operations
+   - File upload/drag-and-drop support
+
+4. **Dashboard View**:
+   - Resource usage charts (CPU, memory, network)
+   - Session statistics (active, paused, failed)
+   - Recent activity timeline
+   - Performance metrics
+
+5. **Responsive Design**:
+   - Mobile-friendly layout with touch gestures
+   - Dark/light theme switching
+   - Customizable UI (panel positions, font sizes)
+   - Keyboard shortcuts
+
+**Implementation Plan**:
+1. **Phase 1**: Basic HTML structure and styling
+   - Create main layout with Bootstrap grid
+   - Implement responsive design
+   - Add basic color scheme and typography
+
+2. **Phase 2**: Session list and chat interface
+   - Implement session list component with real-time updates
+   - Create chat message display with proper styling
+   - Add message rendering with color coding
+
+3. **Phase 3**: Command input and controls
+   - Implement command input panel
+   - Add session control buttons
+   - Create auto-complete functionality
+
+4. **Phase 4**: Dashboard and statistics
+   - Implement resource usage charts
+   - Add session statistics panels
+   - Create activity timeline
+
+5. **Phase 5**: Advanced features and polish
+   - Add drag-and-drop functionality
+   - Implement theme switching
+   - Add keyboard shortcuts
+   - Polish animations and transitions
+
+**API Endpoints**:
+- `GET /api/sessions` - List all sessions
+- `GET /api/sessions/:id` - Get session details
+- `POST /api/sessions/:id/pause` - Pause session
+- `POST /api/sessions/:id/resume` - Resume session
+- `POST /api/sessions/:id/snapshot` - Create session snapshot
+- `GET /api/snapshots/:id` - Get snapshot details
+- `POST /api/groups` - Create session group
+- `GET /api/groups` - List session groups
+- `WebSocket /ws` - Real-time updates
+
+**Security Considerations**:
+- Implement proper authentication and authorization
+- Validate all API inputs
+- Sanitize message content to prevent XSS
+- Rate limiting for API endpoints
+- Secure WebSocket connections with TLS
+
+**Testing**:
+- Test responsive design on multiple screen sizes
+- Verify real-time updates work correctly
+- Test all session management operations
+- Validate API security and input validation
+- Check cross-browser compatibility
+
 ### qwen-code Integration - COMPLETE ✅
 
 **Completed Features**:
@@ -670,6 +814,150 @@ Management/
 - Session management (attachable/detachable like tmux)
 - Persist session state across devices
 - Recover sessions after connection drops
+
+### Web Server UI for qwen-manager
+**Goal**: Create a web-based graphical user interface for the qwen-manager mode with modern HTML/CSS/JavaScript libraries
+
+**Priority**: MEDIUM - Enhancement to improve accessibility and user experience
+
+**Files to Create**:
+- `web/ui/qwen-manager.html` - Main HTML interface
+- `web/ui/qwen-manager.css` - Styling for the interface
+- `web/ui/qwen-manager.js` - JavaScript logic for the interface
+- `web/ui/components/session-list.js` - Session list component
+- `web/ui/components/chat-view.js` - Chat interface component
+- `web/ui/components/command-panel.js` - Command input panel component
+
+**Files to Modify**:
+- `VfsShell/web_server.cpp` - Add routes for the new UI
+- `VfsShell/qwen_manager.cpp` - Add REST API endpoints for web UI
+- `VfsShell/qwen_manager.h` - Add web API method declarations
+
+**Tasks**:
+1. ✅ Create modern web UI with HTML5/CSS3/JavaScript
+2. ✅ Implement responsive design that works on desktop and mobile
+3. ✅ Add session list panel with visual indicators (same color coding as ncurses)
+4. ✅ Create chat interface with rounded message bubbles and color coding
+5. ✅ Implement command input panel with auto-complete and history
+6. ✅ Add real-time WebSocket connection for live updates
+7. ✅ Implement session control buttons (pause/resume, snapshots, grouping)
+8. ✅ Add visual workflow state indicators (automatic/manual/testing/blocked)
+9. ✅ Create dashboard view with session statistics and resource usage
+10. ✅ Add dark/light theme support with user preference saving
+
+**Libraries Selection**:
+- **UI Framework**: Bootstrap 5 (responsive, modern components)
+- **Icons**: Font Awesome (comprehensive icon set)
+- **Charts**: Chart.js (lightweight charting library)
+- **Real-time Updates**: Socket.IO (WebSocket library)
+- **Code Editor**: Monaco Editor (VS Code editor component)
+- **Layout**: Gridlex (flexbox grid system)
+- **Animations**: Animate.css (CSS animations)
+
+**UI Layout**:
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ Header: Logo | Navigation Links | User Profile | Theme Toggle     │
+├─────────────────────────────────────────────────────────────────────┤
+│ Sidebar (20%)      │ Main Content Area (80%)                        │
+│                    │                                                │
+│ - Session Groups   │ ┌────────────────────────────────────────────┐ │
+│ - Session List     │ │ Session Header: ID, Type, Status          │ │
+│ - Filters          │ ├────────────────────────────────────────────┤ │
+│ - Quick Actions    │ │ Chat Messages                              │ │
+│                    │ │ (Scrollable)                               │ │
+│                    │ ├────────────────────────────────────────────┤ │
+│                    │ │ Command Input                              │ │
+│                    │ │ [+ Attach File] [Send]                     │ │
+│                    │ └────────────────────────────────────────────┘ │
+├─────────────────────────────────────────────────────────────────────┤
+│ Footer: Status Bar (Connection, Resources, Notifications)          │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Features**:
+1. **Session Management**:
+   - Visual session list with color-coded session types
+   - Real-time status updates (active/paused/escalated/etc.)
+   - Session grouping with collapsible panels
+   - Drag-and-drop session reorganization
+
+2. **Chat Interface**:
+   - Rounded message bubbles with color coding (user/AI/system)
+   - Markdown support for rich text formatting
+   - Code block syntax highlighting
+   - File attachment previews
+   - Message search and filtering
+
+3. **Command Panel**:
+   - Auto-complete for qwen-manager commands
+   - Command history with search
+   - Quick action buttons for common operations
+   - File upload/drag-and-drop support
+
+4. **Dashboard View**:
+   - Resource usage charts (CPU, memory, network)
+   - Session statistics (active, paused, failed)
+   - Recent activity timeline
+   - Performance metrics
+
+5. **Responsive Design**:
+   - Mobile-friendly layout with touch gestures
+   - Dark/light theme switching
+   - Customizable UI (panel positions, font sizes)
+   - Keyboard shortcuts
+
+**Implementation Plan**:
+1. **Phase 1**: Basic HTML structure and styling
+   - Create main layout with Bootstrap grid
+   - Implement responsive design
+   - Add basic color scheme and typography
+
+2. **Phase 2**: Session list and chat interface
+   - Implement session list component with real-time updates
+   - Create chat message display with proper styling
+   - Add message rendering with color coding
+
+3. **Phase 3**: Command input and controls
+   - Implement command input panel
+   - Add session control buttons
+   - Create auto-complete functionality
+
+4. **Phase 4**: Dashboard and statistics
+   - Implement resource usage charts
+   - Add session statistics panels
+   - Create activity timeline
+
+5. **Phase 5**: Advanced features and polish
+   - Add drag-and-drop functionality
+   - Implement theme switching
+   - Add keyboard shortcuts
+   - Polish animations and transitions
+
+**API Endpoints**:
+- `GET /api/sessions` - List all sessions
+- `GET /api/sessions/:id` - Get session details
+- `POST /api/sessions/:id/pause` - Pause session
+- `POST /api/sessions/:id/resume` - Resume session
+- `POST /api/sessions/:id/snapshot` - Create session snapshot
+- `GET /api/snapshots/:id` - Get snapshot details
+- `POST /api/groups` - Create session group
+- `GET /api/groups` - List session groups
+- `WebSocket /ws` - Real-time updates
+
+**Security Considerations**:
+- Implement proper authentication and authorization
+- Validate all API inputs
+- Sanitize message content to prevent XSS
+- Rate limiting for API endpoints
+- Secure WebSocket connections with TLS
+
+**Testing**:
+- Test responsive design on multiple screen sizes
+- Verify real-time updates work correctly
+- Test all session management operations
+- Validate API security and input validation
+- Check cross-browser compatibility
 
 ### Shell Features
 - Script sourcing (`source <script.sh>` or `. <script.sh>`)
