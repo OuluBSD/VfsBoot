@@ -208,6 +208,10 @@ std::unique_ptr<StateMessage> ProtocolParser::parse_message(const std::string& j
     int id = 0;
     std::optional<bool> is_streaming;
 
+    // Storage for tool_group fields
+    int tool_group_id = 0;
+    std::string tools_json;  // Raw JSON for tools array
+
     // Parse JSON object - collect all fields first
     while (*p && *p != '}') {
         skip_whitespace(p);
@@ -235,8 +239,14 @@ std::unique_ptr<StateMessage> ProtocolParser::parse_message(const std::string& j
             content = parse_string(p);
         } else if (key == "id") {
             id = parse_number(p);
+            tool_group_id = id;  // Use same id for tool group
         } else if (key == "isStreaming") {
             is_streaming = parse_bool(p);
+        } else if (key == "tools") {
+            // Capture raw JSON for tools array (we'll parse it later if needed)
+            const char* array_start = p;
+            skip_value(p);
+            tools_json = std::string(array_start, p - array_start);
         } else {
             // Skip unknown fields
             skip_value(p);
@@ -259,7 +269,13 @@ std::unique_ptr<StateMessage> ProtocolParser::parse_message(const std::string& j
         msg->data = ConversationMessage{role, content, id, std::nullopt, is_streaming};
     } else if (type_str == "tool_group") {
         msg->type = MessageType::TOOL_GROUP;
-        msg->data = ToolGroup{1, {}};
+        // TODO: Implement proper tools array parsing
+        // Debug logging - remove after fixing parser
+        fprintf(stderr, "\n[PROTOCOL DEBUG] tool_group received:\n");
+        fprintf(stderr, "  id=%d\n", tool_group_id);
+        fprintf(stderr, "  tools_json='%s'\n", tools_json.c_str());
+        fprintf(stderr, "  Full JSON: %s\n\n", json_str.c_str());
+        msg->data = ToolGroup{tool_group_id, {}};
     } else if (type_str == "status") {
         msg->type = MessageType::STATUS;
         msg->data = StatusUpdate{AppState::IDLE, std::nullopt, std::nullopt};

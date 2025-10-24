@@ -614,7 +614,12 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
         add_output_line("", 0);
         add_output_line("[Tool Execution Request:]", has_colors() ? 6 : 0);
         add_output_line("  Group ID: " + std::to_string(group.id), has_colors() ? 6 : 0);
-        add_output_line("  Tools to execute:", has_colors() ? 6 : 0);
+        add_output_line("  Tools to execute: " + std::to_string(group.tools.size()) + " tool(s)", has_colors() ? 6 : 0);
+
+        // Check if tool group is empty
+        if (group.tools.empty()) {
+            add_output_line("  [WARNING: Empty tool group received - protocol error?]", has_colors() ? 4 : 0);
+        }
 
         for (const auto& tool : group.tools) {
             add_output_line("    - " + tool.tool_name + " (ID: " + tool.tool_id + ")", has_colors() ? 6 : 0);
@@ -637,6 +642,16 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
         }
 
         redraw_output();
+
+        // Handle empty tool groups
+        if (group.tools.empty()) {
+            add_output_line("  [Skipping approval for empty tool group]", has_colors() ? 3 : 0);
+            redraw_output();
+            redraw_input();
+            // Store in state manager and return
+            state_mgr.add_tool_group(group);
+            return;  // Don't request approval for empty groups
+        }
 
         if (auto_approve) {
             // Auto-approve based on permission mode
