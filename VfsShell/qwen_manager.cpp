@@ -12,6 +12,7 @@
 #include <random>
 #include <sstream>
 #include <iostream>
+#include <fstream>
 
 #ifdef CODEX_UI_NCURSES
 #include <ncurses.h>
@@ -47,6 +48,9 @@ bool QwenManager::initialize(const QwenManagerConfig& config) {
         project_manager.created_at = time(nullptr);
         project_manager.last_activity = project_manager.created_at;
         project_manager.is_active = true;
+        
+        // Load PROJECT_MANAGER.md instructions if available
+        project_manager.instructions = load_instructions_from_file("PROJECT_MANAGER.md");
         sessions_.push_back(project_manager);
         
         // Create TASK MANAGER session
@@ -60,6 +64,9 @@ bool QwenManager::initialize(const QwenManagerConfig& config) {
         task_manager.created_at = time(nullptr);
         task_manager.last_activity = task_manager.created_at;
         task_manager.is_active = true;
+        
+        // Load TASK_MANAGER.md instructions if available
+        task_manager.instructions = load_instructions_from_file("TASK_MANAGER.md");
         sessions_.push_back(task_manager);
     }
     
@@ -228,6 +235,35 @@ const SessionInfo* QwenManager::find_session(const std::string& session_id) cons
     return nullptr;
 }
 
+// Load instructions from file
+std::string QwenManager::load_instructions_from_file(const std::string& filename) {
+    if (!vfs_) {
+        return "";  // Can't load from VFS without vfs pointer
+    }
+
+    // Try to load the file from VFS
+    Vfs::ReadResult result = vfs_->read_file(filename);
+    if (result.success) {
+        return result.content;
+    }
+
+    // If not in VFS, try to load from the local filesystem
+    std::ifstream file(filename);
+    if (file.is_open()) {
+        std::string content;
+        std::string line;
+        while (std::getline(file, line)) {
+            content += line + "\n";
+        }
+        file.close();
+        return content;
+    }
+
+    // File not found
+    std::cout << "[QwenManager] Warning: Could not load instructions file: " << filename << std::endl;
+    return "";
+}
+
 // Helper struct to store colored output lines
 struct OutputLine {
     std::string text;
@@ -292,6 +328,10 @@ bool QwenManager::run_ncurses_mode() {
     // Currently selected session (for list navigation)
     int selected_session_idx = 0;
     bool list_focused = false;  // Whether the session list currently has focus
+    
+    // Current active session for chat view
+    std::string active_session_id = "";
+    std::map<std::string, std::vector<OutputLine>> session_chat_buffers; // Chat history per session
 
     // Helper function to update session list
     auto update_session_list = [&]() {
@@ -306,37 +346,38 @@ bool QwenManager::run_ncurses_mode() {
             const auto& session = sessions_[i];
             std::string type_str;
             int color_pair = 0;
+            std::string status_icon = session.is_active ? "●" : "○";  // Active/inactive indicators
             
             switch (session.type) {
                 case SessionType::MANAGER_PROJECT:
                     type_str = "MGR-PROJ ";
-                    color_pair = has_colors() ? 1 : 0;
+                    color_pair = has_colors() ? 1 : 0;  // Bright cyan for project manager
                     break;
                 case SessionType::MANAGER_TASK:
                     type_str = "MGR-TASK ";
-                    color_pair = has_colors() ? 1 : 0;
+                    color_pair = has_colors() ? 6 : 0;  // Magenta for task manager
                     break;
                 case SessionType::ACCOUNT:
                     type_str = "ACCOUNT  ";
-                    color_pair = has_colors() ? 2 : 0;
+                    color_pair = has_colors() ? 2 : 0;  // Yellow for accounts
                     break;
                 case SessionType::REPO_MANAGER:
                     type_str = "REPO-MGR ";
-                    color_pair = has_colors() ? 3 : 0;
+                    color_pair = has_colors() ? 3 : 0;  // Green for repo managers
                     break;
                 case SessionType::REPO_WORKER:
                     type_str = "REPO-WRK ";
-                    color_pair = has_colors() ? 3 : 0;
+                    color_pair = has_colors() ? 5 : 0;  // Blue for repo workers
                     break;
                 default:
                     type_str = "UNKNOWN  ";
-                    color_pair = has_colors() ? 6 : 0;
+                    color_pair = has_colors() ? 6 : 0;  // Magenta for unknown
                     break;
             }
             
             std::string status_str = session.is_active ? "active" : "inactive";
             
-            std::string line = type_str + " | " +
+            std::string line = status_icon + " " + type_str + " | " +
                               session.session_id.substr(0, 11) + " | " +
                               session.hostname.substr(0, 10) + " | " +
                               session.repo_path.substr(0, 26) + " | " +
@@ -345,7 +386,7 @@ bool QwenManager::run_ncurses_mode() {
             // Highlight selected session
             if (i == selected_session_idx) {
                 line = "> " + line;  // Add selection indicator
-                session_list_buffer.emplace_back(line, has_colors() ? 7 : 0);
+                session_list_buffer.emplace_back(line, has_colors() ? 7 : 0);  // White for selected
             } else {
                 session_list_buffer.emplace_back("  " + line, color_pair);
             }
@@ -398,16 +439,37 @@ bool QwenManager::run_ncurses_mode() {
     auto redraw_chat_window = [&]() {
         werase(chat_win);
 
+        // Get the active session's chat buffer
+        std::vector<OutputLine>* active_buffer = nullptr;
+        if (!active_session_id.empty()) {
+            auto it = session_chat_buffers.find(active_session_id);
+            if (it != session_chat_buffers.end()) {
+                active_buffer = &(it->second);
+            }
+        }
+        
+        // If there's no active session buffer, use the default one
+        std::vector<OutputLine> default_buffer;
+        if (!active_buffer) {
+            // Create a default message about the session view
+            default_buffer.emplace_back("Select a session from the list above to view its chat history", has_colors() ? 5 : 0);
+            default_buffer.emplace_back("", has_colors() ? 7 : 0);
+            default_buffer.emplace_back("MANAGER sessions will show strategic planning and coordination", has_colors() ? 1 : 0);
+            default_buffer.emplace_back("ACCOUNT sessions will show connection status and commands", has_colors() ? 2 : 0);
+            default_buffer.emplace_back("REPO sessions will show development activity and progress", has_colors() ? 3 : 0);
+            active_buffer = &default_buffer;
+        }
+
         // Calculate which lines to display
         int display_lines = max_y - list_height - 4;
-        int total_lines = chat_buffer.size();
+        int total_lines = active_buffer->size();
         int start_line = std::max(0, total_lines - display_lines - chat_scroll_offset);
         int end_line = std::min(total_lines, start_line + display_lines);
 
         // Draw visible lines
         int y = 0;
         for (int i = start_line; i < end_line; ++i) {
-            const auto& line = chat_buffer[i];
+            const auto& line = (*active_buffer)[i];
             if (has_colors() && line.color_pair > 0) {
                 wattron(chat_win, COLOR_PAIR(line.color_pair));
                 mvwprintw(chat_win, y++, 0, "%s", line.text.c_str());
@@ -448,12 +510,28 @@ bool QwenManager::run_ncurses_mode() {
         werase(status_separator_win);
         wattron(status_separator_win, A_REVERSE);
 
-        // Left side: Mode indicator and connection info
-        std::string left_text = "MANAGER MODE | Listening: " + tcp_host_ + ":" + std::to_string(tcp_port_);
+        // Count different types of sessions
+        int project_mgr_count = 0, task_mgr_count = 0, account_count = 0, repo_mgr_count = 0, repo_worker_count = 0;
+        for (const auto& session : sessions_) {
+            switch (session.type) {
+                case SessionType::MANAGER_PROJECT: project_mgr_count++; break;
+                case SessionType::MANAGER_TASK: task_mgr_count++; break;
+                case SessionType::ACCOUNT: account_count++; break;
+                case SessionType::REPO_MANAGER: repo_mgr_count++; break;
+                case SessionType::REPO_WORKER: repo_worker_count++; break;
+                default: break;
+            }
+        }
 
-        // Right side: Session info
+        // Left side: Mode indicator and connection info
+        std::string left_text = "MANAGER MODE | " + tcp_host_ + ":" + std::to_string(tcp_port_);
+
+        // Right side: Session info with type breakdown
         std::string right_text = "Sessions: " + std::to_string(sessions_.size()) + 
-                                " | Focus: " + (list_focused ? "LIST" : "INPUT");
+                                " | MGR:" + std::to_string(project_mgr_count + task_mgr_count) +
+                                " ACC:" + std::to_string(account_count) +
+                                " REPO:" + std::to_string(repo_mgr_count + repo_worker_count) +
+                                " | " + (list_focused ? "LIST" : "INPUT");
 
         // Calculate spacing
         int total_len = left_text.length() + right_text.length();
@@ -603,18 +681,71 @@ bool QwenManager::run_ncurses_mode() {
                         redraw_session_list();
                     }
                 } else if (ch == '\n' || ch == KEY_ENTER || ch == 13) {
-                    // Enter on a selected session could show details or switch context
+                    // Enter on a selected session to switch to that session's chat view
                     if (selected_session_idx >= 2 && selected_session_idx < (int)sessions_.size() + 2) {  // Account for header
                         int session_index = selected_session_idx - 2;  // Adjust for headers
                         if (session_index < sessions_.size()) {
                             const auto& session = sessions_[session_index];
-                            std::string msg = "Selected session: " + session.session_id + " (" + 
-                                             (session.type == SessionType::MANAGER_PROJECT ? "MGR-PROJ" :
-                                              session.type == SessionType::MANAGER_TASK ? "MGR-TASK" :
-                                              session.type == SessionType::ACCOUNT ? "ACCOUNT" :
-                                              session.type == SessionType::REPO_MANAGER ? "REPO-MGR" :
-                                              session.type == SessionType::REPO_WORKER ? "REPO-WRK" : "UNKNOWN") + ")";
-                            chat_buffer.emplace_back(msg, has_colors() ? 5 : 0);
+                            active_session_id = session.session_id;
+                            
+                            // Initialize session's chat buffer if it doesn't exist
+                            if (session_chat_buffers.find(active_session_id) == session_chat_buffers.end()) {
+                                session_chat_buffers[active_session_id] = std::vector<OutputLine>();
+                                
+                                // Add session-specific initial messages based on type
+                                std::string session_type_str;
+                                int session_color = has_colors() ? 7 : 0;
+                                
+                                switch (session.type) {
+                                    case SessionType::MANAGER_PROJECT:
+                                        session_type_str = "PROJECT MANAGER";
+                                        session_color = has_colors() ? 1 : 0; // Cyan
+                                        session_chat_buffers[active_session_id].emplace_back("PROJECT MANAGER Session: " + session.session_id, session_color);
+                                        session_chat_buffers[active_session_id].emplace_back("Model: " + session.model, has_colors() ? 7 : 0);
+                                        session_chat_buffers[active_session_id].emplace_back("Instructions: " + (session.instructions.empty() ? "No instructions loaded" : "Loaded"), has_colors() ? 6 : 0);
+                                        session_chat_buffers[active_session_id].emplace_back("", has_colors() ? 7 : 0);
+                                        session_chat_buffers[active_session_id].emplace_back("Use this session for high-level project planning and architectural decisions", has_colors() ? 5 : 0);
+                                        break;
+                                    case SessionType::MANAGER_TASK:
+                                        session_type_str = "TASK MANAGER";
+                                        session_color = has_colors() ? 6 : 0; // Magenta
+                                        session_chat_buffers[active_session_id].emplace_back("TASK MANAGER Session: " + session.session_id, session_color);
+                                        session_chat_buffers[active_session_id].emplace_back("Model: " + session.model, has_colors() ? 7 : 0);
+                                        session_chat_buffers[active_session_id].emplace_back("Instructions: " + (session.instructions.empty() ? "No instructions loaded" : "Loaded"), has_colors() ? 6 : 0);
+                                        session_chat_buffers[active_session_id].emplace_back("", has_colors() ? 7 : 0);
+                                        session_chat_buffers[active_session_id].emplace_back("Use this session for task coordination and issue resolution", has_colors() ? 5 : 0);
+                                        break;
+                                    case SessionType::ACCOUNT:
+                                        session_type_str = "ACCOUNT";
+                                        session_color = has_colors() ? 2 : 0; // Yellow
+                                        session_chat_buffers[active_session_id].emplace_back("ACCOUNT Session: " + session.session_id, session_color);
+                                        session_chat_buffers[active_session_id].emplace_back("Host: " + session.hostname, has_colors() ? 7 : 0);
+                                        session_chat_buffers[active_session_id].emplace_back("Status: " + session.status, has_colors() ? 7 : 0);
+                                        session_chat_buffers[active_session_id].emplace_back("", has_colors() ? 7 : 0);
+                                        session_chat_buffers[active_session_id].emplace_back("Use this session for account-specific commands and status checks", has_colors() ? 5 : 0);
+                                        break;
+                                    case SessionType::REPO_MANAGER:
+                                    case SessionType::REPO_WORKER:
+                                        session_type_str = session.type == SessionType::REPO_MANAGER ? "REPO MANAGER" : "REPO WORKER";
+                                        session_color = has_colors() ? 3 : 0; // Green
+                                        session_chat_buffers[active_session_id].emplace_back(session_type_str + " Session: " + session.session_id, session_color);
+                                        session_chat_buffers[active_session_id].emplace_back("Model: " + session.model, has_colors() ? 7 : 0);
+                                        session_chat_buffers[active_session_id].emplace_back("Repo: " + session.repo_path, has_colors() ? 7 : 0);
+                                        session_chat_buffers[active_session_id].emplace_back("", has_colors() ? 7 : 0);
+                                        session_chat_buffers[active_session_id].emplace_back("Use this session for repository development work", has_colors() ? 5 : 0);
+                                        break;
+                                    default:
+                                        session_type_str = "UNKNOWN";
+                                        session_color = has_colors() ? 6 : 0; // Magenta
+                                        session_chat_buffers[active_session_id].emplace_back("UNKNOWN Session: " + session.session_id, session_color);
+                                        break;
+                                }
+                                
+                                session_chat_buffers[active_session_id].emplace_back("", has_colors() ? 7 : 0);
+                                session_chat_buffers[active_session_id].emplace_back("--- Session started ---", has_colors() ? 5 : 0);
+                            }
+                            
+                            // Update chat window to show the selected session's content
                             redraw_chat_window();
                         }
                     }
@@ -647,22 +778,54 @@ bool QwenManager::run_ncurses_mode() {
                 // Input window has focus
                 if (ch == '\n' || ch == KEY_ENTER || ch == 13) {
                     if (!input_buffer.empty()) {
+                        // Determine which session buffer to add the message to
+                        std::vector<OutputLine>* target_buffer = &chat_buffer;
+                        
+                        if (!active_session_id.empty()) {
+                            // Add to active session's specific buffer
+                            if (session_chat_buffers.find(active_session_id) != session_chat_buffers.end()) {
+                                target_buffer = &session_chat_buffers[active_session_id];
+                            }
+                        }
+                        
                         // Process input command
                         if (input_buffer == "/exit" || input_buffer == "/quit") {
                             should_exit = true;
                         } else if (input_buffer == "/list") {
                             update_session_list();  // Refresh the list
-                            chat_buffer.emplace_back("Session list refreshed", has_colors() ? 5 : 0);
+                            target_buffer->emplace_back("Session list refreshed", has_colors() ? 5 : 0);
                             redraw_chat_window();
                         } else if (input_buffer == "/status") {
-                            chat_buffer.emplace_back("Manager status:", has_colors() ? 5 : 0);
-                            chat_buffer.emplace_back("  - Running: " + std::string(running_ ? "Yes" : "No"), has_colors() ? 5 : 0);
-                            chat_buffer.emplace_back("  - TCP Server: " + std::string(tcp_server_ && tcp_server_->is_running() ? "Active" : "Inactive"), has_colors() ? 5 : 0);
-                            chat_buffer.emplace_back("  - Active Sessions: " + std::to_string(sessions_.size()), has_colors() ? 5 : 0);
+                            target_buffer->emplace_back("Manager status:", has_colors() ? 5 : 0);
+                            target_buffer->emplace_back("  - Running: " + std::string(running_ ? "Yes" : "No"), has_colors() ? 5 : 0);
+                            target_buffer->emplace_back("  - TCP Server: " + std::string(tcp_server_ && tcp_server_->is_running() ? "Active" : "Inactive"), has_colors() ? 5 : 0);
+                            target_buffer->emplace_back("  - Active Sessions: " + std::to_string(sessions_.size()), has_colors() ? 5 : 0);
+                            redraw_chat_window();
+                        } else if (input_buffer == "/clear") {
+                            target_buffer->clear();
+                            target_buffer->emplace_back("Session buffer cleared", has_colors() ? 5 : 0);
                             redraw_chat_window();
                         } else {
-                            // For regular input, we'll just echo it back
-                            chat_buffer.emplace_back("Command: " + input_buffer, has_colors() ? 6 : 0);
+                            // Add the user message to the active session's buffer
+                            std::string user_prefix = active_session_id.empty() ? "You" : active_session_id.substr(0, 10);
+                            target_buffer->emplace_back(user_prefix + ": " + input_buffer, has_colors() ? 7 : 0);
+                            
+                            // In a real implementation, this is where we would send the input to the appropriate AI session
+                            // For now, we'll just show a response placeholder
+                            SessionInfo* active_session = find_session(active_session_id);
+                            if (active_session) {
+                                std::string ai_prefix = active_session->type == SessionType::MANAGER_PROJECT ? "PROJECT_MGR" :
+                                                       active_session->type == SessionType::MANAGER_TASK ? "TASK_MGR" :
+                                                       active_session->type == SessionType::ACCOUNT ? "ACCOUNT" :
+                                                       active_session->type == SessionType::REPO_MANAGER ? "REPO_MGR" :
+                                                       active_session->type == SessionType::REPO_WORKER ? "REPO_WRK" : "AI";
+                                
+                                // Placeholder response - in a real implementation, this would go to the actual qwen session
+                                target_buffer->emplace_back(ai_prefix + ": Processing request (actual AI integration pending)", has_colors() ? 6 : 0);
+                            } else {
+                                target_buffer->emplace_back("AI: Processing request (no active session selected)", has_colors() ? 6 : 0);
+                            }
+                            
                             redraw_chat_window();
                         }
 

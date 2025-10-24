@@ -33,6 +33,7 @@ struct SessionInfo {
     std::string status;
     std::string model;
     std::string connection_info;
+    std::string instructions;  // AI instructions for this session
     time_t created_at;
     time_t last_activity;
     bool is_active;
@@ -77,6 +78,9 @@ private:
     void generate_session_id(std::string& session_id);
     SessionInfo* find_session(const std::string& session_id);
     const SessionInfo* find_session(const std::string& session_id) const;
+    
+    // File I/O
+    std::string load_instructions_from_file(const std::string& filename);
     
     // TCP server management
     bool start_tcp_server();
