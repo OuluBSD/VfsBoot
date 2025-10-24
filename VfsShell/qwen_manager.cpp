@@ -1478,9 +1478,10 @@ bool QwenManager::run_ncurses_mode() {
     cbreak();
     noecho();
     keypad(stdscr, TRUE);
-    
-    // Enable mouse support for scrolling
-    mousemask(BUTTON4_PRESSED | BUTTON5_PRESSED, nullptr);
+
+    // Mouse support disabled to allow terminal text selection
+    // Users can use PgUp/PgDn or arrow keys for scrolling
+    // mousemask(BUTTON4_PRESSED | BUTTON5_PRESSED, nullptr);
     
     // Initialize colors if supported
     if (has_colors()) {
@@ -1857,14 +1858,15 @@ bool QwenManager::run_ncurses_mode() {
                 continue;
             }
 
-            // Handle mouse events
-            if (ch == KEY_MOUSE) {
+            // Mouse events disabled to allow terminal text selection
+            // Use PgUp/PgDn or arrow keys for scrolling instead
+            if (false && ch == KEY_MOUSE) {
                 MEVENT event;
                 if (getmouse(&event) == OK) {
                     // Mouse wheel up = scroll session list or chat up
                     if (event.bstate & BUTTON4_PRESSED) {
                         if (list_focused) {
-                            list_scroll_offset = std::min(list_scroll_offset + 3, 
+                            list_scroll_offset = std::min(list_scroll_offset + 3,
                                                          (int)session_list_buffer.size() - list_height);
                         } else {
                             chat_scroll_offset = std::min(chat_scroll_offset + 3, 
@@ -2062,7 +2064,7 @@ bool QwenManager::run_ncurses_mode() {
 
                             // Construct the full command
                             std::string log_file = config_.management_repo_path + "/ai-server.log";
-                            std::string full_command = vfsh_binary_path_ + " qwen --port " + std::to_string(config_.tcp_port);
+                            std::string full_command = vfsh_binary_path_ + " --script .ai-server-start.cx (qwen --manager --port " + std::to_string(config_.tcp_port) + ")";
 
                             target_buffer->emplace_back("Starting ai-server in directory: " + config_.management_repo_path, has_colors() ? 3 : 0);
                             target_buffer->emplace_back("Command: " + full_command, has_colors() ? 7 : 0);
@@ -2086,9 +2088,17 @@ bool QwenManager::run_ncurses_mode() {
                                     close(fd);
                                 }
 
-                                // Execute ai-server using absolute path
-                                std::string port_str = std::to_string(config_.tcp_port);
-                                execl(vfsh_binary_path_.c_str(), vfsh_binary_path_.c_str(), "qwen", "--port", port_str.c_str(), nullptr);
+                                // Create a temporary script file to start qwen
+                                std::string script_content = "qwen --manager --port " + std::to_string(config_.tcp_port) + "\n";
+                                int script_fd = open(".ai-server-start.cx", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                                if (script_fd >= 0) {
+                                    write(script_fd, script_content.c_str(), script_content.length());
+                                    close(script_fd);
+                                }
+
+                                // Execute vfsh with the script file
+                                execl(vfsh_binary_path_.c_str(), vfsh_binary_path_.c_str(),
+                                      "--script", ".ai-server-start.cx", nullptr);
 
                                 // If exec fails
                                 std::cerr << "Failed to execute " << vfsh_binary_path_ << std::endl;
@@ -2505,7 +2515,7 @@ bool QwenManager::run_ncurses_mode() {
 
                                             // Construct the full command
                                             std::string log_file = config_.management_repo_path + "/ai-server.log";
-                                            std::string full_command = vfsh_binary_path_ + " qwen --port " + std::to_string(config_.tcp_port);
+                                            std::string full_command = vfsh_binary_path_ + " --script .ai-server-start.cx (qwen --manager --port " + std::to_string(config_.tcp_port) + ")";
 
                                             target_buffer->emplace_back("Directory: " + config_.management_repo_path, has_colors() ? 7 : 0);
                                             target_buffer->emplace_back("Command: " + full_command, has_colors() ? 7 : 0);
@@ -2528,9 +2538,17 @@ bool QwenManager::run_ncurses_mode() {
                                                     close(fd);
                                                 }
 
-                                                // Execute ai-server using absolute path
-                                                std::string port_str = std::to_string(config_.tcp_port);
-                                                execl(vfsh_binary_path_.c_str(), vfsh_binary_path_.c_str(), "qwen", "--port", port_str.c_str(), nullptr);
+                                                // Create a temporary script file to start qwen
+                                                std::string script_content = "qwen --manager --port " + std::to_string(config_.tcp_port) + "\n";
+                                                int script_fd = open(".ai-server-start.cx", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                                                if (script_fd >= 0) {
+                                                    write(script_fd, script_content.c_str(), script_content.length());
+                                                    close(script_fd);
+                                                }
+
+                                                // Execute vfsh with the script file
+                                                execl(vfsh_binary_path_.c_str(), vfsh_binary_path_.c_str(),
+                                                      "--script", ".ai-server-start.cx", nullptr);
 
                                                 // If exec fails
                                                 std::cerr << "Failed to execute " << vfsh_binary_path_ << std::endl;
