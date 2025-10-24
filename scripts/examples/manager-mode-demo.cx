@@ -1,0 +1,274 @@
+#!/usr/bin/env node
+
+/**
+ * manager-mode-demo.cx - End-to-end demonstration script for qwen Manager Mode
+ * 
+ * This script shows the complete workflow from manager startup to task completion.
+ */
+
+// Import required modules
+import { spawn } from 'child_process';
+import { readFile, writeFile } from 'fs/promises';
+import { existsSync } from 'fs';
+import * as path from 'path';
+
+async function runManagerModeDemo() {
+    console.log("=====================================");
+    console.log("qwen Manager Mode Demo");
+    console.log("=====================================");
+    
+    // Step 1: Create ACCOUNTS.json configuration
+    console.log("\n1. Creating ACCOUNTS.json configuration...");
+    
+    const accountsConfig = {
+        accounts: [
+            {
+                id: "demo-account-1",
+                hostname: "localhost",
+                enabled: true,
+                max_concurrent_repos: 2,
+                repositories: [
+                    {
+                        id: "demo-repo-1",
+                        url: "https://github.com/example/demo-repo.git",
+                        local_path: "/tmp/demo-repo",
+                        enabled: true,
+                        worker_model: "qwen-auth",
+                        manager_model: "qwen-openai"
+                    }
+                ]
+            }
+        ]
+    };
+    
+    await writeFile('ACCOUNTS.json', JSON.stringify(accountsConfig, null, 2));
+    console.log("✓ ACCOUNTS.json created with demo configuration");
+    
+    // Step 2: Create PROJECT_MANAGER.md and TASK_MANAGER.md
+    console.log("\n2. Creating AI instruction files...");
+    
+    const projectManagerInstructions = `# PROJECT MANAGER Role and Responsibilities
+
+You are a PROJECT MANAGER AI with the following specific role and responsibilities:
+
+## Primary Role
+- You are the primary decision maker for high-level project strategy and architecture
+- You use the qwen-openai model for complex reasoning and planning
+- You are expensive but high quality - use your capabilities for strategic decisions
+- You maintain overall project vision and ensures alignment with business goals
+
+## Responsibilities
+1. **Strategic Planning**: Develop high-level project plans and architectural decisions
+2. **Risk Assessment**: Identify and mitigate project-level risks
+3. **Resource Allocation**: Coordinate resources across different tasks and repositories
+4. **Quality Assurance**: Oversee code quality and architectural consistency
+5. **Escalation Handling**: Handle escalated issues from TASK MANAGERS and REPO sessions
+6. **Stakeholder Communication**: Prepare summaries and updates for project stakeholders
+
+## Working with Other Sessions
+- You coordinate with TASK MANAGERS for task-level execution
+- You receive escalations from REPO WORKERS when they encounter complex issues
+- You delegate specific implementation tasks to REPO MANAGERS when appropriate
+- You maintain awareness of all ACCOUNT and REPO sessions status
+
+## Decision Making
+- When faced with architectural decisions, prefer solutions that:
+  - Maintain long-term maintainability
+  - Consider scalability requirements
+  - Follow best practices for the technology stack
+  - Balance implementation complexity with business value
+- For complex algorithmic problems, provide detailed analysis and multiple solution approaches
+- Always consider the impact of changes on the entire project ecosystem
+
+## Communication Style
+- Provide clear, well-reasoned explanations for your decisions
+- When escalating from other sessions, analyze the root cause and propose solutions
+- Use structured format for reports and plans
+- Maintain documentation of architectural decisions (ADR)`;
+    
+    const taskManagerInstructions = `# TASK MANAGER Role and Responsibilities
+
+You are a TASK MANAGER AI with the following specific role and responsibilities:
+
+## Primary Role
+- You manage specific project tasks and coordinate their execution
+- You use the qwen-auth model for regular quality work at a lower cost
+- You act as a coordinator between strategic decisions from PROJECT MANAGER and implementation work
+- You maintain task-level visibility and ensure progress toward objectives
+
+## Responsibilities
+1. **Task Breakdown**: Decompose high-level requirements into actionable tasks
+2. **Progress Tracking**: Monitor completion of assigned tasks and report status
+3. **Resource Coordination**: Coordinate between different REPO sessions for cross-repository tasks
+4. **Issue Resolution**: Handle routine issues and escalate complex problems to PROJECT MANAGER
+5. **Workflow Management**: Ensure proper testing and review processes are followed
+6. **Communication Hub**: Facilitate communication between different repository sessions
+
+## Working with Other Sessions
+- You receive high-level directives from PROJECT MANAGER
+- You coordinate with multiple REPO MANAGER and REPO WORKER sessions
+- You escalate to PROJECT MANAGER when tasks require architectural decisions
+- You ensure consistency across different repository implementations
+
+## Decision Making
+- When faced with implementation choices, prefer solutions that:
+  - Follow established patterns and standards
+  - Minimize complexity and risk
+  - Are consistent with architectural guidelines from PROJECT MANAGER
+  - Consider maintainability and team familiarity
+- For routine implementation decisions, use proven approaches
+- When uncertain, seek clarification from PROJECT MANAGER rather than guessing
+
+## Communication Style
+- Provide regular status updates to PROJECT MANAGER
+- When escalating issues, clearly explain the problem, attempted solutions, and business impact
+- Use concise, task-focused communication
+- Maintain clear task tracking and dependencies
+- Coordinate between different repository teams when needed
+
+## Escalation Criteria
+- Escalate to PROJECT MANAGER when:
+  - Architectural changes are needed
+  - Cross-team dependencies become blocking
+  - Requirements are unclear or incomplete
+  - Timeline or scope concerns arise
+  - Technical decisions require strategic consideration`;
+    
+    await writeFile('PROJECT_MANAGER.md', projectManagerInstructions);
+    await writeFile('TASK_MANAGER.md', taskManagerInstructions);
+    console.log("✓ PROJECT_MANAGER.md and TASK_MANAGER.md created");
+    
+    // Step 3: Show the VFSBOOT.md auto-generation
+    console.log("\n3. Demonstrating VFSBOOT.md auto-generation...");
+    
+    const vfsBootContent = `# VFSBOOT - qwen Manager Documentation
+
+This document provides an overview of the qwen Manager Mode and its components.
+
+## Overview
+
+The qwen Manager Mode enables hierarchical multi-repository AI project management with the following components:
+
+- **PROJECT MANAGER**: Expensive, high-quality AI for strategic decisions (qwen-openai)
+- **TASK MANAGER**: Regular quality AI for task coordination (qwen-auth) 
+- **ACCOUNTS**: Remote computers that connect to the manager
+- **REPOSITORIES**: Individual project repositories managed by worker/manager pairs
+
+## Configuration
+
+The system is configured using \`ACCOUNTS.json\` which defines accounts, repositories, and their properties.
+
+### ACCOUNTS.json Schema
+
+The configuration file follows this schema:
+
+\`\`\`json
+{
+  "accounts": [
+    {
+      "id": "unique-account-identifier",
+      "hostname": "computer-hostname-or-ip",
+      "enabled": true,
+      "max_concurrent_repos": 3,
+      "repositories": [
+        {
+          "id": "unique-repo-identifier", 
+          "url": "git-repository-url",
+          "local_path": "/local/path/to/clone",
+          "enabled": true,
+          "worker_model": "qwen-auth",
+          "manager_model": "qwen-openai"
+        }
+      ]
+    }
+  ]
+}
+\`\`\`
+
+For more details about the schema, see [docs/ACCOUNTS_JSON_SPEC.md](docs/ACCOUNTS_JSON_SPEC.md).
+
+## Communication Protocol
+
+The manager, accounts, and repositories communicate using a JSON-based protocol. For the detailed specification, see [docs/MANAGER_PROTOCOL.md](docs/MANAGER_PROTOCOL.md).
+
+## AI Role Definitions
+
+This system uses specialized AI roles with specific responsibilities:
+
+- [PROJECT_MANAGER.md](PROJECT_MANAGER.md) - Instructions for PROJECT MANAGER AI (qwen-openai)
+- [TASK_MANAGER.md](TASK_MANAGER.md) - Instructions for TASK MANAGER AI (qwen-auth)
+
+## File Locations
+
+- \`ACCOUNTS.json\` - Main configuration file for defining accounts and repositories
+- \`PROJECT_MANAGER.md\` - AI instructions for project-level management
+- \`TASK_MANAGER.md\` - AI instructions for task-level coordination  
+- \`docs/ACCOUNTS_JSON_SPEC.md\` - Schema specification for configuration
+- \`docs/MANAGER_PROTOCOL.md\` - Communication protocol specification
+
+## Usage
+
+To start the manager mode:
+
+\`\`\`bash
+qwen --manager
+# or
+qwen -m
+\`\`\`
+
+This will initialize the manager, load the account configurations, start the TCP server for account connections, and provide the UI for managing the multi-repository setup.
+`;
+    
+    await writeFile('VFSBOOT.md', vfsBootContent);
+    console.log("✓ VFSBOOT.md generated");
+    
+    // Step 4: Demonstrate the workflow concepts
+    console.log("\n4. Demonstrating manager mode workflow concepts...");
+    console.log("  - PROJECT MANAGER handles strategic planning (qwen-openai)");
+    console.log("  - TASK MANAGER coordinates implementation tasks (qwen-auth)");
+    console.log("  - ACCOUNTS connect remotely and manage repositories");
+    console.log("  - REPO WORKERS handle routine implementation (qwen-auth)");
+    console.log("  - REPO MANAGERS handle complex tasks or reviews (qwen-openai)");
+    console.log("  - Automatic escalation from WORKER to MANAGER after 3 failures");
+    console.log("  - Review cycles triggered after 3 WORKER commits");
+    console.log("  - Manual override mode with '/auto' command");
+    console.log("  - Concurrent repository limits enforced per account");
+    
+    // Step 5: Show the command interface
+    console.log("\n5. Manager mode commands:");
+    console.log("  - qwen --manager (or qwen -m) : Start manager mode");
+    console.log("  - TAB key : Switch between session list and chat/command view");
+    console.log("  - Account session commands (no / prefix):");
+    console.log("    * list : Show all repositories");
+    console.log("    * enable <repo_id> : Enable a repository");
+    console.log("    * disable <repo_id> : Disable a repository");
+    console.log("    * status <repo_id> : Check repository status");
+    console.log("  - /auto : Return REPO session to automatic mode");
+    
+    // Step 6: Explain the architecture
+    console.log("\n6. Architecture Overview:");
+    console.log(`
+MANAGER (Management Repository)
+├── PROJECT MANAGER (qwen-openai) - expensive, high quality
+├── TASK MANAGER (qwen-auth) - cheaper, regular quality
+│
+├── ACCOUNT #1 (Computer A)
+│   ├── REPO #1 (qwen-auth WORKER + qwen-openai MANAGER)
+│   ├── REPO #2 (qwen-auth WORKER + qwen-openai MANAGER)
+│   └── REPO #3 (qwen-auth WORKER + qwen-openai MANAGER)
+│
+└── ACCOUNT #2 (Computer B)
+    ├── REPO #4 (qwen-auth WORKER + qwen-openai MANAGER)
+    └── REPO #5 (qwen-auth WORKER + qwen-openai MANAGER)
+    `);
+    
+    console.log("=====================================");
+    console.log("Demo completed! The manager mode is ready for use.");
+    console.log("=====================================");
+}
+
+// Run the demo
+runManagerModeDemo().catch(err => {
+    console.error("Demo failed:", err);
+    process.exit(1);
+});

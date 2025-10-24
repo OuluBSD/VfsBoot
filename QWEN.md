@@ -129,6 +129,81 @@ vfsh> qwen --list-sessions
 vfsh> qwen --model gpt-4o-mini
 ```
 
+### qwen Manager Mode
+
+The qwen Manager Mode enables hierarchical multi-repository AI project management:
+
+```bash
+# Start manager mode
+$ ./vfsh
+vfsh> qwen --manager
+# or
+vfsh> qwen -m
+
+# Manager mode provides:
+# - PROJECT MANAGER session (qwen-openai) for strategic decisions
+# - TASK MANAGER session (qwen-auth) for task coordination  
+# - ACCOUNT connections from remote computers
+# - REPO sessions (WORKER + MANAGER pairs) for repository management
+# - Automatic escalation from WORKER to MANAGER after 3 failures
+# - Test interval triggers after 3 WORKER commits
+# - Manual override mode with '/auto' command to return to automatic workflow
+# - Concurrent repository limits enforcement per account
+```
+
+#### Manager Mode Architecture
+
+```
+MANAGER (Management Repository)
+├── PROJECT MANAGER (qwen-openai) - expensive, high quality
+├── TASK MANAGER (qwen-auth) - cheaper, regular quality
+│
+├── ACCOUNT #1 (Computer A)
+│   ├── REPO #1 (qwen-auth WORKER + qwen-openai MANAGER)
+│   ├── REPO #2 (qwen-auth WORKER + qwen-openai MANAGER)
+│   └── REPO #3 (qwen-auth WORKER + qwen-openai MANAGER)
+│
+└── ACCOUNT #2 (Computer B)
+    ├── REPO #4 (qwen-auth WORKER + qwen-openai MANAGER)
+    └── REPO #5 (qwen-auth WORKER + qwen-openai MANAGER)
+```
+
+#### Manager Mode Configuration
+
+The system is configured using `ACCOUNTS.json`:
+
+```json
+{
+  "accounts": [
+    {
+      "id": "account-1",
+      "hostname": "computer-a",
+      "enabled": true,
+      "max_concurrent_repos": 3,
+      "repositories": [
+        {
+          "id": "repo-1",
+          "url": "https://github.com/user/repo1.git",
+          "local_path": "/path/to/local/clone",
+          "enabled": true,
+          "worker_model": "qwen-auth",
+          "manager_model": "qwen-openai"
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### Manager Mode Commands
+
+When using ACCOUNT sessions in manager mode:
+- `list` - Show all repositories for the account
+- `enable <repo_id>` - Enable a specific repository
+- `disable <repo_id>` - Disable a specific repository  
+- `status <repo_id>` - Check repository status
+- `/auto` - Return REPO session to automatic workflow mode
+
 ### Running qwen-code as Standalone Server
 
 qwen-code can run as a TCP server in a separate terminal, making it easy to connect from multiple VfsBoot instances or test with tools like `nc`.
