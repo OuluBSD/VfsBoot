@@ -76,6 +76,37 @@ VfsBoot integrates with [qwen-code](https://github.com/lvce-editor/qwen-code) - 
 
 The system gracefully falls back to line-based stdio mode for unsupported terminals or when explicitly requested with `--simple` flag.
 
+### Keyboard Controls in ncurses Mode
+
+**Navigation & Editing:**
+- Arrow keys: Move cursor in input field
+- Home / Ctrl+A: Move to beginning of line
+- End / Ctrl+E: Move to end of line
+- Backspace / Delete: Remove characters
+- Ctrl+K: Kill from cursor to end of line
+- Ctrl+U: Kill from beginning to cursor (or scroll up if input empty)
+- Page Up/Down: Scroll conversation history
+- Ctrl+D: Scroll down
+- Mouse wheel: Scroll (hold Shift to select text in most terminals)
+
+**Permission Modes:**
+- Shift+Tab: Cycle through permission modes (PLAN → NORMAL → AUTO-EDIT → YOLO)
+
+**Tool Approval:**
+- [y]: Approve and execute tools
+- [n]: Reject tools
+- [d]: Enter discuss mode to ask questions first
+
+**Exit Behavior (Double Ctrl+C Pattern):**
+- **First Ctrl+C**: Clear input buffer and show hint
+- **Second Ctrl+C** (within 2 seconds): Detach from qwen, return to vfsh CLI
+- **Third Ctrl+C** (in vfsh): Exit vfsh entirely
+
+**RULE**: This double Ctrl+C pattern applies to ALL sub-programs in vfsh (qwen, text editor, etc.):
+- First Ctrl+C: Cancel current operation / clear input
+- Second Ctrl+C: Exit sub-program, return to vfsh
+- Third Ctrl+C: Exit vfsh entirely
+
 ### Using qwen in VfsBoot
 
 ```bash

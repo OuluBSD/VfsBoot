@@ -359,8 +359,11 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
     noecho();
     keypad(stdscr, TRUE);
 
-    // Enable mouse support
-    mousemask(ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION, nullptr);
+    // Enable mouse support for scrolling
+    // Note: This may interfere with terminal text selection
+    // In most terminals, hold Shift while selecting text to bypass ncurses mouse capture
+    // Only enable button press events (not motion) to minimize interference
+    mousemask(BUTTON4_PRESSED | BUTTON5_PRESSED, nullptr);  // Mouse wheel only
 
     // Initialize colors if supported
     if (has_colors()) {
@@ -385,6 +388,9 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
 
     scrollok(output_win, TRUE);
 
+    // Enable keypad for input window to handle special keys properly
+    keypad(input_win, TRUE);
+
     // Output buffer for scrollable history
     std::vector<OutputLine> output_buffer;
     int scroll_offset = 0;  // How many lines scrolled back from bottom
@@ -401,6 +407,10 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
 
     // Context usage tracking
     int context_usage_percent = 0;  // 0-100
+
+    // Ctrl+C handling (double Ctrl+C to exit)
+    auto last_ctrl_c_time = std::chrono::steady_clock::now();
+    bool ctrl_c_pressed_recently = false;
 
     // Helper function to add a line to output buffer
     auto add_output_line = [&](const std::string& text, int color = 0) {
@@ -949,23 +959,109 @@ bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, con
                 // End or Ctrl+E - move to end
                 cursor_pos = input_buffer.length();
                 redraw_input();
-            } else if (ch == KEY_PPAGE || ch == 21) {  // Page Up or Ctrl+U
+            } else if (ch == 3) {  // Ctrl+C
+                // Double Ctrl+C pattern: first press detaches, second press exits vfsh
+                auto now = std::chrono::steady_clock::now();
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_ctrl_c_time).count();
+
+                if (ctrl_c_pressed_recently && elapsed < 2000) {
+                    // Second Ctrl+C within 2 seconds - show exit message and detach
+                    add_output_line("^C (detaching from qwen, press Ctrl+C again in vfsh to exit)", has_colors() ? 3 : 0);
+                    redraw_output();
+                    state_mgr.save_session();
+                    should_exit = true;
+                } else {
+                    // First Ctrl+C - clear input buffer and show hint
+                    input_buffer.clear();
+                    cursor_pos = 0;
+                    add_output_line("^C (press Ctrl+C again to detach from qwen)", has_colors() ? 3 : 0);
+                    redraw_output();
+                    redraw_input();
+                    ctrl_c_pressed_recently = true;
+                    last_ctrl_c_time = now;
+                }
+            } else if (ch == 11) {  // Ctrl+K
+                // Kill from cursor to end of line
+                if (cursor_pos < input_buffer.length()) {
+                    input_buffer.erase(cursor_pos);
+                    redraw_input();
+                }
+            } else if (ch == 21) {  // Ctrl+U
+                // Kill from beginning to cursor (or scroll up if input empty)
+                if (!input_buffer.empty()) {
+                    input_buffer.erase(0, cursor_pos);
+                    cursor_pos = 0;
+                    redraw_input();
+                } else {
+                    // Scroll up if input is empty
+                    scroll_offset = std::min(scroll_offset + 5, (int)output_buffer.size() - output_height);
+                    redraw_output();
+                    redraw_status();
+                    redraw_input();
+                }
+            } else if (ch == KEY_PPAGE) {  // Page Up
                 // Scroll up
                 scroll_offset = std::min(scroll_offset + 5, (int)output_buffer.size() - output_height);
                 redraw_output();
                 redraw_status();
                 redraw_input();
-            } else if (ch == KEY_NPAGE || ch == 4) {  // Page Down or Ctrl+D
+            } else if (ch == KEY_NPAGE) {  // Page Down
                 // Scroll down
                 scroll_offset = std::max(scroll_offset - 5, 0);
                 redraw_output();
                 redraw_status();
                 redraw_input();
-            } else if (ch >= 32 && ch < 127) {
-                // Regular printable character
+            } else if (ch == 4) {  // Ctrl+D
+                // Scroll down (or could be used for EOF, but we use for scroll)
+                scroll_offset = std::max(scroll_offset - 5, 0);
+                redraw_output();
+                redraw_status();
+                redraw_input();
+            } else if (ch == 27) {  // ESC key
+                // Escape key - might be start of escape sequence or standalone ESC
+                // Set a very short timeout to see if more characters follow
+                wtimeout(input_win, 10);
+                int next_ch = wgetch(input_win);
+                wtimeout(input_win, 50);  // Restore normal timeout
+
+                if (next_ch == ERR) {
+                    // Standalone ESC - ignore it
+                    continue;
+                } else if (next_ch == '[') {
+                    // Escape sequence - consume the rest of it
+                    // Common patterns: ESC [ ... (CSI sequences for mouse, etc.)
+                    while (true) {
+                        wtimeout(input_win, 10);
+                        int seq_ch = wgetch(input_win);
+                        wtimeout(input_win, 50);
+
+                        if (seq_ch == ERR) {
+                            break;  // End of sequence
+                        }
+                        // Consume characters until we hit a letter or certain terminators
+                        if ((seq_ch >= 'A' && seq_ch <= 'Z') ||
+                            (seq_ch >= 'a' && seq_ch <= 'z') ||
+                            seq_ch == '~' || seq_ch == 'm' || seq_ch == 'M') {
+                            break;  // Sequence terminator
+                        }
+                    }
+                } else {
+                    // Some other escape sequence we don't recognize - ignore it
+                    // Could be Alt+key or other escape combination
+                }
+                // Don't add anything to input buffer
+            } else if (ch >= 32 && ch <= 126 && ch != 127) {
+                // Regular printable ASCII character only
+                // Exclude: control chars (0-31), DEL (127), high ASCII (128+)
                 input_buffer.insert(cursor_pos, 1, (char)ch);
                 cursor_pos++;
                 redraw_input();
+            }
+            // Ignore any other characters (unrecognized keys, sequences, etc.)
+
+            // Reset Ctrl+C state if any other key was pressed (except Ctrl+C itself)
+            if (ch != ERR && ch != 3) {
+                ctrl_c_pressed_recently = false;
             }
         }
 
