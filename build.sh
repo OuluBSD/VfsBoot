@@ -20,6 +20,9 @@ VERBOSE=0
 BOOTSTRAP=0
 STATIC_ANALYSIS=""  # "yes", "no", or "" (prompt)
 
+PWD=`pwd`
+UMK_BIN=`which umk`
+
 usage() {
     cat << EOF
 Usage: $0 [OPTIONS]
@@ -129,7 +132,7 @@ detect_build_system() {
 
 # Build with U++ umk
 build_umk() {
-    local umk_cmd="${UMK:-umk}"
+    local umk_cmd="$UMK_BIN"
 
     if ! command -v "$umk_cmd" &> /dev/null; then
         echo -e "${RED}Error: umk not found${NC}" >&2
@@ -141,7 +144,7 @@ build_umk() {
     # umk syntax: umk assembly,includes package buildmethod flags output
     # -d = debug, -r = release, -s = shared, -v = verbose
     local flags=""
-    local buildmethod="CLANG.bm"
+    local buildmethod="$HOME/.config/u++/theide/CLANG.bm"
     local defines=""
 
     if [ "$BUILD_TYPE" = "debug" ]; then
@@ -156,11 +159,14 @@ build_umk() {
     fi
 
     # Check if ~/upp/uppsrc exists
+    cd $PWD
     if [ ! -d ~/upp/uppsrc ]; then
         echo -e "${YELLOW}Warning: ~/upp/uppsrc not found, using current directory only${NC}"
-        "$umk_cmd" .,. VfsShell "$buildmethod" "$flags" "$defines" ./vfsh
+        echo "$umk_cmd" "$PWD" src/VfsShell "$buildmethod" "$flags" "$defines" "$PWD/vfsh"
+        "$umk_cmd" "$PWD" src/VfsShell "$buildmethod" "$flags" "$defines" "$PWD/vfsh"
     else
-        "$umk_cmd" .,~/upp/uppsrc VfsShell "$buildmethod" "$flags" "$defines" ./vfsh
+        echo "$umk_cmd" "$PWD,$HOME/upp/uppsrc" src/VfsShell "$buildmethod" "$flags" "$defines" "$PWD/vfsh"
+        "$umk_cmd" "$PWD,$HOME/upp/uppsrc" src/VfsShell "$buildmethod" "$flags" "$defines" "$PWD/vfsh"
     fi
 }
 
@@ -429,27 +435,27 @@ run_static_analysis() {
 
     # Define source files to analyze
     local sources=(
-        "VfsShell/vfs_common.cpp"
-        "VfsShell/tag_system.cpp"
-        "VfsShell/logic_engine.cpp"
-        "VfsShell/vfs_core.cpp"
-        "VfsShell/vfs_mount.cpp"
-        "VfsShell/sexp.cpp"
-        "VfsShell/cpp_ast.cpp"
-        "VfsShell/clang_parser.cpp"
-        "VfsShell/planner.cpp"
-        "VfsShell/ai_bridge.cpp"
-        "VfsShell/context_builder.cpp"
-        "VfsShell/make.cpp"
-        "VfsShell/hypothesis.cpp"
-        "VfsShell/scope_store.cpp"
-        "VfsShell/feedback.cpp"
-        "VfsShell/shell_commands.cpp"
-        "VfsShell/repl.cpp"
-        "VfsShell/main.cpp"
-        "VfsShell/snippet_catalog.cpp"
-        "VfsShell/utils.cpp"
-        "VfsShell/web_server.cpp"
+        "src/VfsShell/vfs_common.cpp"
+        "src/VfsShell/tag_system.cpp"
+        "src/VfsShell/logic_engine.cpp"
+        "src/VfsShell/vfs_core.cpp"
+        "src/VfsShell/vfs_mount.cpp"
+        "src/VfsShell/sexp.cpp"
+        "src/VfsShell/cpp_ast.cpp"
+        "src/VfsShell/clang_parser.cpp"
+        "src/VfsShell/planner.cpp"
+        "src/VfsShell/ai_bridge.cpp"
+        "src/VfsShell/context_builder.cpp"
+        "src/VfsShell/make.cpp"
+        "src/VfsShell/hypothesis.cpp"
+        "src/VfsShell/scope_store.cpp"
+        "src/VfsShell/feedback.cpp"
+        "src/VfsShell/shell_commands.cpp"
+        "src/VfsShell/repl.cpp"
+        "src/VfsShell/main.cpp"
+        "src/VfsShell/snippet_catalog.cpp"
+        "src/VfsShell/utils.cpp"
+        "src/VfsShell/web_server.cpp"
     )
 
     # Run clang-tidy on each source file

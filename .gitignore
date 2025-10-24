@@ -3,6 +3,7 @@
 vfsh
 codex
 build/
+tmp/
 cache/
 tools/__pycache__/**
 codex_trace.log

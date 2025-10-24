@@ -228,7 +228,7 @@ def update_makefile():
     sources = []
     for module in MODULES:
         if module['cpp_ranges']:
-            sources.append(f"VfsShell/{module['name']}.cpp")
+            sources.append(f"src/VfsShell/{module['name']}.cpp")
     
     # Read current Makefile
     with open('Makefile', 'r') as f:
@@ -267,11 +267,11 @@ def create_new_codex_h():
             lines.append(f'#include "{module["name"]}.h"\n')
     
     # Backup old codex.h
-    if os.path.exists('VfsShell/codex.h'):
-        os.rename('VfsShell/codex.h', 'VfsShell/codex.h.bak')
+    if os.path.exists('src/VfsShell/codex.h'):
+        os.rename('src/VfsShell/codex.h', 'src/VfsShell/codex.h.bak')
         print("  ✓ Backed up old codex.h to codex.h.bak")
     
-    with open('VfsShell/codex.h', 'w') as f:
+    with open('src/VfsShell/codex.h', 'w') as f:
         f.writelines(lines)
     
     print(f"  ✓ Created new codex.h with module includes")
@@ -281,8 +281,8 @@ def create_new_codex_cpp():
     print(f"\n{'='*60}")
     print("Handling codex.cpp...")
     
-    if os.path.exists('VfsShell/codex.cpp'):
-        os.rename('VfsShell/codex.cpp', 'VfsShell/codex.cpp.bak')
+    if os.path.exists('src/VfsShell/codex.cpp'):
+        os.rename('src/VfsShell/codex.cpp', 'src/VfsShell/codex.cpp.bak')
         print("  ✓ Backed up old codex.cpp to codex.cpp.bak")
     
     # Create a minimal stub
@@ -294,7 +294,7 @@ def create_new_codex_cpp():
 // The old monolithic codex.cpp is backed up as codex.cpp.bak
 '''
     
-    with open('VfsShell/codex.cpp', 'w') as f:
+    with open('src/VfsShell/codex.cpp', 'w') as f:
         f.write(stub)
     
     print("  ✓ Created stub codex.cpp")
@@ -350,7 +350,7 @@ def main():
         print("\n✗ Error: VfsShell/codex.h not found")
         sys.exit(1)
     
-    if not os.path.exists('VfsShell/codex.cpp'):
+    if not os.path.exists('src/VfsShell/codex.cpp'):
         print("\n✗ Error: VfsShell/codex.cpp not found")
         sys.exit(1)
     
@@ -389,7 +389,7 @@ def main():
         print("\n✗ Build test FAILED - see errors above")
         print("\nTo rollback:")
         print("  mv VfsShell/codex.h.bak VfsShell/codex.h")
-        print("  mv VfsShell/codex.cpp.bak VfsShell/codex.cpp")
+        print("  mv src/VfsShell/codex.cpp.bak src/VfsShell/codex.cpp")
         print("  git checkout Makefile")
     
     print("\nNext steps:")

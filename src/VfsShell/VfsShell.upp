@@ -1,0 +1,118 @@
+description "VfsBoot - Meta-compiler with VFS and AI integration\377";
+
+library(LINUX) blake3;
+
+library(LINUX) svn_delta-1;
+
+library(LINUX) svn_subr-1;
+
+library(LINUX) aprutil-1;
+
+library(LINUX) apr-1;
+
+library(LINUX) z;
+
+library(LINUX) expat;
+
+library(LINUX) magic;
+
+library(LINUX) lz4;
+
+library(LINUX) utf8proc;
+
+library(LINUX) clang;
+
+library(LINUX) websockets;
+
+library(LINUX) pthread;
+
+library(LINUX) "ncurses tinfo";
+
+include(LINUX) /usr/include/subversion-1;
+
+include(LINUX) /usr/include/apr-1;
+
+include(LINUX) /usr/lib/llvm/21/include;
+
+file
+	VfsShell.h,
+	config.h,
+	main.cpp,
+	ui_backend.h,
+	ui_backend_qt_example.h,
+	vfs_common.h,
+	vfs_common.cpp,
+	tag_system.h,
+	tag_system.cpp,
+	logic_engine.h,
+	logic_engine.cpp,
+	vfs_core.h,
+	vfs_core.cpp,
+	vfs_mount.h,
+	vfs_mount.cpp,
+	sexp.h,
+	sexp.cpp,
+	cpp_ast.h,
+	cpp_ast.cpp,
+	clang_parser.h,
+	clang_parser.cpp,
+	planner.h,
+	planner.cpp,
+	ai_bridge.h,
+	ai_bridge.cpp,
+	context_builder.h,
+	context_builder.cpp,
+	make.h,
+	make.cpp,
+	hypothesis.h,
+	hypothesis.cpp,
+	scope_store.h,
+	scope_store.cpp,
+	feedback.h,
+	feedback.cpp,
+	shell_commands.h,
+	shell_commands.cpp,
+	repl.h,
+	repl.cpp,
+	daemon.cpp,
+	snippet_catalog.h,
+	snippet_catalog.cpp,
+	utils.h,
+	utils.cpp,
+	web_server.h,
+	web_server.cpp,
+	command.h,
+	command.cpp,
+	editor_functions.h,
+	registry.h,
+	registry.cpp,
+	upp_assembly.h,
+	upp_assembly.cpp,
+	upp_builder.h,
+	upp_builder.cpp,
+	upp_workspace_build.h,
+	upp_workspace_build.cpp,
+	build_graph.h,
+	build_graph.cpp,
+	"Qwen integration" readonly separator,
+	cmd_qwen.h,
+	cmd_qwen.cpp,
+	qwen_client.h,
+	qwen_client.cpp,
+	qwen_client_test.cpp,
+	qwen_echo_server.cpp,
+	qwen_integration_test.cpp,
+	qwen_protocol.cpp,
+	qwen_protocol.h,
+	qwen_protocol_test.cpp,
+	qwen_state_manager.cpp,
+	qwen_state_manager.h,
+	qwen_state_manager_test.cpp,
+	qwen_tcp_server.cpp,
+	qwen_tcp_server.h,
+	qwen_manager.h,
+	qwen_manager.cpp;
+
+mainconfig
+	"" = "";
+

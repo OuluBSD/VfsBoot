@@ -95,11 +95,11 @@ def main():
     print("=" * 60)
     
     # Check if codex files exist
-    if not os.path.exists('VfsShell/codex.h'):
+    if not os.path.exists('src/VfsShell/codex.h'):
         print("Error: VfsShell/codex.h not found")
         sys.exit(1)
     
-    if not os.path.exists('VfsShell/codex.cpp'):
+    if not os.path.exists('src/VfsShell/codex.cpp'):
         print("Error: VfsShell/codex.cpp not found")
         sys.exit(1)
     

@@ -86,7 +86,7 @@ echo
 
 # Show session management features
 echo "--- Step 7: Advanced session features ---"
-echo "The QwenStateManager (VfsShell/qwen_state_manager.h) provides:"
+echo "The QwenStateManager (src/VfsShell/qwen_state_manager.h) provides:"
 echo "  - Session CRUD operations (create, load, save, delete)"
 echo "  - Conversation history management"
 echo "  - File storage per session"
@@ -97,7 +97,7 @@ echo
 
 echo "Demo complete!"
 echo "For implementation details, see:"
-echo "  - VfsShell/cmd_qwen.cpp         # Shell command implementation"
-echo "  - VfsShell/qwen_state_manager.h # Session management API"
-echo "  - VfsShell/qwen_client.h        # qwen-code client API"
+echo "  - src/VfsShell/cmd_qwen.cpp         # Shell command implementation"
+echo "  - src/VfsShell/qwen_state_manager.h # Session management API"
+echo "  - src/VfsShell/qwen_client.h        # qwen-code client API"
 echo "  - TASKS.md                      # Development roadmap"

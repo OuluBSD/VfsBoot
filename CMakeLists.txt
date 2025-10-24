@@ -30,40 +30,40 @@ find_library(BLAKE3_LIBRARY NAMES blake3 REQUIRED)
 
 # VfsShell source files
 set(VFSSHELL_SOURCES
-    VfsShell/vfs_common.cpp
-    VfsShell/tag_system.cpp
-    VfsShell/logic_engine.cpp
-    VfsShell/vfs_core.cpp
-    VfsShell/vfs_mount.cpp
-    VfsShell/sexp.cpp
-    VfsShell/cpp_ast.cpp
-    VfsShell/clang_parser.cpp
-    VfsShell/planner.cpp
-    VfsShell/ai_bridge.cpp
-    VfsShell/context_builder.cpp
-    VfsShell/build_graph.cpp
-    VfsShell/make.cpp
-    VfsShell/hypothesis.cpp
-    VfsShell/scope_store.cpp
-    VfsShell/feedback.cpp
-    VfsShell/shell_commands.cpp
-    VfsShell/repl.cpp
-    VfsShell/main.cpp
-    VfsShell/snippet_catalog.cpp
-    VfsShell/utils.cpp
-    VfsShell/web_server.cpp
-    VfsShell/upp_assembly.cpp
-    VfsShell/upp_builder.cpp
-    VfsShell/upp_workspace_build.cpp
-    VfsShell/command.cpp
-    VfsShell/daemon.cpp
-    VfsShell/registry.cpp
-    VfsShell/qwen_protocol.cpp
-    VfsShell/qwen_client.cpp
-    VfsShell/qwen_state_manager.cpp
-    VfsShell/qwen_manager.cpp
-    VfsShell/qwen_tcp_server.cpp
-    VfsShell/cmd_qwen.cpp
+    src/VfsShell/vfs_common.cpp
+    src/VfsShell/tag_system.cpp
+    src/VfsShell/logic_engine.cpp
+    src/VfsShell/vfs_core.cpp
+    src/VfsShell/vfs_mount.cpp
+    src/VfsShell/sexp.cpp
+    src/VfsShell/cpp_ast.cpp
+    src/VfsShell/clang_parser.cpp
+    src/VfsShell/planner.cpp
+    src/VfsShell/ai_bridge.cpp
+    src/VfsShell/context_builder.cpp
+    src/VfsShell/build_graph.cpp
+    src/VfsShell/make.cpp
+    src/VfsShell/hypothesis.cpp
+    src/VfsShell/scope_store.cpp
+    src/VfsShell/feedback.cpp
+    src/VfsShell/shell_commands.cpp
+    src/VfsShell/repl.cpp
+    src/VfsShell/main.cpp
+    src/VfsShell/snippet_catalog.cpp
+    src/VfsShell/utils.cpp
+    src/VfsShell/web_server.cpp
+    src/VfsShell/upp_assembly.cpp
+    src/VfsShell/upp_builder.cpp
+    src/VfsShell/upp_workspace_build.cpp
+    src/VfsShell/command.cpp
+    src/VfsShell/daemon.cpp
+    src/VfsShell/registry.cpp
+    src/VfsShell/qwen_protocol.cpp
+    src/VfsShell/qwen_client.cpp
+    src/VfsShell/qwen_state_manager.cpp
+    src/VfsShell/qwen_manager.cpp
+    src/VfsShell/qwen_tcp_server.cpp
+    src/VfsShell/cmd_qwen.cpp
 )
 
 # Main vfsh executable
