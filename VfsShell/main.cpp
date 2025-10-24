@@ -197,7 +197,7 @@ R"(Commands:
   upp.builder.dump <builder-name>             (dump all keys for a build method)
   upp.builder.active.dump                     (dump keys for the active build method)
   # U++ startup support
-  upp.startup.load <directory-path> [-H]      (load all .var files from directory, -H treats path as OS filesystem path)
+  upp.startup.load <directory-path> [-H] [-v] (load all .var files from directory, -H treats path as OS filesystem path, -v verbose output)
   upp.startup.list                            (list all loaded startup assemblies)
   upp.startup.open <name> [-v]                (load a named startup assembly, -v for verbose)
   # U++ assembly support
@@ -3712,17 +3712,20 @@ int main(int argc, char** argv){
         } else if(cmd == "upp.startup.load"){
             // Parse flags first
             bool use_host_path = false;  // default behavior: treat as VFS path without -H flag
+            bool verbose = false;
             std::string path_arg;
-            
+
             for(const auto& arg : inv.args) {
                 if(arg == "-H") {
                     use_host_path = true;  // with -H flag: treat as host OS path
-                } else if(arg != "-H") {
+                } else if(arg == "-v") {
+                    verbose = true;
+                } else {
                     path_arg = arg;  // store the actual path argument
                 }
             }
-            
-            if(path_arg.empty()) throw std::runtime_error("upp.startup.load <directory-path> [-H] (use -H for host OS path)");
+
+            if(path_arg.empty()) throw std::runtime_error("upp.startup.load <directory-path> [-H] [-v] (use -H for host OS path, -v for verbose)");
             
             // If -H flag is provided, use host OS path behavior
             if(use_host_path) {
@@ -3783,14 +3786,18 @@ int main(int argc, char** argv){
                         auto assembly = std::make_shared<UppAssembly>();
                         if(assembly->load_from_content(var_content, var_file)) {
                             g_startup_assemblies.push_back(assembly);
-                            std::cout << "Loaded startup assembly: " << var_file << " (from host: " << host_dir_path << ")\n";
-                            
+                            if(verbose) {
+                                std::cout << "Loaded startup assembly: " << var_file << " (from host: " << host_dir_path << ")\n";
+                            }
+
                             // Add to VFS structure
                             assembly->create_vfs_structure(vfs, cwd.primary_overlay);
                         } else {
+                            // Always show errors
                             std::cout << "Failed to load startup assembly: " << var_file << "\n";
                         }
                     } catch(const std::exception& e) {
+                        // Always show errors
                         std::cout << "Error loading " << var_file << ": " << e.what() << "\n";
                     }
                 }
@@ -3839,14 +3846,18 @@ int main(int argc, char** argv){
                         auto assembly = std::make_shared<UppAssembly>();
                         if(assembly->load_from_content(var_content, var_file)) {
                             g_startup_assemblies.push_back(assembly);
-                            std::cout << "Loaded startup assembly: " << var_file << "\n";
-                            
+                            if(verbose) {
+                                std::cout << "Loaded startup assembly: " << var_file << "\n";
+                            }
+
                             // Add to VFS structure
                             assembly->create_vfs_structure(vfs, cwd.primary_overlay);
                         } else {
+                            // Always show errors
                             std::cout << "Failed to load startup assembly: " << var_file << "\n";
                         }
                     } catch(const std::exception& e) {
+                        // Always show errors
                         std::cout << "Error loading " << var_file << ": " << e.what() << "\n";
                     }
                 }
