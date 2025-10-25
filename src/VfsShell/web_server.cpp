@@ -218,36 +218,88 @@ static int callback_http(lws *wsi, enum lws_callback_reasons reason,
             return 0;
         }
 
-        // Serve index.html for root path
-        if (strcmp(requested_uri, "/") == 0 || strcmp(requested_uri, "/index.html") == 0) {
-            unsigned char buffer[LWS_PRE + 4096];
-            unsigned char *p = &buffer[LWS_PRE];
-            unsigned char *end = &buffer[sizeof(buffer) - 1];
-
-            // Write HTTP headers
-            if (lws_add_http_common_headers(wsi, HTTP_STATUS_OK, "text/html",
-                                           LWS_ILLEGAL_HTTP_CONTENT_LEN,
-                                           &p, end))
-                return 1;
-            if (lws_finalize_write_http_header(wsi, buffer + LWS_PRE, &p, end))
-                return 1;
-
-            // Write body in chunks
-            lws_callback_on_writable(wsi);
-            return 0;
+        // Serve static files from src/www directory
+        std::string file_path = "/common/active/sblo/Dev/VfsBoot/src/www";
+        if (strcmp(requested_uri, "/") == 0) {
+            file_path += "/index.html";
+        } else {
+            file_path += requested_uri;
         }
 
-        // 404 for other paths
-        lws_return_http_status(wsi, HTTP_STATUS_NOT_FOUND, nullptr);
-        return -1;
+        // Check if file exists
+        std::ifstream file(file_path);
+        if (!file.good()) {
+            // 404 for non-existent files
+            lws_return_http_status(wsi, HTTP_STATUS_NOT_FOUND, nullptr);
+            return -1;
+        }
+        file.close();
+
+        // Determine content type based on file extension
+        std::string content_type = "text/plain";
+        if (file_path.substr(file_path.find_last_of(".") + 1) == "html") {
+            content_type = "text/html";
+        } else if (file_path.substr(file_path.find_last_of(".") + 1) == "css") {
+            content_type = "text/css";
+        } else if (file_path.substr(file_path.find_last_of(".") + 1) == "js") {
+            content_type = "application/javascript";
+        }
+
+        unsigned char buffer[LWS_PRE + 4096];
+        unsigned char *p = &buffer[LWS_PRE];
+        unsigned char *end = &buffer[sizeof(buffer) - 1];
+
+        // Write HTTP headers
+        if (lws_add_http_common_headers(wsi, HTTP_STATUS_OK, content_type.c_str(),
+                                       LWS_ILLEGAL_HTTP_CONTENT_LEN,
+                                       &p, end))
+            return 1;
+        if (lws_finalize_write_http_header(wsi, buffer + LWS_PRE, &p, end))
+            return 1;
+
+        // Write body in chunks
+        lws_callback_on_writable(wsi);
+        return 0;
     }
 
     case LWS_CALLBACK_HTTP_WRITEABLE: {
-        // Send HTML content
-        unsigned char buffer[LWS_PRE + 8192];
-        int n = snprintf((char*)buffer + LWS_PRE, 8192, "%s", INDEX_HTML);
+        // Serve static files from src/www directory
+        const char* uri = (const char*)in;
+        std::string requested_uri = uri ? uri : "";
+        
+        // Construct file path
+        std::string file_path = "/common/active/sblo/Dev/VfsBoot/src/www";
+        if (requested_uri.empty() || requested_uri == "/") {
+            file_path += "/index.html";
+        } else {
+            // Prevent directory traversal attacks by sanitizing the URI
+            if (requested_uri.find("..") != std::string::npos) {
+                lws_return_http_status(wsi, HTTP_STATUS_FORBIDDEN, nullptr);
+                return -1;
+            }
+            file_path += requested_uri;
+        }
+        
+        // Check if file exists
+        std::ifstream file(file_path);
+        if (!file.good()) {
+            // 404 for non-existent files
+            lws_return_http_status(wsi, HTTP_STATUS_NOT_FOUND, nullptr);
+            return -1;
+        }
+        
+        // Read file content
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        file.close();
+        
+        std::string content = buffer.str();
+        
+        // Send content
+        unsigned char send_buffer[LWS_PRE + 8192];
+        int n = snprintf((char*)send_buffer + LWS_PRE, 8192, "%s", content.c_str());
 
-        if (lws_write(wsi, buffer + LWS_PRE, n, LWS_WRITE_HTTP_FINAL) != n)
+        if (lws_write(wsi, send_buffer + LWS_PRE, n, LWS_WRITE_HTTP_FINAL) != n)
             return 1;
 
         if (lws_http_transaction_completed(wsi))

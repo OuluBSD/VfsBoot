@@ -1,0 +1,202 @@
+/* Main styles for VfsBoot web interface */
+
+:root {
+    --background-dark: #1e1e1e;
+    --surface-dark: #2d2d30;
+    --border-dark: #3e3e42;
+    --text-primary: #cccccc;
+    --text-secondary: #999999;
+    --accent-blue: #007acc;
+    --accent-green: #6a9955;
+    --accent-red: #f48771;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background: var(--background-dark);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--text-primary);
+    overflow: hidden;
+}
+
+#header {
+    background: var(--surface-dark);
+    color: var(--text-primary);
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border-dark);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#header h1 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+#status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent-red);
+}
+
+#status-indicator.connected {
+    background: var(--accent-green);
+}
+
+#main-content {
+    display: flex;
+    height: calc(100vh - 50px);
+}
+
+#sidebar {
+    width: 250px;
+    background: var(--surface-dark);
+    border-right: 1px solid var(--border-dark);
+    padding: 15px;
+    overflow-y: auto;
+}
+
+#sidebar h2 {
+    font-size: 16px;
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: var(--text-primary);
+}
+
+.sidebar-section {
+    margin-bottom: 20px;
+}
+
+.sidebar-section h3 {
+    font-size: 14px;
+    margin: 0 0 10px 0;
+    color: var(--text-secondary);
+    font-weight: normal;
+}
+
+.sidebar-item {
+    padding: 8px 12px;
+    margin: 4px 0;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.sidebar-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-item.active {
+    background: var(--accent-blue);
+}
+
+#terminal-container {
+    flex: 1;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+}
+
+#terminal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+#terminal-header h2 {
+    margin: 0;
+    font-size: 16px;
+}
+
+#terminal-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.btn {
+    background: var(--surface-dark);
+    color: var(--text-primary);
+    border: 1px solid var(--border-dark);
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+#terminal {
+    flex: 1;
+    background: var(--background-dark);
+    border: 1px solid var(--border-dark);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+#input-area {
+    display: flex;
+    margin-top: 10px;
+    gap: 10px;
+}
+
+#command-input {
+    flex: 1;
+    background: var(--surface-dark);
+    color: var(--text-primary);
+    border: 1px solid var(--border-dark);
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-family: 'Consolas', 'Courier New', monospace;
+}
+
+#send-btn {
+    background: var(--accent-blue);
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#send-btn:hover {
+    background: #005a9e;
+}
+
+@media (max-width: 768px) {
+    #sidebar {
+        width: 200px;
+    }
+}
+
+@media (max-width: 480px) {
+    #sidebar {
+        display: none;
+    }
+    
+    #header {
+        flex-direction: column;
+        gap: 10px;
+        text-align: center;
+    }
+    
+    #main-content {
+        flex-direction: column;
+    }
+    
+    #terminal-container {
+        padding: 5px;
+    }
+}

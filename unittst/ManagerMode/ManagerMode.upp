@@ -1,0 +1,9 @@
+uses
+	VfsShell;
+
+file
+	manager_mode_test.cpp;
+
+mainconfig
+	"" = "";
+
