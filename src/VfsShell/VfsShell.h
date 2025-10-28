@@ -1,7 +1,80 @@
 #ifndef _VfsShell_VfsShell_h_
 #define _VfsShell_VfsShell_h_
 
-// Standard library includes
+// Standard library includes for UPP compatibility
+#include <Core/Core.h>
+
+// Additional standard includes (converted to UPP equivalents where possible)
+#include <Core/TimeDate.h>
+#include <Core/Charset.h>
+#include <Core/Xmlize.h>
+#include <Core/CommandLine.h>
+#include <Core/Environment.h>
+#include <Core/Event.h>
+#include <Core/Thread.h>
+
+// Explicitly qualify U++ types to avoid conflicts with standard types
+// Instead of using declarations, we'll use full qualification where needed
+// using Upp::Date;
+// using Upp::Stream;
+// using Upp::Nuller;
+
+// Standard C++ includes still needed for specific functionality
+#include <iomanip>  // For QwenProtocol.cpp and potentially other files
+
+// System includes
+#include <dlfcn.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/wait.h>
+#include <signal.h>
+#include <fcntl.h>
+#include <poll.h>
+
+// External library includes
+#include <blake3.h>
+#include <clang-c/Index.h>
+#include <svn_delta.h>
+#include <svn_pools.h>
+
+// Web server
+#include <libwebsockets.h>
+
+// Forward declarations to avoid circular dependencies and reduce includes
+class VfsCore;
+class VfsMount;
+class TagSystem;
+class LogicEngine;
+class Sexp;
+class CppAst;
+class ClangParser;
+class Planner;
+class AiBridge;
+class ContextBuilder;
+class BuildGraph;
+class Make;
+class Hypothesis;
+class ScopeStore;
+class Feedback;
+class SnippetCatalog;
+class Utils;
+class ShellCommands;
+class WebServer;
+class Command;
+class EditorFunctions;
+class UiBackend;
+class UppAssembly;
+class UppBuilder;
+class CmdQwen;
+class QwenProtocol;
+class QwenClient;
+class QwenStateManager;
+class QwenTcpServer;
+class QwenManager;
+
+/*
+// This section shows original includes that are now handled via forward declarations or main header
 #include <cstdint>
 #include <cstring>
 #include <cstdlib>
@@ -41,106 +114,45 @@
 #include <queue>
 #include <cassert>
 #include <cerrno>
-
-// System includes
-#include <dlfcn.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <sys/wait.h>
-#include <signal.h>
-#include <fcntl.h>
-#include <poll.h>
-
-// External library includes
-#include <blake3.h>
-#include <clang-c/Index.h>
-#include <svn_delta.h>
-#include <svn_pools.h>
-
-// Web server
-#include <libwebsockets.h>
-
-/*
-#include <iostream>
-#include <sstream>
-#include <cstring>
-
-// POSIX headers for process management
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <signal.h>
-#include <fcntl.h>
-#include <poll.h>
-
-#include "qwen_manager.h"
-#include "qwen_tcp_server.h"
-#include "VfsShell.h"
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <poll.h>
-#include <thread>
-#include <chrono>
-#include <random>
-#include <sstream>
-#include <iostream>
-#include <fstream>
-
-#ifdef CODEX_UI_NCURSES
-#include <ncurses.h>
-#endif
-
-#include "qwen_tcp_server.h"
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <poll.h>
-#include <thread>
-#include <chrono>
-#include <iostream>
-#include <vector>
-#include <cstring>
-
 */
 
-#include "config.h"
-#include "vfs_common.h"
-#include "tag_system.h"
-#include "logic_engine.h"
-#include "vfs_core.h"
-#include "vfs_mount.h"
-#include "sexp.h"
-#include "cpp_ast.h"
-#include "clang_parser.h"
-#include "planner.h"
-#include "ai_bridge.h"
-#include "context_builder.h"
-#include "build_graph.h"
-#include "make.h"
-#include "hypothesis.h"
-#include "scope_store.h"
-#include "feedback.h"
-#include "snippet_catalog.h"
-#include "utils.h"
-#include "shell_commands.h"
-#include "web_server.h"
-#include "command.h"
-#include "editor_functions.h"
-#include "ui_backend.h"
-#include "upp_assembly.h"
-#include "upp_builder.h"
-#include "cmd_qwen.h"
-#include "qwen_protocol.h"
-#include "qwen_client.h"
-#include "qwen_state_manager.h"
-#include "qwen_tcp_server.h"
-#include "qwen_manager.h"
+// Main header includes - all package headers are included here
+#include "Config.h"
+#include "../Logic/TagSystem.h"
+#include "../Logic/LogicEngine.h"
+#include "Sexp.h"
+#include "Planner.h"
+#include "AiBridge.h"
+#include "ContextBuilder.h"
+#include "BuildGraph.h"
+#include "Make.h"
+#include "Hypothesis.h"
+#include "ScopeStore.h"
+#include "Feedback.h"
+#include "SnippetCatalog.h"
+#include "Utils.h"
+#include "ShellCommands.h"
+#include "Command.h"
+#include "EditorFunctions.h"
+#include "UiBackend.h"
 
+// Include headers from other packages
+#include "../VfsCore/VfsCommon.h"
+#include "../VfsCore/VfsCore.h"
+#include "../VfsCore/VfsMount.h"
+#include "../Clang/CppAst.h"
+#include "../Clang/ClangParser.h"
+#include "../WebServer/WebServer.h"
+#include "../UppCompat/UppAssembly.h"
+#include "../UppCompat/UppBuilder.h"
+#include "../Qwen/CmdQwen.h"
+#include "../Qwen/QwenProtocol.h"
+#include "../Qwen/QwenClient.h"
+#include "../Qwen/QwenStateManager.h"
+#include "../Qwen/QwenTcpServer.h"
+#include "../Qwen/QwenManager.h"
+
+// Using Upp::String instead of std::string
+USING_NAMESPACE_UPP
 
 #endif

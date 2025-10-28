@@ -1,4 +1,4 @@
-#include "VfsShell.h"
+#include "VfsCommon.h"
 
 //
 // Internationalization implementation
@@ -89,7 +89,7 @@ const char* policy_label(WorkingDirectory::ConflictPolicy policy){
     return "?";
 }
 
-std::optional<WorkingDirectory::ConflictPolicy> parse_policy(const std::string& name){
+auto parse_policy(const std::string& name) -> std::optional<WorkingDirectory::ConflictPolicy> {
     std::string lower = name;
     std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
     if(lower == "manual" || lower == "default") return WorkingDirectory::ConflictPolicy::Manual;

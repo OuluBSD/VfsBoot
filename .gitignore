@@ -20,3 +20,6 @@ build_output.log
 
 test_*
 build-debug/**
+
+bin/**
+

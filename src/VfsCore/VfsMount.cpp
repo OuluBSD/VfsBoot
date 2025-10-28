@@ -1,4 +1,39 @@
-#include "VfsShell.h"
+#include "VfsMount.h"
+#include <dlfcn.h>
+#include "../Clang/ClangParser.h"
+
+// Define missing trace macros as no-ops for now
+#ifndef TRACE_FN
+#define TRACE_FN(...) ((void)0)
+#endif
+
+#ifndef TRACE_MSG
+#define TRACE_MSG(...) ((void)0)
+#endif
+
+// Add missing path utility functions
+std::string join_path(const std::string& a, const std::string& b) {
+    if (a.empty()) return b;
+    if (b.empty()) return a;
+    if (a.back() == '/') return a + b;
+    return a + "/" + b;
+}
+
+std::string path_basename(const std::string& path) {
+    if (path.empty()) return "";
+    size_t pos = path.find_last_of('/');
+    if (pos == std::string::npos) return path;
+    if (pos == 0) return path.substr(1);
+    return path.substr(pos + 1);
+}
+
+std::string path_dirname(const std::string& path) {
+    if (path.empty()) return "";
+    size_t pos = path.find_last_of('/');
+    if (pos == std::string::npos) return "";
+    if (pos == 0) return "/";
+    return path.substr(0, pos);
+}
 
 // ====== Mount Nodes ======
 

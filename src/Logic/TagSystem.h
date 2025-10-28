@@ -1,9 +1,17 @@
-#pragma once
+#ifndef _Logic_TagSystem_h_
+#define _Logic_TagSystem_h_
 
+#include <Core/Core.h>
+#include "../VfsCore/VfsCore.h"  // Include VfsNode definition through VfsCore
+
+using namespace Upp;
+
+// Forward declarations for types in other packages
+using TagId = size_t;
 
 // Tag Registry (enumerated tags for memory efficiency)
 //
-using TagId = uint32_t;
+//using TagId = uint32_t;  // Already defined above
 constexpr TagId TAG_INVALID = 0;
 
 //

@@ -1,4 +1,16 @@
-#pragma once
+#ifndef _Logic_LogicEngine_h_
+#define _Logic_LogicEngine_h_
+
+#include <Core/Core.h>
+#include "../VfsCore/VfsCore.h"  // Include definitions for Vfs-related types
+
+using namespace Upp;
+
+// Forward declarations for types in other packages
+struct TagRegistry;
+struct Vfs;
+
+#endif
 
 
 //

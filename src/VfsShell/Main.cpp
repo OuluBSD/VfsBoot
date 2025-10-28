@@ -1,9 +1,5 @@
 #include "VfsShell.h"
-#include "upp_workspace_build.h"
-#include "registry.h"
-#include "cmd_qwen.h"
-#include <filesystem>
-#include <unistd.h>
+#ifdef flagMAIN
 
 WINDOW* stdscr;
 
@@ -6134,3 +6130,4 @@ bool run_ncurses_editor(Vfs& vfs, const std::string& vfs_path, std::vector<std::
 
 
 #endif // CODEX_NO_MAIN
+#endif

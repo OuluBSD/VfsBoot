@@ -1,5 +1,30 @@
-#pragma once
+#ifndef _Clang_ClangParser_h_
+#define _Clang_ClangParser_h_
 
+#include <Core/Core.h>
+#include "../VfsCore/VfsCore.h"   // For VfsNode and Vfs
+#include "../VfsShell/Sexp.h"   // For AstNode, Value, Env
+
+using namespace Upp;
+
+// Forward declarations for types defined elsewhere
+struct Vfs;
+struct VfsNode;
+struct AstNode;
+struct Value;
+struct Env;
+struct CppExpr;
+struct CppCompound;
+struct SolutionContext;
+// WorkingDirectory now defined in VfsCore.h
+// struct WorkingDirectory {
+//     std::string path = "/";
+//     std::vector<size_t> overlays{0};
+//     size_t primary_overlay = 0;
+//     enum class ConflictPolicy { Manual, Oldest, Newest };
+//     ConflictPolicy conflict_policy = ConflictPolicy::Manual;
+// };
+using TagId = size_t; // Assuming TagId is a typedef
 
 struct BinaryWriter {
     std::string data;
@@ -588,3 +613,4 @@ void update_directory_context(Vfs& vfs, WorkingDirectory& cwd, const std::string
 const char* policy_label(WorkingDirectory::ConflictPolicy policy);
 std::optional<WorkingDirectory::ConflictPolicy> parse_policy(const std::string& name);
 void adjust_context_after_unmount(Vfs& vfs, WorkingDirectory& cwd, size_t removedId);
+#endif

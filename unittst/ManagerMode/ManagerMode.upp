@@ -1,8 +1,10 @@
+description "Manager Mode Unit Tests\3770,128,255";
+
 uses
 	VfsShell;
 
 file
-	manager_mode_test.cpp;
+	ManagerModeTest.cpp;
 
 mainconfig
 	"" = "";

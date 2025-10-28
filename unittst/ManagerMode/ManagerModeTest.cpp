@@ -6,7 +6,7 @@
  * and TCP server connection handling.
  */
 
-#include <VfsShell/VfsShell.h>
+#include "VfsShell.h"
 
 using namespace Qwen;
 

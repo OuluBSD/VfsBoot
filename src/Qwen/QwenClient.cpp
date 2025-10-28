@@ -1,9 +1,4 @@
 #include "VfsShell.h"
-#include "qwen_logger.h"
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
 
 namespace Qwen {
 

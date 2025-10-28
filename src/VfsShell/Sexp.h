@@ -1,4 +1,10 @@
-#pragma once
+#ifndef _VfsShell_Sexp_h_
+#define _VfsShell_Sexp_h_
+
+#include <Core/Core.h>
+#include "VfsShell.h"
+
+using namespace Upp;
 
 
 struct Env; // forward
@@ -90,3 +96,4 @@ std::shared_ptr<AstNode> parse(const std::string& src);
 // Builtins
 //
 void install_builtins(std::shared_ptr<Env> g);
+#endif

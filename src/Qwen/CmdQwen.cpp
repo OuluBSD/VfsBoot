@@ -1,14 +1,4 @@
 #include "VfsShell.h"
-#include "qwen_manager.h"
-#include "registry.h"
-#include <termios.h>
-#include <unistd.h>
-#include <csignal>
-#include <atomic>
-
-#ifdef CODEX_UI_NCURSES
-#include <ncurses.h>
-#endif
 
 // External registry from main.cpp
 extern Registry g_registry;

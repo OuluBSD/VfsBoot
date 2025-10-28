@@ -1,4 +1,45 @@
-#include "VfsShell.h"
+#include "VfsCore.h"
+#include "../VfsShell/ContextBuilder.h"
+#include "../Logic/TagSystem.h"
+#include "../Logic/LogicEngine.h"
+#include "VfsMount.h"
+
+// Helper functions to cast void pointers to proper types
+static TagRegistry* getTagRegistry(Vfs* vfs) {
+    return static_cast<TagRegistry*>(vfs->tag_registry_ptr);
+}
+
+static TagStorage* getTagStorage(Vfs* vfs) {
+    return static_cast<TagStorage*>(vfs->tag_storage_ptr);
+}
+
+static LogicEngine* getLogicEngine(Vfs* vfs) {
+    return static_cast<LogicEngine*>(vfs->logic_engine_ptr);
+}
+
+// Utility functions for path manipulation
+std::string join_path(const std::string& a, const std::string& b) {
+    if (a.empty()) return b;
+    if (b.empty()) return a;
+    if (a.back() == '/') return a + b;
+    return a + "/" + b;
+}
+
+std::string path_basename(const std::string& path) {
+    if (path.empty()) return "";
+    size_t pos = path.find_last_of('/');
+    if (pos == std::string::npos) return path;
+    if (pos == 0) return path.substr(1);
+    return path.substr(pos + 1);
+}
+
+std::string path_dirname(const std::string& path) {
+    if (path.empty()) return "";
+    size_t pos = path.find_last_of('/');
+    if (pos == std::string::npos) return "";
+    if (pos == 0) return "/";
+    return path.substr(0, pos);
+}
 
 // ====== VFS ======
 Vfs* G_VFS = nullptr;
@@ -38,7 +79,7 @@ bool run_ncurses_editor(Vfs& vfs, const std::string& vfs_path, std::vector<std::
 }
 #endif
 
-Vfs::Vfs() : logic_engine(&tag_registry) {
+Vfs::Vfs() {
     TRACE_FN();
     overlay_stack.push_back(Overlay{ "base", root, "", "" });
     overlay_dirty.push_back(false);
@@ -428,13 +469,13 @@ std::string Vfs::formatTreeNode(VfsNode* node, const std::string& /* path */, co
 
     // Show tags
     if(opts.show_tags){
-        const TagSet* tags = tag_storage.getTags(node);
+        const TagSet* tags = getTagStorage(this)->getTags(node);
         if(tags && !tags->empty()){
             oss << " [";
             bool first = true;
             for(TagId tid : *tags){
                 if(!first) oss << ",";
-                oss << tag_registry.getTagName(tid);
+                oss << getTagRegistry(this)->getTagName(tid);
                 first = false;
             }
             oss << "]";
@@ -507,58 +548,58 @@ void Vfs::treeAdvanced(const std::string& path, const TreeOptions& opts){
 }
 
 TagId Vfs::registerTag(const std::string& name){
-    return tag_registry.registerTag(name);
+    return getTagRegistry(this)->registerTag(name);
 }
 
 TagId Vfs::getTagId(const std::string& name) const {
-    return tag_registry.getTagId(name);
+    return getTagRegistry(this)->getTagId(name);
 }
 
 std::string Vfs::getTagName(TagId id) const {
-    return tag_registry.getTagName(id);
+    return getTagRegistry(this)->getTagName(id);
 }
 
 bool Vfs::hasTagRegistered(const std::string& name) const {
-    return tag_registry.hasTag(name);
+    return getTagRegistry(this)->hasTag(name);
 }
 
 std::vector<std::string> Vfs::allRegisteredTags() const {
-    return tag_registry.allTags();
+    return getTagRegistry(this)->allTags();
 }
 
 void Vfs::addTag(const std::string& vfs_path, const std::string& tag_name){
     auto node = resolve(vfs_path);
     if(!node) throw std::runtime_error("tag.add: path not found: " + vfs_path);
-    TagId tag_id = tag_registry.registerTag(tag_name);
-    tag_storage.addTag(node.get(), tag_id);
+    TagId tag_id = getTagRegistry(this)->registerTag(tag_name);
+    getTagStorage(this)->addTag(node.get(), tag_id);
 }
 
 void Vfs::removeTag(const std::string& vfs_path, const std::string& tag_name){
     auto node = resolve(vfs_path);
     if(!node) throw std::runtime_error("tag.remove: path not found: " + vfs_path);
-    TagId tag_id = tag_registry.getTagId(tag_name);
+    TagId tag_id = getTagRegistry(this)->getTagId(tag_name);
     if(tag_id == TAG_INVALID) return;  // Tag doesn't exist, nothing to remove
-    tag_storage.removeTag(node.get(), tag_id);
+    getTagStorage(this)->removeTag(node.get(), tag_id);
 }
 
 bool Vfs::nodeHasTag(const std::string& vfs_path, const std::string& tag_name) const {
     auto node = const_cast<Vfs*>(this)->resolve(vfs_path);
     if(!node) return false;
-    TagId tag_id = tag_registry.getTagId(tag_name);
+    TagId tag_id = getTagRegistry(this)->getTagId(tag_name);
     if(tag_id == TAG_INVALID) return false;
-    return tag_storage.hasTag(node.get(), tag_id);
+    return getTagStorage(this)->hasTag(node.get(), tag_id);
 }
 
 std::vector<std::string> Vfs::getNodeTags(const std::string& vfs_path) const {
     auto node = const_cast<Vfs*>(this)->resolve(vfs_path);
     if(!node) return {};
-    const TagSet* tags = tag_storage.getTags(node.get());
+    const TagSet* tags = getTagStorage(this)->getTags(node.get());
     if(!tags) return {};
 
     std::vector<std::string> result;
     result.reserve(tags->size());
     for(TagId tag_id : *tags){
-        result.push_back(tag_registry.getTagName(tag_id));
+        result.push_back(getTagRegistry(this)->getTagName(tag_id));
     }
     return result;
 }
@@ -566,14 +607,14 @@ std::vector<std::string> Vfs::getNodeTags(const std::string& vfs_path) const {
 void Vfs::clearNodeTags(const std::string& vfs_path){
     auto node = resolve(vfs_path);
     if(!node) throw std::runtime_error("tag.clear: path not found: " + vfs_path);
-    tag_storage.clearTags(node.get());
+    getTagStorage(this)->clearTags(node.get());
 }
 
 std::vector<std::string> Vfs::findNodesByTag(const std::string& tag_name) const {
-    TagId tag_id = tag_registry.getTagId(tag_name);
+    TagId tag_id = getTagRegistry(this)->getTagId(tag_name);
     if(tag_id == TAG_INVALID) return {};
 
-    auto nodes = tag_storage.findByTag(tag_id);
+    auto nodes = getTagStorage(this)->findByTag(tag_id);
     std::vector<std::string> result;
     // TODO: Need reverse path lookup - this is a known limitation for now
     // For MVP, we'll need to implement path tracking or traverse the VFS tree
@@ -583,12 +624,12 @@ std::vector<std::string> Vfs::findNodesByTag(const std::string& tag_name) const 
 std::vector<std::string> Vfs::findNodesByTags(const std::vector<std::string>& tag_names, bool match_all) const {
     TagSet tag_ids;
     for(const auto& name : tag_names){
-        TagId id = tag_registry.getTagId(name);
+        TagId id = getTagRegistry(this)->getTagId(name);
         if(id != TAG_INVALID) tag_ids.insert(id);
     }
     if(tag_ids.empty()) return {};
 
-    auto nodes = tag_storage.findByTags(tag_ids, match_all);
+    auto nodes = getTagStorage(this)->findByTags(tag_ids, match_all);
     std::vector<std::string> result;
     // TODO: Need reverse path lookup - this is a known limitation for now
     return result;

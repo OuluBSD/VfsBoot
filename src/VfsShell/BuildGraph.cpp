@@ -1,10 +1,4 @@
-#include "build_graph.h"
-
 #include "VfsShell.h"
-
-#include <cstdio>
-#include <sys/stat.h>
-#include <sys/wait.h>
 
 namespace {
 
