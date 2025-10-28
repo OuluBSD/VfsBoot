@@ -19,3 +19,4 @@ build_output.log
 *.var
 
 test_*
+build-debug/**

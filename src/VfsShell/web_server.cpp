@@ -233,7 +233,14 @@ static int callback_http(lws *wsi, enum lws_callback_reasons reason,
             lws_return_http_status(wsi, HTTP_STATUS_NOT_FOUND, nullptr);
             return -1;
         }
+
+        // Read file content
+        std::stringstream buffer;
+        buffer << file.rdbuf();
         file.close();
+        
+        std::string content = buffer.str();
+        std::cout << "[WebServer] Serving file: " << file_path << " (" << content.length() << " bytes)" << std::endl;
 
         // Determine content type based on file extension
         std::string content_type = "text/plain";
@@ -245,44 +252,75 @@ static int callback_http(lws *wsi, enum lws_callback_reasons reason,
             content_type = "application/javascript";
         }
 
-        unsigned char buffer[LWS_PRE + 4096];
-        unsigned char *p = &buffer[LWS_PRE];
-        unsigned char *end = &buffer[sizeof(buffer) - 1];
+        // Prepare HTTP headers
+        unsigned char http_headers[2048];
+        unsigned char *p = &http_headers[0];
+        unsigned char *end = &http_headers[sizeof(http_headers) - 1];
 
-        // Write HTTP headers
-        if (lws_add_http_common_headers(wsi, HTTP_STATUS_OK, content_type.c_str(),
-                                       LWS_ILLEGAL_HTTP_CONTENT_LEN,
-                                       &p, end))
+        // Write HTTP status and headers
+        if (lws_add_http_header_status(wsi, HTTP_STATUS_OK, &p, end))
             return 1;
-        if (lws_finalize_write_http_header(wsi, buffer + LWS_PRE, &p, end))
+        
+        // Add content type header
+        if (lws_add_http_header_by_token(wsi, WSI_TOKEN_HTTP_CONTENT_TYPE, 
+                                        (unsigned char*)content_type.c_str(), 
+                                        content_type.length(), &p, end))
+            return 1;
+            
+        // Add content length header
+        std::string content_length = std::to_string(content.length());
+        if (lws_add_http_header_by_token(wsi, WSI_TOKEN_HTTP_CONTENT_LENGTH,
+                                        (unsigned char*)content_length.c_str(),
+                                        content_length.length(), &p, end))
             return 1;
 
-        // Write body in chunks
-        lws_callback_on_writable(wsi);
+        // Finalize headers
+        if (lws_finalize_http_header(wsi, &p, end))
+            return 1;
+
+        // Write headers
+        if (lws_write(wsi, http_headers, p - http_headers, LWS_WRITE_HTTP_HEADERS) != (int)(p - http_headers))
+            return 1;
+
+        // Write content
+        if (lws_write(wsi, (unsigned char*)content.c_str(), content.length(), LWS_WRITE_HTTP_FINAL) != (int)content.length())
+            return 1;
+
+        // Complete HTTP transaction
+        if (lws_http_transaction_completed(wsi))
+            return -1;
+            
         return 0;
     }
 
     case LWS_CALLBACK_HTTP_WRITEABLE: {
         // Serve static files from src/www directory
-        const char* uri = (const char*)in;
-        std::string requested_uri = uri ? uri : "";
+        char *requested_uri = (char *)in;
         
         // Construct file path
         std::string file_path = "/common/active/sblo/Dev/VfsBoot/src/www";
-        if (requested_uri.empty() || requested_uri == "/") {
+        if (strcmp(requested_uri, "/") == 0) {
             file_path += "/index.html";
         } else {
             // Prevent directory traversal attacks by sanitizing the URI
-            if (requested_uri.find("..") != std::string::npos) {
+            std::string uri_str = requested_uri;
+            if (uri_str.find("..") != std::string::npos) {
                 lws_return_http_status(wsi, HTTP_STATUS_FORBIDDEN, nullptr);
                 return -1;
+            }
+            // Ensure we don't add double slashes
+            if (uri_str[0] != '/') {
+                file_path += "/";
             }
             file_path += requested_uri;
         }
         
+        std::cout << "[WebServer] Serving file: " << file_path << std::endl;
+        
         // Check if file exists
         std::ifstream file(file_path);
         if (!file.good()) {
+            std::cout << "[WebServer] File not found: " << file_path << std::endl;
             // 404 for non-existent files
             lws_return_http_status(wsi, HTTP_STATUS_NOT_FOUND, nullptr);
             return -1;
@@ -294,16 +332,56 @@ static int callback_http(lws *wsi, enum lws_callback_reasons reason,
         file.close();
         
         std::string content = buffer.str();
-        
-        // Send content
-        unsigned char send_buffer[LWS_PRE + 8192];
-        int n = snprintf((char*)send_buffer + LWS_PRE, 8192, "%s", content.c_str());
+        std::cout << "[WebServer] File content length: " << content.length() << std::endl;
 
-        if (lws_write(wsi, send_buffer + LWS_PRE, n, LWS_WRITE_HTTP_FINAL) != n)
+        // Determine content type based on file extension
+        std::string content_type = "text/plain";
+        if (file_path.substr(file_path.find_last_of(".") + 1) == "html") {
+            content_type = "text/html";
+        } else if (file_path.substr(file_path.find_last_of(".") + 1) == "css") {
+            content_type = "text/css";
+        } else if (file_path.substr(file_path.find_last_of(".") + 1) == "js") {
+            content_type = "application/javascript";
+        }
+
+        // Prepare HTTP headers
+        unsigned char http_headers[2048];
+        unsigned char *p = &http_headers[0];
+        unsigned char *end = &http_headers[sizeof(http_headers) - 1];
+
+        // Write HTTP status and headers
+        if (lws_add_http_header_status(wsi, HTTP_STATUS_OK, &p, end))
+            return 1;
+        
+        // Add content type header
+        if (lws_add_http_header_by_token(wsi, WSI_TOKEN_HTTP_CONTENT_TYPE, 
+                                        (unsigned char*)content_type.c_str(), 
+                                        content_type.length(), &p, end))
+            return 1;
+            
+        // Add content length header
+        std::string content_length = std::to_string(content.length());
+        if (lws_add_http_header_by_token(wsi, WSI_TOKEN_HTTP_CONTENT_LENGTH,
+                                        (unsigned char*)content_length.c_str(),
+                                        content_length.length(), &p, end))
             return 1;
 
+        // Finalize headers
+        if (lws_finalize_http_header(wsi, &p, end))
+            return 1;
+
+        // Write headers
+        if (lws_write(wsi, http_headers, p - http_headers, LWS_WRITE_HTTP_HEADERS) != (int)(p - http_headers))
+            return 1;
+
+        // Write content
+        if (lws_write(wsi, (unsigned char*)content.c_str(), content.length(), LWS_WRITE_HTTP_FINAL) != (int)content.length())
+            return 1;
+
+        // Complete HTTP transaction
         if (lws_http_transaction_completed(wsi))
             return -1;
+            
         return 0;
     }
 

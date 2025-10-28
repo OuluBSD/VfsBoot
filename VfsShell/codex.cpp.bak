@@ -1,6 +1,0 @@
-// VfsBoot - Modular Implementation
-// All code has been split into modular files
-// See: vfs_common, tag_system, logic_engine, vfs_core, etc.
-
-// This file intentionally left minimal
-// The old monolithic codex.cpp is backed up as codex.cpp.bak
