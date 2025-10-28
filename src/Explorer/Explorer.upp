@@ -1,0 +1,14 @@
+description "Windows 98 style explorer application. Or NC commander based. Who knows\377";
+
+uses
+	CtrlLib;
+
+file
+	Explorer.h,
+	Explorer.cpp,
+	main.cpp,
+	Explorer.iml;
+
+mainconfig
+	"" = "GUI";
+
