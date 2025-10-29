@@ -175,7 +175,7 @@ uint64_t ScopeStore::createSnapshot(Vfs& vfs, const std::string& description) {
     snapshot.timestamp = std::time(nullptr);
     snapshot.description = description;
     snapshot.parent_snapshot_id = current_snapshot_id;
-    snapshot.feature_mask = active_features;
+    snapshot.feature_mask.mask <<= clone(active_features.mask);  // U++ pick semantics with clone
 
     // Serialize current VFS state
     std::string current_state = serializeVfs(vfs);
@@ -381,7 +381,7 @@ void ScopeStore::load(const std::string& path) {
         snap.description = line.substr(13);  // Skip "description: "
 
         std::getline(in, line);  // feature_mask
-        snap.feature_mask = FeatureMask::fromString(line.substr(14));
+        snap.feature_mask <<= FeatureMask::fromString(line.substr(14));  // U++ pick semantics
 
         std::getline(in, line);  // affected_paths count
         size_t path_count;

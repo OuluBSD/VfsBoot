@@ -1,4 +1,5 @@
 #include "VfsShell.h"
+#include "../Clang/ClangParser.h"  // For g_on_save_shortcut
 
 std::optional<std::filesystem::path> history_file_path(){
     if(const char* env = std::getenv("CODEX_HISTORY_FILE"); env && *env){

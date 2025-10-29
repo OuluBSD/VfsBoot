@@ -1,8 +1,9 @@
 #pragma once
 
+#include "../Logic/LogicEngine.h"
+
 // Forward declarations
-struct LogicFormula;
-struct LogicEngine;
+// LogicFormula and LogicEngine now included from LogicEngine.h
 
 // ============================================================================
 // Feedback Pipeline for Planner Rule Evolution

@@ -321,8 +321,8 @@ std::vector<std::string> LogicEngine::explainInference(TagId tag, const TagSet& 
 std::string LogicEngine::serializeRule(const ImplicationRule& rule) const {
     std::ostringstream oss;
     oss << rule.name << "|"
-        << rule.premise->toString(*tag_registry) << "|"
-        << rule.conclusion->toString(*tag_registry) << "|"
+        << rule.premise->toString(*tag_registry).ToStd() << "|"
+        << rule.conclusion->toString(*tag_registry).ToStd() << "|"
         << rule.confidence << "|"
         << rule.source;
     return oss.str();

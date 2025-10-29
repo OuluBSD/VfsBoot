@@ -264,23 +264,25 @@ void Registry::syncFromVFS(Vfs& vfs, const std::string& registry_path) {
         // Pass an empty vector for overlays
         std::vector<size_t> empty_overlays;
         auto dir_listing = vfs.listDir(registry_path, empty_overlays);
-        
-        for (const auto& [name, entry] : dir_listing) {
-            for (size_t i = 0; i < entry.nodes.size(); ++i) {
-                auto node = entry.nodes[i];
-                if (node->isDir()) {
-                    // Recursively sync subdirectories
-                    std::string sub_path = registry_path + "/" + name;
-                    auto subkey = root->addSubKey(name);
-                    syncFromVFS(vfs, sub_path);
-                } else {
-                    // It's a file, add as a registry value
-                    try {
-                        std::string content = vfs.read(registry_path + "/" + name, std::nullopt);
-                        setValue(name, content);
-                    } catch (...) {
-                        // File might not be readable, skip it
-                    }
+
+        // Iterate using indices over parallel arrays
+        for (size_t i = 0; i < dir_listing.entries.size(); ++i) {
+            const std::string& name = dir_listing.entries[i];
+            char type = dir_listing.types[i];
+
+            std::string full_path = registry_path + "/" + name;
+
+            if (type == 'd') {
+                // It's a directory - recurse
+                auto subkey = root->addSubKey(name);
+                syncFromVFS(vfs, full_path);
+            } else {
+                // It's a file, add as a registry value
+                try {
+                    std::string content = vfs.read(full_path, std::nullopt);
+                    setValue(name, content);
+                } catch (...) {
+                    // File might not be readable, skip it
                 }
             }
         }

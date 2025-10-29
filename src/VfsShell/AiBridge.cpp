@@ -1,4 +1,5 @@
 #include "VfsShell.h"
+#include "../Clang/ClangParser.h"  // For sanitize_component, fnv1a64, hash_hex
 
 // ====== OpenAI helpers ======
 static std::string system_prompt_text(){

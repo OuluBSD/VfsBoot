@@ -1,6 +1,4 @@
-#include "../VfsShell/VfsShell.h"
-#include "QwenStateManager.h"
-#include "QwenLogger.h"
+#include "Qwen.h"
 
 namespace Qwen {
 

@@ -152,7 +152,7 @@ std::vector<std::string> HypothesisTester::findFunctionDefinitions(const std::st
     auto node = vfs.resolve(path);
     if(!node) return functions;
 
-    std::string content = node->read();
+    std::string content = node->read().ToStd();
 
     // Simple pattern matching for function definitions
     // Looks for: "type name(...)" patterns

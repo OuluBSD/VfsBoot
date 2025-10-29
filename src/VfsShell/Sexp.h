@@ -77,10 +77,10 @@ struct AstHolder: AstNode {
 //
 // Ympäristö
 //
-struct Env : std::enable_shared_from_this<Env> {
+struct Env {
     VectorMap<String, SexpValue> tbl;
-    std::shared_ptr<Env> up;
-    explicit Env(std::shared_ptr<Env> p = nullptr) : up(std::move(p)) {}
+    Shared<Env> up;
+    explicit Env(Shared<Env> p = nullptr) : up(p) {}
     void set(const std::string& k, const SexpValue& v) { tbl.GetAdd(String(k.c_str())) = v; }
     std::optional<SexpValue> get(const std::string& k){
         int pos = tbl.Find(String(k.c_str()));
@@ -95,10 +95,10 @@ struct Env : std::enable_shared_from_this<Env> {
 //
 struct Token { std::string s; };
 std::vector<Token> lex(const std::string& src);
-std::shared_ptr<AstNode> parse(const std::string& src);
+Shared<AstNode> parse(const std::string& src);
 
 //
 // Builtins
 //
-void install_builtins(std::shared_ptr<Env> g);
+void install_builtins(Shared<Env> g);
 #endif

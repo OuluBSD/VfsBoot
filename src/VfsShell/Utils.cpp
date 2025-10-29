@@ -30,10 +30,21 @@ std::string json_escape(const std::string& s){
 // Path utilities
 // join_path is now defined inline in VfsCore.h
 
-// Note: normalize_path needs Vfs::splitPath, so we include codex.h here
+// Local helper to split path (avoiding non-static member call)
+static std::vector<std::string> splitPath(const std::string& p) {
+    std::vector<std::string> parts;
+    std::string cur;
+    for(char c: p){
+        if(c=='/'){
+            if(!cur.empty()){ parts.push_back(cur); cur.clear(); }
+        } else cur.push_back(c);
+    }
+    if(!cur.empty()) parts.push_back(cur);
+    return parts;
+}
 
 std::string normalize_path(const std::string& cwd, const std::string& operand){
-    auto stack = (operand.empty() || operand[0]!='/') ? Vfs::splitPath(cwd.empty() ? "/" : cwd)
+    auto stack = (operand.empty() || operand[0]!='/') ? splitPath(cwd.empty() ? "/" : cwd)
                                                     : std::vector<std::string>{};
     auto apply = [&stack](const std::string& part){
         if(part.empty() || part==".") return;
@@ -41,7 +52,7 @@ std::string normalize_path(const std::string& cwd, const std::string& operand){
         stack.push_back(part);
     };
     if(!operand.empty()){
-        for(auto& part : Vfs::splitPath(operand)) apply(part);
+        for(auto& part : splitPath(operand)) apply(part);
     }
     if(stack.empty()) return "/";
     std::string out;

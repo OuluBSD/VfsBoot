@@ -193,7 +193,7 @@ static bool streaming_in_progress = false;
 // Display a conversation message with formatting
 void display_conversation_message(const Qwen::ConversationMessage& msg) {
     if (msg.role == Qwen::MessageRole::USER) {
-        std::cout << Color::GREEN << "You: " << Color::RESET << msg.content << "\n";
+        std::cout << Color::GREEN << "You: " << Color::RESET << msg.content.ToStd() << "\n";
         return;
     }
 
@@ -207,21 +207,21 @@ void display_conversation_message(const Qwen::ConversationMessage& msg) {
                 streaming_in_progress = true;
             }
             // Print content without newline
-            std::cout << msg.content << std::flush;
+            std::cout << msg.content.ToStd() << std::flush;
         } else {
             // End of streaming or non-streaming message
             if (streaming_in_progress) {
                 // End of streaming - just add newline
                 std::cout << "\n";
                 streaming_in_progress = false;
-            } else if (!msg.content.empty()) {
+            } else if (!msg.content.IsEmpty()) {
                 // Complete non-streaming message
-                std::cout << Color::CYAN << "AI: " << Color::RESET << msg.content << "\n";
+                std::cout << Color::CYAN << "AI: " << Color::RESET << msg.content.ToStd() << "\n";
             }
         }
     } else {
         // System message
-        std::cout << Color::GRAY << "[system]: " << Color::RESET << msg.content << "\n";
+        std::cout << Color::GRAY << "[system]: " << Color::RESET << msg.content.ToStd() << "\n";
     }
 }
 
@@ -232,12 +232,12 @@ void display_tool_group(const Qwen::ToolGroup& group) {
     std::cout << "  Tools to execute:\n";
 
     for (const auto& tool : group.tools) {
-        std::cout << "    - " << Color::MAGENTA << tool.tool_name << Color::RESET;
+        std::cout << "    - " << Color::MAGENTA << tool.tool_name.ToStd() << Color::RESET;
         std::cout << " (ID: " << tool.tool_id << ")\n";
 
         // Display confirmation details if present
         if (tool.confirmation_details.has_value()) {
-            std::cout << "      Details: " << tool.confirmation_details->message << "\n";
+            std::cout << "      Details: " << tool.confirmation_details->message.ToStd() << "\n";
         }
 
         // Display arguments
@@ -748,13 +748,13 @@ bool run_ncurses_mode(Qwen::QwenStateManager& state_mgr, Qwen::QwenClient& clien
 
     ncurses_handlers.on_init = [&](const Qwen::InitMessage& msg) {
         add_output_line("[Connected to qwen-code]", has_colors() ? 5 : 0);
-        if (!msg.version.empty()) {
-            add_output_line("[Version: " + msg.version + "]", has_colors() ? 5 : 0);
+        if (!msg.version.IsEmpty()) {
+            add_output_line("[Version: " + msg.version.ToStd() + "]", has_colors() ? 5 : 0);
         }
         // Update session model from server
-        if (!msg.model.empty()) {
+        if (!msg.model.IsEmpty()) {
             state_mgr.set_session_model(msg.model);
-            add_output_line("[Model: " + msg.model + "]", has_colors() ? 5 : 0);
+            add_output_line("[Model: " + msg.model.ToStd() + "]", has_colors() ? 5 : 0);
         }
         redraw_output();
         redraw_input();  // Restore cursor to input

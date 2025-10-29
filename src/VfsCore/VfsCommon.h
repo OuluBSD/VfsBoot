@@ -324,4 +324,7 @@ bool run_ncurses_editor(Vfs& vfs, const std::string& vfs_path,
 
 void vfs_add(Vfs& vfs, const std::string& path, std::shared_ptr<VfsNode> node, size_t overlayId);
 
+// Global VFS instance pointer
+extern Vfs* G_VFS;
+
 #endif
