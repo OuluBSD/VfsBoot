@@ -29,49 +29,49 @@ VfsNode::Kind determineMountNodeKind(const std::string& host_path) {
     }
 }
 
-MountNode::MountNode(std::string n, std::string hp)
-    : VfsNode(std::move(n), determineMountNodeKind(hp)), host_path(std::move(hp)) {}
+MountNode::MountNode(String n, String hp)
+    : VfsNode(Kind::Mount, n), host_path(hp) {}
 
 bool MountNode::isDir() const {
     namespace fs = std::filesystem;
     try {
-        return fs::is_directory(host_path);
+        return fs::is_directory(host_path.ToStd());
     } catch(...) {
         return false;
     }
 }
 
-std::string MountNode::read() const {
+String MountNode::read() const {
     namespace fs = std::filesystem;
-    if(fs::is_directory(host_path)){
+    if(fs::is_directory(host_path.ToStd())){
         return "";
     }
-    std::ifstream ifs(host_path, std::ios::binary);
-    if(!ifs) throw std::runtime_error("mount: cannot read file " + host_path);
+    std::ifstream ifs(host_path.ToStd(), std::ios::binary);
+    if(!ifs) throw std::runtime_error("mount: cannot read file " + host_path.ToStd());
     std::ostringstream oss;
     oss << ifs.rdbuf();
-    return oss.str();
+    return oss.str().c_str();
 }
 
-void MountNode::write(const std::string& s) {
+void MountNode::write(const String& s) {
     namespace fs = std::filesystem;
-    if(fs::is_directory(host_path)){
+    if(fs::is_directory(host_path.ToStd())){
         throw std::runtime_error("mount: cannot write to directory");
     }
-    std::ofstream ofs(host_path, std::ios::binary | std::ios::trunc);
-    if(!ofs) throw std::runtime_error("mount: cannot write file " + host_path);
-    ofs << s;
+    std::ofstream ofs(host_path.ToStd(), std::ios::binary | std::ios::trunc);
+    if(!ofs) throw std::runtime_error("mount: cannot write file " + host_path.ToStd());
+    ofs << s.ToStd();
 }
 
 void MountNode::populateCache() const {
     namespace fs = std::filesystem;
-    if(!fs::is_directory(host_path)) return;
+    if(!fs::is_directory(host_path.ToStd())) return;
 
     cache.clear();
     try {
-        for(const auto& entry : fs::directory_iterator(host_path)){
+        for(const auto& entry : fs::directory_iterator(host_path.ToStd())){
             auto filename = entry.path().filename().string();
-            auto node = std::make_shared<MountNode>(filename, entry.path().string());
+            auto node = std::make_shared<MountNode>(filename.c_str(), entry.path().string().c_str());
             cache[filename] = node;
         }
     } catch(const std::exception& e){
@@ -79,7 +79,7 @@ void MountNode::populateCache() const {
     }
 }
 
-std::map<std::string, std::shared_ptr<VfsNode>>& MountNode::children() {
+std::unordered_map<std::string, std::shared_ptr<VfsNode>>& MountNode::children() {
     populateCache();
     return cache;
 }
