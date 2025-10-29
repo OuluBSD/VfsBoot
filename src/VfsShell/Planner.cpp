@@ -1,17 +1,17 @@
 #include "VfsShell.h"
 
 // ====== Planner Nodes ======
-std::string PlanGoals::read() const {
+String PlanGoals::read() const {
     std::string result;
     for(size_t i = 0; i < goals.size(); ++i){
         result += "- " + goals[i] + "\n";
     }
-    return result;
+    return String(result.c_str());
 }
 
-void PlanGoals::write(const std::string& s){
+void PlanGoals::write(const String& s){
     goals.clear();
-    std::istringstream iss(s);
+    std::istringstream iss(s.ToStd());
     std::string line;
     while(std::getline(iss, line)){
         auto trimmed = trim_copy(line);
@@ -24,17 +24,17 @@ void PlanGoals::write(const std::string& s){
     }
 }
 
-std::string PlanIdeas::read() const {
+String PlanIdeas::read() const {
     std::string result;
     for(size_t i = 0; i < ideas.size(); ++i){
         result += "- " + ideas[i] + "\n";
     }
-    return result;
+    return String(result.c_str());
 }
 
-void PlanIdeas::write(const std::string& s){
+void PlanIdeas::write(const String& s){
     ideas.clear();
-    std::istringstream iss(s);
+    std::istringstream iss(s.ToStd());
     std::string line;
     while(std::getline(iss, line)){
         auto trimmed = trim_copy(line);
@@ -47,7 +47,7 @@ void PlanIdeas::write(const std::string& s){
     }
 }
 
-std::string PlanJobs::read() const {
+String PlanJobs::read() const {
     std::string result;
     auto sorted = getSortedJobIndices();
     for(size_t idx : sorted){
@@ -60,12 +60,12 @@ std::string PlanJobs::read() const {
         }
         result += "\n";
     }
-    return result;
+    return String(result.c_str());
 }
 
-void PlanJobs::write(const std::string& s){
+void PlanJobs::write(const String& s){
     jobs.clear();
-    std::istringstream iss(s);
+    std::istringstream iss(s.ToStd());
     std::string line;
     while(std::getline(iss, line)){
         auto trimmed = trim_copy(line);
@@ -140,17 +140,17 @@ std::vector<size_t> PlanJobs::getSortedJobIndices() const {
     return indices;
 }
 
-std::string PlanDeps::read() const {
+String PlanDeps::read() const {
     std::string result;
     for(const auto& dep : dependencies){
         result += "- " + dep + "\n";
     }
-    return result;
+    return String(result.c_str());
 }
 
-void PlanDeps::write(const std::string& s){
+void PlanDeps::write(const String& s){
     dependencies.clear();
-    std::istringstream iss(s);
+    std::istringstream iss(s.ToStd());
     std::string line;
     while(std::getline(iss, line)){
         auto trimmed = trim_copy(line);
@@ -163,17 +163,17 @@ void PlanDeps::write(const std::string& s){
     }
 }
 
-std::string PlanImplemented::read() const {
+String PlanImplemented::read() const {
     std::string result;
     for(const auto& item : items){
         result += "- " + item + "\n";
     }
-    return result;
+    return String(result.c_str());
 }
 
-void PlanImplemented::write(const std::string& s){
+void PlanImplemented::write(const String& s){
     items.clear();
-    std::istringstream iss(s);
+    std::istringstream iss(s.ToStd());
     std::string line;
     while(std::getline(iss, line)){
         auto trimmed = trim_copy(line);
@@ -186,17 +186,17 @@ void PlanImplemented::write(const std::string& s){
     }
 }
 
-std::string PlanResearch::read() const {
+String PlanResearch::read() const {
     std::string result;
     for(const auto& topic : topics){
         result += "- " + topic + "\n";
     }
-    return result;
+    return String(result.c_str());
 }
 
-void PlanResearch::write(const std::string& s){
+void PlanResearch::write(const String& s){
     topics.clear();
-    std::istringstream iss(s);
+    std::istringstream iss(s.ToStd());
     std::string line;
     while(std::getline(iss, line)){
         auto trimmed = trim_copy(line);
@@ -230,15 +230,15 @@ void PlannerContext::backward(){
 }
 
 void PlannerContext::addToContext(const std::string& vfs_path){
-    visible_nodes.insert(vfs_path);
+    visible_nodes.FindAdd(String(vfs_path.c_str()));
 }
 
 void PlannerContext::removeFromContext(const std::string& vfs_path){
-    visible_nodes.erase(vfs_path);
+    visible_nodes.RemoveKey(String(vfs_path.c_str()));
 }
 
 void PlannerContext::clearContext(){
-    visible_nodes.clear();
+    visible_nodes.Clear();
 }
 
 // ====== DiscussSession implementation ======

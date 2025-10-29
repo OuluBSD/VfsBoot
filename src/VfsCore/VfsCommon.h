@@ -202,6 +202,17 @@ struct TreeOptions {
 };
 
 // Main VFS structure
+// Mount system types
+enum class MountType {
+    Filesystem,
+    Library,
+    Remote
+};
+
+// Utility functions for path manipulation
+std::string path_basename(const std::string& path);
+std::string path_dirname(const std::string& path);
+
 struct Vfs {
     // Nested types
     struct OverlayHit {
@@ -214,6 +225,13 @@ struct Vfs {
         std::vector<char> types;
     };
 
+    struct MountInfo {
+        std::string vfs_path;
+        std::string host_path;
+        std::shared_ptr<VfsNode> mount_node;
+        MountType type;
+    };
+
     std::shared_ptr<VfsNode> root;
     std::vector<Overlay> overlay_stack;
     std::vector<bool> overlay_dirty;
@@ -222,6 +240,10 @@ struct Vfs {
     TagRegistry* tag_registry = nullptr;
     TagStorage* tag_storage = nullptr;
     LogicEngine* logic_engine = nullptr;
+
+    // Mount system members
+    bool mount_allowed = false;
+    std::vector<MountInfo> mounts;
 
     Vfs();
     std::vector<std::string> splitPath(const std::string& p) const;
@@ -283,6 +305,17 @@ struct Vfs {
     void removeTag(const std::string& vfs_path, const std::string& tag_name);
     bool nodeHasTag(const std::string& vfs_path, const std::string& tag_name) const;
     std::vector<std::string> getNodeTags(const std::string& vfs_path) const;
+
+    // Mount system methods
+    void mountFilesystem(const std::string& host_path, const std::string& vfs_path, size_t overlayId);
+    void mountLibrary(const std::string& lib_path, const std::string& vfs_path, size_t overlayId);
+    void mountRemote(const std::string& host, int port, const std::string& remote_path, const std::string& vfs_path, size_t overlayId);
+    void unmount(const std::string& vfs_path);
+    std::vector<MountInfo> listMounts() const;
+    void setMountAllowed(bool allowed);
+    bool isMountAllowed() const;
+    std::optional<std::string> mapToHostPath(const std::string& vfs_path) const;
+    std::optional<std::string> mapFromHostPath(const std::string& host_path) const;
 };
 
 bool run_ncurses_editor(Vfs& vfs, const std::string& vfs_path,

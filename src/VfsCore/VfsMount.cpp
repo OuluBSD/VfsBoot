@@ -140,11 +140,11 @@ void RemoteNode::ensureConnected() const {
     server_addr.sin_port = htons(port);
 
     // Try to resolve hostname
-    struct hostent* he = gethostbyname(host.c_str());
+    struct hostent* he = gethostbyname(host.ToStd().c_str());
     if(he == nullptr){
         close(sock_fd);
         sock_fd = -1;
-        throw std::runtime_error("remote: cannot resolve host " + host);
+        throw std::runtime_error("remote: cannot resolve host " + host.ToStd());
     }
 
     memcpy(&server_addr.sin_addr, he->h_addr_list[0], he->h_length);
@@ -152,7 +152,7 @@ void RemoteNode::ensureConnected() const {
     if(connect(sock_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
         close(sock_fd);
         sock_fd = -1;
-        throw std::runtime_error("remote: failed to connect to " + host + ":" + std::to_string(port));
+        throw std::runtime_error("remote: failed to connect to " + host.ToStd() + ":" + std::to_string(port));
     }
 
     TRACE_MSG("RemoteNode connected to ", host, ":", port);
@@ -166,13 +166,13 @@ void RemoteNode::disconnect() const {
     }
 }
 
-std::string RemoteNode::execRemote(const std::string& command) const {
+String RemoteNode::execRemote(const String& command) const {
     ensureConnected();
 
     std::lock_guard<std::mutex> lock(conn_mutex);
 
     // Send: EXEC <command>\n
-    std::string request = "EXEC " + command + "\n";
+    std::string request = "EXEC " + command.ToStd() + "\n";
     ssize_t sent = send(sock_fd, request.c_str(), request.size(), 0);
     if(sent < 0 || static_cast<size_t>(sent) != request.size()){
         disconnect();
@@ -195,7 +195,7 @@ std::string RemoteNode::execRemote(const std::string& command) const {
 
     // Parse response
     if(response.substr(0, 3) == "OK "){
-        return response.substr(3, response.size() - 4); // strip "OK " and trailing \n
+        return String(response.substr(3, response.size() - 4).c_str()); // strip "OK " and trailing \n
     } else if(response.substr(0, 4) == "ERR "){
         throw std::runtime_error("remote error: " + response.substr(4, response.size() - 5));
     } else {
@@ -205,50 +205,50 @@ std::string RemoteNode::execRemote(const std::string& command) const {
 
 bool RemoteNode::isDir() const {
     try {
-        std::string cmd = "test -d " + remote_path + " && echo yes || echo no";
-        std::string result = execRemote(cmd);
+        String cmd = String("test -d ") + remote_path + " && echo yes || echo no";
+        String result = execRemote(cmd);
         return result == "yes";
     } catch(...) {
         return false;
     }
 }
 
-std::string RemoteNode::read() const {
-    std::string cmd = "cat " + remote_path;
+String RemoteNode::read() const {
+    String cmd = String("cat ") + remote_path;
     return execRemote(cmd);
 }
 
-void RemoteNode::write(const std::string& s) {
+void RemoteNode::write(const String& s) {
     // Escape single quotes in content
-    std::string escaped = s;
+    std::string escaped = s.ToStd();
     size_t pos = 0;
     while((pos = escaped.find('\'', pos)) != std::string::npos){
         escaped.replace(pos, 1, "'\\''");
         pos += 4;
     }
-    std::string cmd = "echo '" + escaped + "' > " + remote_path;
+    String cmd = String("echo '") + String(escaped.c_str()) + "' > " + remote_path;
     execRemote(cmd);
     cache_valid = false;
 }
 
 void RemoteNode::populateCache() const {
     cache.clear();
-    std::string cmd = "ls " + remote_path;
-    std::string output = execRemote(cmd);
+    String cmd = String("ls ") + remote_path;
+    String output = execRemote(cmd);
 
-    std::istringstream iss(output);
+    std::istringstream iss(output.ToStd());
     std::string line;
     while(std::getline(iss, line)){
         if(line.empty()) continue;
-        auto child_path = remote_path;
-        if(child_path.back() != '/') child_path += '/';
-        child_path += line;
-        auto child = std::make_shared<RemoteNode>(line, host, port, child_path);
+        String child_path = remote_path;
+        if(child_path.ToStd().back() != '/') child_path = child_path + "/";
+        child_path = child_path + String(line.c_str());
+        auto child = std::make_shared<RemoteNode>(String(line.c_str()), host, port, child_path);
         cache[line] = child;
     }
 }
 
-std::map<std::string, std::shared_ptr<VfsNode>>& RemoteNode::children() {
+std::unordered_map<std::string, std::shared_ptr<VfsNode>>& RemoteNode::children() {
     if(!cache_valid){
         populateCache();
         cache_valid = true;

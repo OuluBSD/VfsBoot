@@ -24,7 +24,7 @@ struct CppNode : AstNode {
     using AstNode::AstNode;
     virtual String dump(int indent = 0) const = 0;
     static String ind(int n) { return String().Cat() << n; }  // Simplified implementation
-    SexpValue eval(std::shared_ptr<Env>) override { return SexpValue::S(dump().ToStd()); }
+    SexpValue eval(Shared<Env>) override { return SexpValue::S(dump().ToStd()); }
     typedef CppNode CLASSNAME;  // Required for THISBACK macros if used
 };
 

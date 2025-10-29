@@ -478,6 +478,20 @@ qwen --resume
 
 **Total**: ~3,700 lines of C++ code
 
+### Coding Conventions (U++)
+
+**IMPORTANT**: VfsBoot is transitioning to Ultimate++ (U++) coding conventions. When modifying or adding code:
+
+- **Use U++ types**, not `std::` types: `String` instead of `std::string`, `Vector<>` instead of `std::vector<>`, `VectorMap<>`/`ArrayMap<>` instead of `std::map<>`, `Index<>` instead of `std::unordered_map<>`
+- **Value semantics**: Use `<<=` (pick) or explicit `clone()`/`pick()` instead of ambiguous `=` operator; avoid implicit copies
+- **Smart pointers**: Prefer `One<T>` for owned pointers, `Ptr<T>`/`Pte<T>` for non-owning pointers with validity checking; minimize `std::shared_ptr<>` usage
+- **Header structure**: Main package header includes all dependencies; individual headers use forward declarations with comments
+- **File naming**: CapitalizedWordsWithoutUnderscore (e.g., `QwenClient.cpp`, not `qwen_client.cpp`) - legacy files may not follow this yet
+- **Include guards**: Use `#ifndef _Package_Header_h_` pattern, not `#pragma once` (BLITZ compatibility)
+- **Moveable types**: Declare custom types with `Moveable<T>` base class for U++ container compatibility
+
+See **[AGENTS.md](AGENTS.md)** and **[UPP_CONVENTION.md](UPP_CONVENTION.md)** for complete details.
+
 ### qwen-code TypeScript Files
 
 | File | Description |

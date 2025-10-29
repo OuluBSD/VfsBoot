@@ -190,7 +190,7 @@ void MetricsCollector::loadFromVfs(Vfs& vfs, const std::string& path) {
     // TODO: Implement parsing of metrics history from VFS
     // For now, this is a stub
     try {
-        std::string content = vfs.read(path + "/history.txt");
+        std::string content = vfs.read(path + "/history.txt", std::nullopt);
         (void)content;  // Suppress unused warning
     } catch (...) {
         // Ignore errors for now
@@ -479,7 +479,7 @@ void RulePatchStaging::loadPendingFromVfs(Vfs& vfs, const std::string& path) {
     // TODO: Implement parsing of pending patches from VFS
     // For now, this is a stub
     try {
-        std::string content = vfs.read(path + "/pending.txt");
+        std::string content = vfs.read(path + "/pending.txt", std::nullopt);
         (void)content;  // Suppress unused warning
     } catch (...) {
         // Ignore errors for now

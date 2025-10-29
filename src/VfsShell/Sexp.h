@@ -16,13 +16,13 @@ struct Env; // forward
 //
 // Arvot S-kielelle
 //
-struct SexpValue {
+struct SexpValue : Moveable<SexpValue> {
     struct Closure {
         std::vector<std::string> params;
-        std::shared_ptr<struct AstNode> body;
-        std::shared_ptr<Env> env;
+        Shared<struct AstNode> body;
+        Shared<Env> env;
     };
-    using Builtin = std::function<SexpValue(std::vector<SexpValue>&, std::shared_ptr<Env>)>;
+    using Builtin = std::function<SexpValue(std::vector<SexpValue>&, Shared<Env>)>;
     using List = std::vector<SexpValue>;
 
     std::variant<int64_t, bool, std::string, Builtin, Closure, List> v;
@@ -44,34 +44,34 @@ struct AstNode : VfsNode {
     using VfsNode::VfsNode;
     AstNode(std::string n) : VfsNode(Kind::Ast, String(n.c_str())) {}
     AstNode(String n) : VfsNode(Kind::Ast, n) {}
-    virtual SexpValue eval(std::shared_ptr<Env>) = 0;
+    virtual SexpValue eval(Shared<Env>) = 0;
 };
 
-struct AstInt   : AstNode { int64_t val; AstInt(std::string n, int64_t v); SexpValue eval(std::shared_ptr<Env>) override; };
-struct AstBool  : AstNode { bool val;    AstBool(std::string n, bool v);   SexpValue eval(std::shared_ptr<Env>) override; };
-struct AstStr   : AstNode { std::string val; AstStr(std::string n, std::string v); SexpValue eval(std::shared_ptr<Env>) override; };
-struct AstSym   : AstNode { std::string id; AstSym(std::string n, std::string s);   SexpValue eval(std::shared_ptr<Env>) override; };
+struct AstInt   : AstNode { int64_t val; AstInt(std::string n, int64_t v); SexpValue eval(Shared<Env>) override; };
+struct AstBool  : AstNode { bool val;    AstBool(std::string n, bool v);   SexpValue eval(Shared<Env>) override; };
+struct AstStr   : AstNode { std::string val; AstStr(std::string n, std::string v); SexpValue eval(Shared<Env>) override; };
+struct AstSym   : AstNode { std::string id; AstSym(std::string n, std::string s);   SexpValue eval(Shared<Env>) override; };
 struct AstIf    : AstNode {
-    std::shared_ptr<AstNode> c,a,b;
-    AstIf(std::string n, std::shared_ptr<AstNode> C, std::shared_ptr<AstNode> A, std::shared_ptr<AstNode> B);
-    SexpValue eval(std::shared_ptr<Env>) override;
+    Shared<AstNode> c,a,b;
+    AstIf(std::string n, Shared<AstNode> C, Shared<AstNode> A, Shared<AstNode> B);
+    SexpValue eval(Shared<Env>) override;
 };
 struct AstLambda: AstNode {
     std::vector<std::string> params;
-    std::shared_ptr<AstNode> body;
-    AstLambda(std::string n, std::vector<std::string> ps, std::shared_ptr<AstNode> b);
-    SexpValue eval(std::shared_ptr<Env>) override;
+    Shared<AstNode> body;
+    AstLambda(std::string n, std::vector<std::string> ps, Shared<AstNode> b);
+    SexpValue eval(Shared<Env>) override;
 };
 struct AstCall  : AstNode {
-    std::shared_ptr<AstNode> fn;
-    std::vector<std::shared_ptr<AstNode>> args;
-    AstCall(std::string n, std::shared_ptr<AstNode> f, std::vector<std::shared_ptr<AstNode>> a);
-    SexpValue eval(std::shared_ptr<Env>) override;
+    Shared<AstNode> fn;
+    std::vector<Shared<AstNode>> args;
+    AstCall(std::string n, Shared<AstNode> f, std::vector<Shared<AstNode>> a);
+    SexpValue eval(Shared<Env>) override;
 };
 struct AstHolder: AstNode {
-    std::shared_ptr<AstNode> inner;
-    AstHolder(std::string n, std::shared_ptr<AstNode> in);
-    SexpValue eval(std::shared_ptr<Env>) override;
+    Shared<AstNode> inner;
+    AstHolder(std::string n, Shared<AstNode> in);
+    SexpValue eval(Shared<Env>) override;
 };
 
 //

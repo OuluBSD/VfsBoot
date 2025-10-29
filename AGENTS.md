@@ -23,6 +23,17 @@
 - C++ AST layer models translation units, includes, functions, params, statements, and handles stream output/return generation before dumping into `/cpp`.
 - Companion `.cx` scripts live under `scripts/`, split into `examples/`, `reference/`, `unittst/`, and `tutorial/`. Keep these directories populated with illustrative flows as features evolve, and refresh the relevant scripts whenever we touch matching functionality.
 
+**U++ Convention Adherence** (See UPP_CONVENTION.md)
+- **We are converting to Ultimate++ (U++) conventions** - This means removing `std::` types in favor of U++ equivalents
+- **Type conversions**: `std::string` → `String`, `std::vector` → `Vector`, `std::map` → `VectorMap` or `ArrayMap`, `std::unordered_map` → `Index`
+- **Value semantics**: Use `<<=` (pick) or explicit `clone()`/`pick()` instead of ambiguous `=`; avoid implicit copies
+- **Pointer ownership**: Prefer `One<T>` for owned pointers, `Ptr<T>`/`Pte<T>` for non-owning with validity checks; minimize `std::shared_ptr` usage
+- **Header structure**: Main package header includes all dependencies; individual headers use forward declarations with comments explaining deps
+- **File naming**: CapitalizedWordsWithoutUnderscore (e.g., `CppAst.cpp`, not `cpp_ast.cpp`)
+- **Package organization**: Each package has `.upp` file listing dependencies (`uses`) and files, with RGB color in description
+- **Include guards**: Use `#ifndef _Package_Header_h_` pattern, not `#pragma once` (BLITZ compatibility)
+- **Moveable types**: Declare custom types with `Moveable<T>` base for U++ container compatibility
+
 **Open edges & cautions.**
 - String escaping in the C++ AST dumper requires a sanity check (discussion noted escape regressions in `CppString::esc` and related dumping helpers).
 - `lambda` is currently single-argument; multi-parameter or variadic support is deferred.

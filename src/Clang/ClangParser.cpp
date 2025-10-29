@@ -13,6 +13,19 @@ void sort_unique(std::vector<size_t>& ids){
     ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
 }
 
+// Local helper function for path splitting
+static std::vector<std::string> splitPath(const std::string& p) {
+    std::vector<std::string> parts;
+    std::string cur;
+    for(char c: p){
+        if(c=='/'){
+            if(!cur.empty()){ parts.push_back(cur); cur.clear(); }
+        } else cur.push_back(c);
+    }
+    if(!cur.empty()) parts.push_back(cur);
+    return parts;
+}
+
 void maybe_extend_context(Vfs& vfs, WorkingDirectory& cwd){
     try{
         update_directory_context(vfs, cwd, cwd.path);
@@ -232,7 +245,7 @@ size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const std::str
 
     auto ensure_dir = [&](const std::string& path) -> std::shared_ptr<DirNode> {
         if(path.empty() || path == "/") return root;
-        auto parts = Vfs::splitPath(path);
+        auto parts = splitPath(path);
         std::shared_ptr<VfsNode> cur = root;
         std::string curPath = "/";
         for(const auto& part : parts){
@@ -255,7 +268,7 @@ size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const std::str
     };
 
     auto create_file = [&](const std::string& path, std::string content){
-        auto parts = Vfs::splitPath(path);
+        auto parts = splitPath(path);
         if(parts.empty()) throw std::runtime_error("overlay: invalid file path");
         std::string namePart = parts.back();
         parts.pop_back();
@@ -273,7 +286,7 @@ size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const std::str
     };
 
     auto create_ast = [&](const std::string& path, const std::string& type, std::string payload){
-        auto parts = Vfs::splitPath(path);
+        auto parts = splitPath(path);
         if(parts.empty()) throw std::runtime_error("overlay: invalid ast path");
         std::string namePart = parts.back();
         parts.pop_back();
@@ -636,10 +649,10 @@ uint64_t fnv1a64(const std::string& data){
     return h;
 }
 
-std::string hash_hex(uint64_t value){
+String hash_hex(uint64_t value){
     std::ostringstream oss;
     oss << std::hex << std::setw(16) << std::setfill('0') << value;
-    return oss.str();
+    return String(oss.str().c_str());
 }
 
 

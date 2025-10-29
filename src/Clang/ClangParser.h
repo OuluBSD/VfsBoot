@@ -186,7 +186,7 @@ struct ClangAstNode : AstNode {
 
     bool isDir() const override { return true; }
     std::unordered_map<std::string, std::shared_ptr<VfsNode>>& children() override { return ch; }
-    SexpValue eval(std::shared_ptr<Env>) override { return SexpValue::S(spelling.ToStd()); }
+    SexpValue eval(Shared<Env>) override { return SexpValue::S(spelling.ToStd()); }
     String read() const override { return spelling; }
 
     virtual String dump(int indent = 0) const = 0;

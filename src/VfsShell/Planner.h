@@ -15,7 +15,7 @@ struct PlanNode : AstNode {
     PlanNode(std::string n, std::string c = "") : AstNode(std::move(n)), content(std::move(c)) {}
     bool isDir() const override { return true; }
     std::unordered_map<std::string, std::shared_ptr<VfsNode>>& children() override { return ch; }
-    SexpValue eval(std::shared_ptr<Env>) override { return SexpValue::S(content); }
+    SexpValue eval(Shared<Env>) override { return SexpValue::S(content); }
     String read() const override { return content.c_str(); }
     void write(const String& s) override { content = s.ToStd(); }
 };
