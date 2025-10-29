@@ -72,7 +72,7 @@ bool ContextFilter::matches(VfsNode* node, const std::string& path, Vfs& vfs) co
 
     switch(type){
         case Type::TagAny: {
-            const TagSet* node_tags = vfs.tag_storage.getTags(node);
+            const TagSet* node_tags = vfs.tag_storage->getTags(node);
             if(!node_tags) return false;
             for(TagId tag : tags){
                 if(node_tags->count(tag) > 0) return true;
@@ -80,7 +80,7 @@ bool ContextFilter::matches(VfsNode* node, const std::string& path, Vfs& vfs) co
             return false;
         }
         case Type::TagAll: {
-            const TagSet* node_tags = vfs.tag_storage.getTags(node);
+            const TagSet* node_tags = vfs.tag_storage->getTags(node);
             if(!node_tags) return false;
             for(TagId tag : tags){
                 if(node_tags->count(tag) == 0) return false;
@@ -88,7 +88,7 @@ bool ContextFilter::matches(VfsNode* node, const std::string& path, Vfs& vfs) co
             return true;
         }
         case Type::TagNone: {
-            const TagSet* node_tags = vfs.tag_storage.getTags(node);
+            const TagSet* node_tags = vfs.tag_storage->getTags(node);
             if(!node_tags) return true;
             for(TagId tag : tags){
                 if(node_tags->count(tag) > 0) return false;

@@ -39,11 +39,4 @@ UppBuildSummary build_upp_workspace(UppAssembly& assembly,
                                    Vfs& vfs,
                                    const UppBuildOptions& options);
 
-// Helper function to generate internal U++ build command
-std::string generate_internal_upp_build_command_impl(const UppWorkspace& workspace,
-                                              const UppPackage& pkg,
-                                              const UppBuildOptions& options,
-                                              Vfs& vfs,
-                                              const UppBuildMethod* builder);
-
 #endif

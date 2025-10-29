@@ -19,7 +19,7 @@
 #define TRACE_MSG(...) ((void)0)
 #endif
 
-// Define missing utility functions
+// Declare utility functions (implemented in VfsCore.cpp)
 std::string join_path(const std::string& a, const std::string& b);
 std::string path_basename(const std::string& path);
 std::string path_dirname(const std::string& path);
@@ -40,6 +40,10 @@ using TagId = size_t;  // Assuming TagId is a typedef
 struct RulePatchStaging;
 struct FeedbackLoop;
 struct MetricsCollector;
+struct TagRegistry;
+struct TagStorage;
+struct LogicEngine;
+struct TagMiningSession;
 
 // VfsNode definition needs to be here since other classes inherit from it
 struct VfsNode : std::enable_shared_from_this<VfsNode> {
@@ -100,10 +104,10 @@ struct Vfs {
     std::vector<bool> overlay_dirty;
     std::vector<std::string> overlay_source;
 
-    void* tag_registry_ptr;
-    void* tag_storage_ptr;
-    void* logic_engine_ptr;
-    void* tag_mining_session_ptr;
+    TagRegistry* tag_registry = nullptr;
+    TagStorage* tag_storage = nullptr;
+    LogicEngine* logic_engine = nullptr;
+    TagMiningSession* tag_mining_session = nullptr;
 
     Vfs();
 

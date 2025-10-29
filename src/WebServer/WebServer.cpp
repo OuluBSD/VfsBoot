@@ -1,4 +1,12 @@
-#include "VfsShell.h"
+#include "WebServer.h"
+#include <libwebsockets.h>
+#include <queue>
+#include <map>
+#include <mutex>
+#include <thread>
+#include <iostream>
+#include <fstream>
+#include <sstream>
 
 // WebSocket session tracking
 struct WebSocketSession {

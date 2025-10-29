@@ -327,8 +327,8 @@ int main(int argc, char** argv){
             
             // Initialize feedback pipeline
             MetricsCollector metrics_collector;
-            RulePatchStaging patch_staging(&vfs.logic_engine);
-            FeedbackLoop feedback_loop(metrics_collector, patch_staging, vfs.logic_engine, vfs.tag_registry);
+            RulePatchStaging patch_staging(vfs.logic_engine);
+            FeedbackLoop feedback_loop(metrics_collector, patch_staging, *vfs.logic_engine, *vfs.tag_registry);
             G_METRICS_COLLECTOR = &metrics_collector;
             G_PATCH_STAGING = &patch_staging;
             G_FEEDBACK_LOOP = &feedback_loop;
@@ -422,8 +422,8 @@ int main(int argc, char** argv){
 
     // Initialize feedback pipeline
     MetricsCollector metrics_collector;
-    RulePatchStaging patch_staging(&vfs.logic_engine);
-    FeedbackLoop feedback_loop(metrics_collector, patch_staging, vfs.logic_engine, vfs.tag_registry);
+    RulePatchStaging patch_staging(vfs.logic_engine);
+    FeedbackLoop feedback_loop(metrics_collector, patch_staging, *vfs.logic_engine, *vfs.tag_registry);
     G_METRICS_COLLECTOR = &metrics_collector;
     G_PATCH_STAGING = &patch_staging;
     G_FEEDBACK_LOOP = &feedback_loop;
@@ -1456,8 +1456,8 @@ int main(int argc, char** argv){
             std::cout << vfs_path << (has ? " has " : " does not have ") << "tag '" << inv.args[1] << "'\n";
 
         } else if(cmd == "logic.init"){
-            vfs.logic_engine.addHardcodedRules();
-            std::cout << "initialized logic engine with " << vfs.logic_engine.rules.size() << " hardcoded rules\n";
+            vfs.logic_engine->addHardcodedRules();
+            std::cout << "initialized logic engine with " << vfs.logic_engine->rules.size() << " hardcoded rules\n";
 
         } else if(cmd == "logic.infer"){
             if(inv.args.empty()) throw std::runtime_error("logic.infer <tag> [tag...]");
@@ -1468,7 +1468,7 @@ int main(int argc, char** argv){
                 initial_tags.insert(tid);
             }
 
-            TagSet inferred = vfs.logic_engine.inferTags(initial_tags);
+            TagSet inferred = vfs.logic_engine->inferTags(initial_tags);
 
             std::cout << "initial tags: ";
             for(TagId tid : initial_tags){
@@ -1495,7 +1495,7 @@ int main(int argc, char** argv){
                 tags.insert(tid);
             }
 
-            auto conflict = vfs.logic_engine.checkConsistency(tags);
+            auto conflict = vfs.logic_engine->checkConsistency(tags);
             if(conflict){
                 std::cout << "CONFLICT: " << conflict->description << "\n";
                 std::cout << "conflicting tags: ";
@@ -1522,34 +1522,34 @@ int main(int argc, char** argv){
                 source_tags.insert(tid);
             }
 
-            auto explanations = vfs.logic_engine.explainInference(target_tag, source_tags);
+            auto explanations = vfs.logic_engine->explainInference(target_tag, source_tags);
             for(const auto& exp : explanations){
                 std::cout << exp << "\n";
             }
 
         } else if(cmd == "logic.listrules"){
-            if(vfs.logic_engine.rules.empty()){
+            if(vfs.logic_engine->rules.empty()){
                 std::cout << "no rules loaded (use logic.init to add hardcoded rules)\n";
             } else {
-                std::cout << "loaded rules (" << vfs.logic_engine.rules.size() << "):\n";
-                for(const auto& rule : vfs.logic_engine.rules){
+                std::cout << "loaded rules (" << vfs.logic_engine->rules.size() << "):\n";
+                for(const auto& rule : vfs.logic_engine->rules){
                     std::cout << "  " << rule.name << ": "
-                             << rule.premise->toString(vfs.tag_registry) << " => "
-                             << rule.conclusion->toString(vfs.tag_registry)
+                             << rule.premise->toString(*vfs.tag_registry) << " => "
+                             << rule.conclusion->toString(*vfs.tag_registry)
                              << " [" << int(rule.confidence * 100) << "%, " << rule.source << "]\n";
                 }
             }
 
         } else if(cmd == "logic.rules.save"){
             std::string path = inv.args.empty() ? "/plan/rules" : inv.args[0];
-            vfs.logic_engine.saveRulesToVfs(vfs, path);
-            std::cout << "saved " << vfs.logic_engine.rules.size() << " rules to " << path << "\n";
+            vfs.logic_engine->saveRulesToVfs(vfs, path);
+            std::cout << "saved " << vfs.logic_engine->rules.size() << " rules to " << path << "\n";
 
         } else if(cmd == "logic.rules.load"){
             std::string path = inv.args.empty() ? "/plan/rules" : inv.args[0];
-            size_t before = vfs.logic_engine.rules.size();
-            vfs.logic_engine.loadRulesFromVfs(vfs, path);
-            size_t after = vfs.logic_engine.rules.size();
+            size_t before = vfs.logic_engine->rules.size();
+            vfs.logic_engine->loadRulesFromVfs(vfs, path);
+            size_t after = vfs.logic_engine->rules.size();
             std::cout << "loaded " << after << " rules from " << path;
             if (before > 0) {
                 std::cout << " (replaced " << before << " existing rules)";
@@ -1565,7 +1565,7 @@ int main(int argc, char** argv){
             float confidence = inv.args.size() > 3 ? std::stof(inv.args[3]) : 1.0f;
             std::string source = inv.args.size() > 4 ? inv.args[4] : "user";
 
-            vfs.logic_engine.addSimpleRule(name, premise, conclusion, confidence, source);
+            vfs.logic_engine->addSimpleRule(name, premise, conclusion, confidence, source);
             std::cout << "added rule: " << name << " (" << premise << " => " << conclusion
                       << ", confidence=" << int(confidence * 100) << "%, source=" << source << ")\n";
 
@@ -1577,7 +1577,7 @@ int main(int argc, char** argv){
             std::string tag2 = inv.args[2];
             std::string source = inv.args.size() > 3 ? inv.args[3] : "user";
 
-            vfs.logic_engine.addExclusionRule(name, tag1, tag2, source);
+            vfs.logic_engine->addExclusionRule(name, tag1, tag2, source);
             std::cout << "added exclusion rule: " << name << " (" << tag1 << " excludes " << tag2
                       << ", source=" << source << ")\n";
 
@@ -1585,8 +1585,8 @@ int main(int argc, char** argv){
             // logic.rule.remove <name>
             if(inv.args.empty()) throw std::runtime_error("logic.rule.remove <name>");
             std::string name = inv.args[0];
-            if(vfs.logic_engine.hasRule(name)){
-                vfs.logic_engine.removeRule(name);
+            if(vfs.logic_engine->hasRule(name)){
+                vfs.logic_engine->removeRule(name);
                 std::cout << "removed rule: " << name << "\n";
             } else {
                 std::cout << "rule not found: " << name << "\n";
@@ -1603,48 +1603,48 @@ int main(int argc, char** argv){
             }
             auto formula = LogicFormula::makeAnd(vars);
 
-            bool sat = vfs.logic_engine.isSatisfiable(formula);
+            bool sat = vfs.logic_engine->isSatisfiable(formula);
             std::cout << "formula is " << (sat ? "satisfiable" : "unsatisfiable") << "\n";
 
         } else if(cmd == "tag.mine.start"){
             if(inv.args.empty()) throw std::runtime_error("tag.mine.start <tag> [tag...]");
 
-            vfs.mining_session = TagMiningSession();
+            vfs.tag_mining_session = new TagMiningSession();
             for(const auto& tag_name : inv.args){
                 TagId tid = vfs.registerTag(tag_name);
-                vfs.mining_session->addUserTag(tid);
+                vfs.tag_mining_session->addUserTag(tid);
             }
 
             // Infer additional tags
-            vfs.mining_session->inferred_tags = vfs.logic_engine.inferTags(vfs.mining_session->user_provided_tags);
+            vfs.tag_mining_session->inferred_tags = vfs.logic_engine->inferTags(vfs.tag_mining_session->user_provided_tags);
 
             // Generate questions for user
-            for(TagId tid : vfs.mining_session->inferred_tags){
-                if(vfs.mining_session->user_provided_tags.count(tid) == 0){
-                    vfs.mining_session->pending_questions.push_back(
+            for(TagId tid : vfs.tag_mining_session->inferred_tags){
+                if(vfs.tag_mining_session->user_provided_tags.count(tid) == 0){
+                    vfs.tag_mining_session->pending_questions.push_back(
                         "Do you also want tag '" + vfs.getTagName(tid) + "'?");
                 }
             }
 
             std::cout << "started tag mining session\n";
             std::cout << "user provided: ";
-            for(TagId tid : vfs.mining_session->user_provided_tags){
+            for(TagId tid : vfs.tag_mining_session->user_provided_tags){
                 std::cout << vfs.getTagName(tid) << " ";
             }
             std::cout << "\ninferred tags: ";
-            for(TagId tid : vfs.mining_session->inferred_tags){
-                if(vfs.mining_session->user_provided_tags.count(tid) == 0){
+            for(TagId tid : vfs.tag_mining_session->inferred_tags){
+                if(vfs.tag_mining_session->user_provided_tags.count(tid) == 0){
                     std::cout << vfs.getTagName(tid) << " ";
                 }
             }
-            std::cout << "\npending questions: " << vfs.mining_session->pending_questions.size() << "\n";
-            if(!vfs.mining_session->pending_questions.empty()){
-                std::cout << "\nnext question: " << vfs.mining_session->pending_questions[0] << "\n";
+            std::cout << "\npending questions: " << vfs.tag_mining_session->pending_questions.size() << "\n";
+            if(!vfs.tag_mining_session->pending_questions.empty()){
+                std::cout << "\nnext question: " << vfs.tag_mining_session->pending_questions[0] << "\n";
                 std::cout << "use: tag.mine.feedback <tag-name> yes|no\n";
             }
 
         } else if(cmd == "tag.mine.feedback"){
-            if(!vfs.mining_session){
+            if(!vfs.tag_mining_session){
                 throw std::runtime_error("no active mining session (use tag.mine.start first)");
             }
             if(inv.args.size() < 2) throw std::runtime_error("tag.mine.feedback <tag-name> yes|no");
@@ -1652,32 +1652,32 @@ int main(int argc, char** argv){
             std::string tag_name = inv.args[0];
             bool confirmed = (inv.args[1] == "yes" || inv.args[1] == "y");
 
-            vfs.mining_session->recordFeedback(tag_name, confirmed);
+            vfs.tag_mining_session->recordFeedback(tag_name, confirmed);
 
             if(confirmed){
                 TagId tid = vfs.registerTag(tag_name);
-                vfs.mining_session->user_provided_tags.insert(tid);
+                vfs.tag_mining_session->user_provided_tags.insert(tid);
                 std::cout << "added '" << tag_name << "' to user tags\n";
             } else {
                 std::cout << "rejected '" << tag_name << "'\n";
             }
 
         } else if(cmd == "tag.mine.status"){
-            if(!vfs.mining_session){
+            if(!vfs.tag_mining_session){
                 std::cout << "no active mining session\n";
             } else {
                 std::cout << "mining session active\n";
                 std::cout << "user tags: ";
-                for(TagId tid : vfs.mining_session->user_provided_tags){
+                for(TagId tid : vfs.tag_mining_session->user_provided_tags){
                     std::cout << vfs.getTagName(tid) << " ";
                 }
                 std::cout << "\ninferred tags: ";
-                for(TagId tid : vfs.mining_session->inferred_tags){
-                    if(vfs.mining_session->user_provided_tags.count(tid) == 0){
+                for(TagId tid : vfs.tag_mining_session->inferred_tags){
+                    if(vfs.tag_mining_session->user_provided_tags.count(tid) == 0){
                         std::cout << vfs.getTagName(tid) << " ";
                     }
                 }
-                std::cout << "\nfeedback recorded: " << vfs.mining_session->user_feedback.size() << "\n";
+                std::cout << "\nfeedback recorded: " << vfs.tag_mining_session->user_feedback.size() << "\n";
             }
 
         } else if(cmd == "plan.create"){
@@ -1725,11 +1725,11 @@ int main(int argc, char** argv){
             if(parent_path.empty()) parent_path = "/";
             auto parent_node = vfs.tryResolveForOverlay(parent_path, cwd.primary_overlay);
             if(parent_node){
-                auto parent_tags_ptr = vfs.tag_storage.getTags(parent_node.get());
+                auto parent_tags_ptr = vfs.tag_storage->getTags(parent_node.get());
                 if(parent_tags_ptr && !parent_tags_ptr->empty()){
                     // Check for conflicts in parent's tag set (inferred)
-                    auto complete_parent_tags = vfs.logic_engine.inferTags(*parent_tags_ptr, 0.8f);
-                    auto conflict = vfs.logic_engine.checkConsistency(complete_parent_tags);
+                    auto complete_parent_tags = vfs.logic_engine->inferTags(*parent_tags_ptr, 0.8f);
+                    auto conflict = vfs.logic_engine->checkConsistency(complete_parent_tags);
                     if(conflict){
                         std::cout << "⚠️  Warning: Parent plan node has conflicting tags\n";
                         std::cout << "   " << conflict->description << "\n";
@@ -1861,12 +1861,12 @@ int main(int argc, char** argv){
                     context_str += "Mode: " + std::string(planner.mode == PlannerContext::Mode::Forward ? "Forward (adding details)" : "Backward (revising)") + "\n\n";
 
                     // Add tag constraints if present
-                    auto current_tags_ptr = vfs.tag_storage.getTags(node.get());
+                    auto current_tags_ptr = vfs.tag_storage->getTags(node.get());
                     if(current_tags_ptr && !current_tags_ptr->empty()){
-                        auto complete_tags = vfs.logic_engine.inferTags(*current_tags_ptr, 0.8f);
+                        auto complete_tags = vfs.logic_engine->inferTags(*current_tags_ptr, 0.8f);
                         std::vector<std::string> tag_names;
                         for(auto tag_id : complete_tags){
-                            tag_names.push_back(vfs.tag_registry.getTagName(tag_id));
+                            tag_names.push_back(vfs.tag_registry->getTagName(tag_id));
                         }
                         context_str += "=== Tag Constraints ===\n";
                         context_str += "This plan has the following requirements/constraints: ";
@@ -1877,7 +1877,7 @@ int main(int argc, char** argv){
                         context_str += "\n";
 
                         // Check for conflicts
-                        auto conflict = vfs.logic_engine.checkConsistency(complete_tags);
+                        auto conflict = vfs.logic_engine->checkConsistency(complete_tags);
                         if(conflict){
                             context_str += "⚠️  WARNING: Tag conflict detected - " + conflict->description + "\n";
                             context_str += "Please help resolve this conflict before proceeding with planning.\n";
@@ -2250,7 +2250,7 @@ int main(int argc, char** argv){
                     result.success = false;
                 } else {
                     // Collect all tags from this node
-                    auto tags_ptr = vfs.tag_storage.getTags(node.get());
+                    auto tags_ptr = vfs.tag_storage->getTags(node.get());
                     if(!tags_ptr || tags_ptr->empty()){
                         std::cout << "✓ No tags attached to " << vfs_path << "\n";
                     } else {
@@ -2258,7 +2258,7 @@ int main(int argc, char** argv){
                         const TagSet& tags = *tags_ptr;
                         std::vector<std::string> tag_names;
                         for(auto tag_id : tags){
-                            tag_names.push_back(vfs.tag_registry.getTagName(tag_id));
+                            tag_names.push_back(vfs.tag_registry->getTagName(tag_id));
                         }
                         std::cout << "📋 Tags on " << vfs_path << ": ";
                         for(size_t i = 0; i < tag_names.size(); ++i){
@@ -2268,7 +2268,7 @@ int main(int argc, char** argv){
                         std::cout << "\n";
 
                         // Check consistency
-                        auto conflict = vfs.logic_engine.checkConsistency(tags);
+                        auto conflict = vfs.logic_engine->checkConsistency(tags);
                         if(conflict){
                             std::cout << "❌ Conflict detected: " << conflict->description << "\n";
                             if(!conflict->conflicting_tags.empty()){
@@ -2310,7 +2310,7 @@ int main(int argc, char** argv){
                     std::cout << "plan.tags.infer: path not found: " << vfs_path << "\n";
                     result.success = false;
                 } else {
-                    auto initial_tags_ptr = vfs.tag_storage.getTags(node.get());
+                    auto initial_tags_ptr = vfs.tag_storage->getTags(node.get());
                     if(!initial_tags_ptr || initial_tags_ptr->empty()){
                         std::cout << "📋 No initial tags on " << vfs_path << "\n";
                     } else {
@@ -2318,7 +2318,7 @@ int main(int argc, char** argv){
                         // Show initial tags
                         std::vector<std::string> initial_names;
                         for(auto tag_id : initial_tags){
-                            initial_names.push_back(vfs.tag_registry.getTagName(tag_id));
+                            initial_names.push_back(vfs.tag_registry->getTagName(tag_id));
                         }
                         std::cout << "📋 Initial tags: ";
                         for(size_t i = 0; i < initial_names.size(); ++i){
@@ -2328,7 +2328,7 @@ int main(int argc, char** argv){
                         std::cout << "\n";
 
                         // Infer complete tag set
-                        auto complete_tags = vfs.logic_engine.inferTags(initial_tags, 0.8f);
+                        auto complete_tags = vfs.logic_engine->inferTags(initial_tags, 0.8f);
 
                         // Find only the newly inferred tags
                         TagSet new_tags;
@@ -2343,7 +2343,7 @@ int main(int argc, char** argv){
                         } else {
                             std::vector<std::string> new_names;
                             for(auto tag_id : new_tags){
-                                new_names.push_back(vfs.tag_registry.getTagName(tag_id));
+                                new_names.push_back(vfs.tag_registry->getTagName(tag_id));
                             }
                             std::cout << "🔍 Inferred tags (only new): ";
                             for(size_t i = 0; i < new_names.size(); ++i){
@@ -2356,7 +2356,7 @@ int main(int argc, char** argv){
                         // Show complete tag set for planner use
                         std::vector<std::string> complete_names;
                         for(auto tag_id : complete_tags){
-                            complete_names.push_back(vfs.tag_registry.getTagName(tag_id));
+                            complete_names.push_back(vfs.tag_registry->getTagName(tag_id));
                         }
                         std::cout << "📦 Complete tag set (initial + inferred): ";
                         for(size_t i = 0; i < complete_names.size(); ++i){
@@ -2383,16 +2383,16 @@ int main(int argc, char** argv){
                     std::cout << "plan.tags.check: path not found: " << vfs_path << "\n";
                     result.success = false;
                 } else {
-                    auto initial_tags_ptr = vfs.tag_storage.getTags(node.get());
+                    auto initial_tags_ptr = vfs.tag_storage->getTags(node.get());
                     if(!initial_tags_ptr || initial_tags_ptr->empty()){
                         std::cout << "✓ No tags to check on " << vfs_path << "\n";
                     } else {
                         const TagSet& initial_tags = *initial_tags_ptr;
                         // Infer complete tag set
-                        auto complete_tags = vfs.logic_engine.inferTags(initial_tags, 0.8f);
+                        auto complete_tags = vfs.logic_engine->inferTags(initial_tags, 0.8f);
 
                         // Check consistency of complete tag set
-                        auto conflict = vfs.logic_engine.checkConsistency(complete_tags);
+                        auto conflict = vfs.logic_engine->checkConsistency(complete_tags);
                         if(conflict){
                             std::cout << "❌ Conflict detected after tag inference: " << conflict->description << "\n";
                             if(!conflict->conflicting_tags.empty()){
@@ -2460,12 +2460,12 @@ int main(int argc, char** argv){
                     total_checked++;
 
                     // Check tags on this node
-                    auto tags_ptr = vfs.tag_storage.getTags(node.get());
+                    auto tags_ptr = vfs.tag_storage->getTags(node.get());
                     if(tags_ptr && !tags_ptr->empty()){
                         total_with_tags++;
                         const TagSet& tags = *tags_ptr;
-                        auto complete_tags = vfs.logic_engine.inferTags(tags, 0.8f);
-                        auto conflict = vfs.logic_engine.checkConsistency(complete_tags);
+                        auto complete_tags = vfs.logic_engine->inferTags(tags, 0.8f);
+                        auto conflict = vfs.logic_engine->checkConsistency(complete_tags);
 
                         ValidationResult vr;
                         vr.path = path;
@@ -2619,7 +2619,7 @@ int main(int argc, char** argv){
                 }
             }
 
-            ContextBuilder builder(vfs, vfs.tag_storage, vfs.tag_registry, max_tokens);
+            ContextBuilder builder(vfs, *vfs.tag_storage, *vfs.tag_registry, max_tokens);
             builder.collect();
             std::string context = builder.buildWithOptions(opts);
 
@@ -2643,7 +2643,7 @@ int main(int argc, char** argv){
                 max_tokens = std::stoul(inv.args[0]);
             }
 
-            ContextBuilder builder(vfs, vfs.tag_storage, vfs.tag_registry, max_tokens);
+            ContextBuilder builder(vfs, *vfs.tag_storage, *vfs.tag_registry, max_tokens);
             builder.collect();
             std::string context = builder.buildWithPriority();
 
@@ -2682,7 +2682,7 @@ int main(int argc, char** argv){
         } else if(cmd == "test.planner"){
             // Run action planner test suite
             // Usage: test.planner
-            ActionPlannerTestSuite suite(vfs, vfs.tag_storage, vfs.tag_registry);
+            ActionPlannerTestSuite suite(vfs, *vfs.tag_storage, *vfs.tag_registry);
 
             // Test 1: Tag-based filtering
             suite.addTest("tag_filter_any", "Test TagAny filter", [&](){
@@ -2691,7 +2691,7 @@ int main(int argc, char** argv){
                 vfs_add(vfs, "/test/file1.txt", test_file, cwd.primary_overlay);
 
                 TagId test_tag = vfs.registerTag("test-tag");
-                vfs.tag_storage.addTag(test_file.get(), test_tag);
+                vfs.tag_storage->addTag(test_file.get(), test_tag);
 
                 // Test filter
                 TagSet tags{test_tag};
@@ -2722,7 +2722,7 @@ int main(int argc, char** argv){
                 auto test_file = std::make_shared<FileNode>("large.txt", std::string(10000, 'x'));
                 vfs_add(vfs, "/test/large.txt", test_file, cwd.primary_overlay);
 
-                ContextBuilder builder(vfs, vfs.tag_storage, vfs.tag_registry, 1000);
+                ContextBuilder builder(vfs, *vfs.tag_storage, *vfs.tag_registry, 1000);
                 builder.collect();
                 return builder.totalTokens() > 0;
             });
@@ -2756,7 +2756,7 @@ int main(int argc, char** argv){
         } else if(cmd == "test.hypothesis"){
             // Run hypothesis test suite
             // Usage: test.hypothesis
-            HypothesisTestSuite suite(vfs, vfs.tag_storage, vfs.tag_registry);
+            HypothesisTestSuite suite(vfs, *vfs.tag_storage, *vfs.tag_registry);
             suite.createStandardSuite();
             suite.runAll();
             suite.printResults();
@@ -2777,7 +2777,7 @@ int main(int argc, char** argv){
             Hypothesis::Level level = static_cast<Hypothesis::Level>(level_num);
             Hypothesis hyp(level, desc, goal);
 
-            HypothesisTester tester(vfs, vfs.tag_storage, vfs.tag_registry);
+            HypothesisTester tester(vfs, *vfs.tag_storage, *vfs.tag_registry);
             auto result = tester.test(hyp);
 
             std::cout << "\n=== " << hyp.levelName() << " ===\n";
@@ -2793,7 +2793,7 @@ int main(int argc, char** argv){
             std::string target = inv.args[0];
             std::string search_path = inv.args.size() > 1 ? inv.args[1] : "/";
 
-            HypothesisTester tester(vfs, vfs.tag_storage, vfs.tag_registry);
+            HypothesisTester tester(vfs, *vfs.tag_storage, *vfs.tag_registry);
             auto result = tester.testSimpleQuery(target, search_path);
 
             std::cout << "\n=== Level 1: Simple Query ===\n";
@@ -2807,7 +2807,7 @@ int main(int argc, char** argv){
             std::string function_name = inv.args[0];
             std::string style = inv.args.size() > 1 ? inv.args[1] : "try-catch";
 
-            HypothesisTester tester(vfs, vfs.tag_storage, vfs.tag_registry);
+            HypothesisTester tester(vfs, *vfs.tag_storage, *vfs.tag_registry);
             auto result = tester.testErrorHandlingAddition(function_name, style);
 
             std::cout << "\n=== Level 2: Error Handling Addition ===\n";
@@ -2819,7 +2819,7 @@ int main(int argc, char** argv){
             std::string search_path = inv.args.size() > 0 ? inv.args[0] : "/";
             size_t min_lines = inv.args.size() > 1 ? std::stoul(inv.args[1]) : 3;
 
-            HypothesisTester tester(vfs, vfs.tag_storage, vfs.tag_registry);
+            HypothesisTester tester(vfs, *vfs.tag_storage, *vfs.tag_registry);
             auto result = tester.testDuplicateExtraction(search_path, min_lines);
 
             std::cout << "\n=== Level 3: Duplicate Code Detection ===\n";
@@ -2830,7 +2830,7 @@ int main(int argc, char** argv){
             // Usage: hypothesis.logging [search_path]
             std::string search_path = inv.args.size() > 0 ? inv.args[0] : "/";
 
-            HypothesisTester tester(vfs, vfs.tag_storage, vfs.tag_registry);
+            HypothesisTester tester(vfs, *vfs.tag_storage, *vfs.tag_registry);
             auto result = tester.testLoggingInstrumentation(search_path);
 
             std::cout << "\n=== Level 4: Logging Instrumentation ===\n";
@@ -2844,7 +2844,7 @@ int main(int argc, char** argv){
             std::string pattern_name = inv.args[0];
             std::string target_path = inv.args.size() > 1 ? inv.args[1] : "/";
 
-            HypothesisTester tester(vfs, vfs.tag_storage, vfs.tag_registry);
+            HypothesisTester tester(vfs, *vfs.tag_storage, *vfs.tag_registry);
             auto result = tester.testArchitecturePattern(pattern_name, target_path);
 
             std::cout << "\n=== Level 5: Architecture Pattern Evaluation ===\n";

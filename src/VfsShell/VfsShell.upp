@@ -6,7 +6,8 @@ uses
 	Clang,
 	UppCompat,
 	Qwen,
-	Logic;
+	Logic,
+	WebServer;
 
 library(LINUX) blake3;
 

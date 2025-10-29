@@ -11,9 +11,6 @@ using namespace Upp;
 struct TagRegistry;
 struct Vfs;
 
-#endif
-
-
 //
 // Logic system for tag theorem proving
 //
@@ -88,3 +85,4 @@ struct LogicEngine {
     bool hasRule(const std::string& name) const;
 };
 
+#endif

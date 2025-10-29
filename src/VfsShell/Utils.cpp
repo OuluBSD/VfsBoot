@@ -1,28 +1,7 @@
 #include "VfsShell.h"
 
 // String utilities
-
-std::string trim_copy(const std::string& s) {
-    if (s.empty()) return s;
-    
-    // Find first non-whitespace character
-    size_t start = 0;
-    while (start < s.length() && std::isspace(static_cast<unsigned char>(s[start]))) {
-        ++start;
-    }
-    
-    // If all whitespace, return empty string
-    if (start == s.length()) return std::string();
-    
-    // Find last non-whitespace character
-    size_t end = s.length() - 1;
-    while (end > start && std::isspace(static_cast<unsigned char>(s[end]))) {
-        --end;
-    }
-    
-    // Return substring from start to end (inclusive)
-    return s.substr(start, end - start + 1);
-}
+// Note: trim_copy is defined in upp_assembly.h
 
 std::string join_args(const std::vector<std::string>& args, size_t start){
     std::string out;
@@ -49,12 +28,7 @@ std::string json_escape(const std::string& s){
 }
 
 // Path utilities
-std::string join_path(const std::string& base, const std::string& leaf){
-    if (base.empty() || base == "/") return std::string("/") + leaf;
-    if (!leaf.empty() && leaf[0]=='/') return leaf;
-    if (base.back()=='/') return base + leaf;
-    return base + "/" + leaf;
-}
+// join_path is now defined inline in VfsCore.h
 
 // Note: normalize_path needs Vfs::splitPath, so we include codex.h here
 
@@ -78,20 +52,7 @@ std::string normalize_path(const std::string& cwd, const std::string& operand){
     return out.empty() ? std::string("/") : out;
 }
 
-std::string path_basename(const std::string& path){
-    if(path.empty() || path=="/") return "/";
-    auto pos = path.find_last_of('/');
-    if(pos==std::string::npos) return path;
-    return path.substr(pos+1);
-}
-
-std::string path_dirname(const std::string& path){
-    if(path.empty() || path=="/") return "/";
-    auto pos = path.find_last_of('/');
-    if(pos==std::string::npos) return ".";
-    if(pos==0) return "/";
-    return path.substr(0, pos);
-}
+// path_basename and path_dirname are now defined inline in VfsCore.h
 
 // Exec utilities
 std::string exec_capture(const std::string& cmd, const std::string& desc){

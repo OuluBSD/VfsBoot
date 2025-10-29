@@ -1,5 +1,8 @@
 #pragma once
 
+#include <string>
+#include <functional>
+#include <utility>
 
 // WebServer namespace for browser-based terminal
 namespace WebServer {

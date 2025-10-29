@@ -4,25 +4,25 @@
 #include "../Logic/LogicEngine.h"
 #include "VfsMount.h"
 
-// Helper functions to cast void pointers to proper types
+// Helper functions to access tag-related pointers safely
 static TagRegistry* getTagRegistry(Vfs* vfs) {
-    return static_cast<TagRegistry*>(vfs->tag_registry_ptr);
+    return vfs->tag_registry;
 }
 
 static const TagRegistry* getTagRegistry(const Vfs* vfs) {
-    return static_cast<const TagRegistry*>(vfs->tag_registry_ptr);
+    return vfs->tag_registry;
 }
 
 static TagStorage* getTagStorage(Vfs* vfs) {
-    return static_cast<TagStorage*>(vfs->tag_storage_ptr);
+    return vfs->tag_storage;
 }
 
 static const TagStorage* getTagStorage(const Vfs* vfs) {
-    return static_cast<const TagStorage*>(vfs->tag_storage_ptr);
+    return vfs->tag_storage;
 }
 
 static LogicEngine* getLogicEngine(Vfs* vfs) {
-    return static_cast<LogicEngine*>(vfs->logic_engine_ptr);
+    return vfs->logic_engine;
 }
 
 // Utility functions for path manipulation
@@ -80,12 +80,7 @@ char type_char(const std::shared_ptr<VfsNode>& node){
 }
 
 
-#ifndef CODEX_UI_NCURSES
-bool run_ncurses_editor(Vfs& vfs, const std::string& vfs_path, std::vector<std::string>& lines,
-                        bool file_exists, size_t overlay_id) {
-    return false;
-}
-#endif
+// run_ncurses_editor stub removed - real implementation is in Main.cpp
 
 Vfs::Vfs() {
     TRACE_FN();

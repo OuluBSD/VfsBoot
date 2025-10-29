@@ -138,6 +138,7 @@ class QwenManager;
 #include "../WebServer/WebServer.h"
 #include "../UppCompat/UppAssembly.h"
 #include "../UppCompat/UppBuilder.h"
+#include "../UppCompat/UppWorkspaceBuild.h"
 #include "../Qwen/CmdQwen.h"
 #include "../Qwen/QwenProtocol.h"
 #include "../Qwen/QwenClient.h"
