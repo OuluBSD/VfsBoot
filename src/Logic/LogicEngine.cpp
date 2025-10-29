@@ -4,39 +4,39 @@
 // ====== Logic System for Tag Theorem Proving ======
 
 // LogicFormula factory methods
-std::shared_ptr<LogicFormula> LogicFormula::makeVar(TagId id){
-    auto f = std::shared_ptr<LogicFormula>(new LogicFormula());
+One<LogicFormula> LogicFormula::makeVar(TagId id){
+    auto f = new LogicFormula();
     f->op = LogicOp::VAR;
     f->var_id = id;
-    return f;
+    return One<LogicFormula>(f);
 }
 
-std::shared_ptr<LogicFormula> LogicFormula::makeNot(std::shared_ptr<LogicFormula> f){
-    auto result = std::shared_ptr<LogicFormula>(new LogicFormula());
+One<LogicFormula> LogicFormula::makeNot(One<LogicFormula> f){
+    auto result = new LogicFormula();
     result->op = LogicOp::NOT;
-    result->children.push_back(f);
-    return result;
+    result->children.Add(pick(f));
+    return One<LogicFormula>(result);
 }
 
-std::shared_ptr<LogicFormula> LogicFormula::makeAnd(std::vector<std::shared_ptr<LogicFormula>> fs){
-    auto result = std::shared_ptr<LogicFormula>(new LogicFormula());
+One<LogicFormula> LogicFormula::makeAnd(Vector<One<LogicFormula>> fs){
+    auto result = new LogicFormula();
     result->op = LogicOp::AND;
-    result->children = std::move(fs);
-    return result;
+    result->children = pick(fs);
+    return One<LogicFormula>(result);
 }
 
-std::shared_ptr<LogicFormula> LogicFormula::makeOr(std::vector<std::shared_ptr<LogicFormula>> fs){
-    auto result = std::shared_ptr<LogicFormula>(new LogicFormula());
+One<LogicFormula> LogicFormula::makeOr(Vector<One<LogicFormula>> fs){
+    auto result = new LogicFormula();
     result->op = LogicOp::OR;
-    result->children = std::move(fs);
-    return result;
+    result->children = pick(fs);
+    return One<LogicFormula>(result);
 }
 
-std::shared_ptr<LogicFormula> LogicFormula::makeImplies(std::shared_ptr<LogicFormula> lhs, std::shared_ptr<LogicFormula> rhs){
-    auto result = std::shared_ptr<LogicFormula>(new LogicFormula());
+One<LogicFormula> LogicFormula::makeImplies(One<LogicFormula> lhs, One<LogicFormula> rhs){
+    auto result = new LogicFormula();
     result->op = LogicOp::IMPLIES;
-    result->children.push_back(lhs);
-    result->children.push_back(rhs);
+    result->children.Add(pick(lhs));
+    result->children.Add(pick(rhs));
     return result;
 }
 
