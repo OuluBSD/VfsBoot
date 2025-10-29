@@ -1,15 +1,10 @@
 #ifndef _VFSSHELL_QWEN_STATE_MANAGER_H_
 #define _VFSSHELL_QWEN_STATE_MANAGER_H_
 
-#include <string>
-#include <vector>
-#include <optional>
-#include <chrono>
+#include "../VfsShell/VfsShell.h"
+#include "../VfsCore/VfsCore.h"
 
-// Forward declare Vfs to avoid circular dependency
-struct Vfs;
-
-#include "qwen_protocol.h"
+#include "QwenProtocol.h"
 
 namespace Qwen {
 
@@ -145,7 +140,8 @@ public:
     std::optional<ToolGroup> get_tool_group(int group_id) const;
 
     // Update tool status (for tracking approvals/completions)
-    bool update_tool_status(int group_id, const std::string& tool_id, ToolStatus status);
+    // Using Qwen::ToolStatus from QwenProtocol.h instead of local enum
+    bool update_tool_status(int group_id, const std::string& tool_id, Qwen::ToolStatus status);
 
     // ========================================================================
     // File Storage Management

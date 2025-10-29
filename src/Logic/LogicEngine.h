@@ -3,6 +3,7 @@
 
 #include <Core/Core.h>
 #include "../VfsCore/VfsCore.h"  // Include definitions for Vfs-related types
+#include "../Logic/TagSystem.h"  // Include TagSet, TagStorage, TagRegistry definitions
 
 using namespace Upp;
 
@@ -86,3 +87,4 @@ struct LogicEngine {
     void removeRule(const std::string& name);
     bool hasRule(const std::string& name) const;
 };
+

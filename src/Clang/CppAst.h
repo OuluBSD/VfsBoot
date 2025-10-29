@@ -104,7 +104,7 @@ struct CppNode : AstNode {
     using AstNode::AstNode;
     virtual std::string dump(int indent = 0) const = 0;
     static std::string ind(int n) { return std::string(n, ' '); }
-    Value eval(std::shared_ptr<Env>) override { return Value::S(dump()); }
+    SexpValue eval(std::shared_ptr<Env>) override { return SexpValue::S(dump()); }
 };
 
 struct CppInclude : CppNode {

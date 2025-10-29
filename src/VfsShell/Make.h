@@ -1,6 +1,6 @@
 #pragma once
 
-#include "build_graph.h"
+#include "BuildGraph.h"
 
 #include <map>
 #include <set>

@@ -1,8 +1,8 @@
-#include "VfsShell.h"
+#include "../VfsShell/VfsShell.h"
 #include "registry.h"
 
 // External registry from main.cpp
-extern Registry g_registry;
+extern QwenRegistry g_registry;
 
 namespace Qwen {
 
@@ -2514,7 +2514,7 @@ bool QwenManager::run_ncurses_mode() {
                                         active_session->type == SessionType::MANAGER_TASK) {
 
                                         // Check if auto-start is enabled in registry
-                                        std::string auto_start = g_registry.getValue("/Manager/AutoStartServer");
+                                        std::string auto_start = g_registry.getValue("/Manager/AutoStartServer").value_or("false");
                                         bool should_auto_start = (auto_start == "true" || auto_start == "1");
 
                                         if (should_auto_start) {

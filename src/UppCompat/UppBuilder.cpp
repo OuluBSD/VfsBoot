@@ -4,12 +4,6 @@
 #include <cctype>
 #include <sstream>
 
-std::string trim_copy(const std::string& input) {
-    const auto begin = input.find_first_not_of(" \t\r\n");
-    if(begin == std::string::npos) return {};
-    const auto end = input.find_last_not_of(" \t\r\n");
-    return input.substr(begin, end - begin + 1);
-}
 
 namespace {
 

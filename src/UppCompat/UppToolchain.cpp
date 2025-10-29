@@ -1,5 +1,5 @@
 #include "upp_toolchain.h"
-#include "VfsShell.h"
+#include "../VfsShell/VfsShell.h"
 #include <filesystem>
 #include <algorithm>
 #include <iostream>

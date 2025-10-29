@@ -1,7 +1,7 @@
 #ifndef _VFSSHELL_QWEN_CLIENT_H_
 #define _VFSSHELL_QWEN_CLIENT_H_
 
-#include "qwen_protocol.h"
+#include "QwenProtocol.h"
 #include <string>
 #include <functional>
 #include <memory>

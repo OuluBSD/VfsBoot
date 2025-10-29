@@ -1,6 +1,4 @@
-#include "upp_assembly.h"
-#include "VfsShell.h"  // Main header that includes all necessary definitions
-#include "ui_backend.h"
+#include "UppAssembly.h"
 #include <fstream>
 #include <sstream>
 #include <algorithm>

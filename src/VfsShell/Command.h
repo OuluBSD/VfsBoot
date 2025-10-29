@@ -1,6 +1,14 @@
 #ifndef _VfsShell_command_h_
 #define _VfsShell_command_h_
 
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
+#include <memory>
+#include <termios.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 extern RulePatchStaging* G_PATCH_STAGING;
 extern FeedbackLoop* G_FEEDBACK_LOOP;

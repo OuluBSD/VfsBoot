@@ -350,3 +350,5 @@ struct TagMiningSession {
     void addUserTag(TagId tag);
     void recordFeedback(const std::string& tag_name, bool confirmed);
 };
+
+#endif

@@ -1,4 +1,8 @@
 #include "ClangParser.h"
+#include "CppAst.h"                    // For CppTranslationUnit, CppInclude, CppFunction, etc.
+#include "../VfsShell/Utils.h"        // For trim_copy
+#include "../VfsShell/AiBridge.h"     // For compute_file_hash
+#include "../VfsShell/Planner.h"       // For PlanJobs, PlanGoals, etc.
 
 // Global callback for save shortcuts
 std::function<void()> g_on_save_shortcut;

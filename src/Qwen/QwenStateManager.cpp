@@ -1,4 +1,9 @@
-#include "VfsShell.h"
+#include "QwenStateManager.h"
+#include <algorithm>
+#include <sstream>
+#include <iomanip>
+#include <algorithm>
+#include <stdexcept>
 
 namespace Qwen {
 
@@ -449,7 +454,7 @@ std::optional<ToolGroup> QwenStateManager::get_tool_group(int group_id) const {
     return std::nullopt;
 }
 
-bool QwenStateManager::update_tool_status(int group_id, const std::string& tool_id, ToolStatus status) {
+bool QwenStateManager::update_tool_status(int group_id, const std::string& tool_id, Qwen::ToolStatus status) {
     // Read all tool groups
     auto groups = get_tool_groups();
 

@@ -1,8 +1,8 @@
 #ifndef _VfsShell_cmd_qwen_h_
 #define _VfsShell_cmd_qwen_h_
 
-#include "qwen_client.h"
-#include "qwen_state_manager.h"
+#include "QwenClient.h"
+#include "QwenStateManager.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -10,9 +10,11 @@
 // Forward declaration
 struct Vfs;
 
-// Use the Qwen namespace classes
-using Qwen::QwenClient;
-using Qwen::QwenStateManager;
+// Forward declarations from Qwen namespace
+namespace Qwen {
+    class QwenClient;
+    class QwenStateManager;
+}
 
 namespace QwenCmd {
 
@@ -59,7 +61,7 @@ void cmd_qwen(const std::vector<std::string>& args,
               Vfs& vfs);
 
 // List all sessions
-void list_sessions(QwenStateManager& state_mgr);
+void list_sessions(Qwen::QwenStateManager& state_mgr);
 
 }  // namespace QwenCmd
 

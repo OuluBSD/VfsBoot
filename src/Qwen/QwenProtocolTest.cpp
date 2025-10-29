@@ -1,4 +1,4 @@
-#include "VfsShell.h"
+#include "../VfsShell/VfsShell.h"
 
 using namespace Qwen;
 

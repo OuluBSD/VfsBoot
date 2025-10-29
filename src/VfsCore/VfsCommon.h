@@ -93,25 +93,15 @@ struct Vfs;
 struct WorkingDirectory;
 
 // Tracing (optional debug feature)
-#ifdef CODEX_TRACE
-namespace codex_trace {
-    extern std::ofstream* trace_file;
-    struct Scope {
-        std::string fn;
-        Scope(const std::string& f);
-        ~Scope();
-    };
-    void log_line(int line, const std::string& msg);
-    void log_loop(int line, const std::string& msg);
-}
-#define TRACE_FN(...) codex_trace::Scope __trace_scope("")
-#define TRACE_MSG(msg) codex_trace::log_line(__LINE__, msg)
-#define TRACE_LOOP(...) codex_trace::log_loop(__LINE__, "")
-#else
-#define TRACE_FN(...)
-#define TRACE_MSG(...)
-#define TRACE_LOOP(...)
+// Only define TRACE macros if not already defined to avoid redefinition warnings
+#ifndef TRACE_FN
+#define TRACE_FN(...) ((void)0)
 #endif
+
+#ifndef TRACE_MSG
+#define TRACE_MSG(...) ((void)0)
+#endif
+#define TRACE_LOOP(...)
 
 // i18n (internationalization)
 namespace i18n {

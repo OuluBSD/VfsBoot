@@ -1,6 +1,7 @@
 #pragma once
 
-#include "build_graph.h"
+#include "../VfsShell/VfsShell.h"
+#include "../VfsShell/BuildGraph.h"
 
 #include <map>
 #include <optional>

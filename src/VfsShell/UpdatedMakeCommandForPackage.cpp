@@ -1,6 +1,8 @@
+#include "VfsShell.h"
+#include "../UppCompat/Umk.h"
 std::string make_command_for_package(const UppWorkspace& workspace,
                                      const UppPackage& pkg,
-                                     const WorkspaceBuildOptions& options,
+                                     const UppBuildOptions& options,
                                      Vfs& vfs,
                                      const UppBuildMethod* builder) {
     auto assembly_dirs = build_asmlist(workspace, pkg, options, vfs, builder);
@@ -149,7 +151,7 @@ std::string make_command_for_package(const UppWorkspace& workspace,
             }
         } else {
             // Generate internal build command
-            command_body = generate_internal_upp_build_command(workspace, pkg, options, vfs, builder);
+            command_body = generate_internal_upp_build_command_impl(workspace, pkg, options, vfs, builder);
         }
     }
 

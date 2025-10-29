@@ -4,15 +4,6 @@
 // Standard library includes for UPP compatibility
 #include <Core/Core.h>
 
-// Additional standard includes (converted to UPP equivalents where possible)
-#include <Core/TimeDate.h>
-#include <Core/Charset.h>
-#include <Core/Xmlize.h>
-#include <Core/CommandLine.h>
-#include <Core/Environment.h>
-#include <Core/Event.h>
-#include <Core/Thread.h>
-
 // Explicitly qualify U++ types to avoid conflicts with standard types
 // Instead of using declarations, we'll use full qualification where needed
 // using Upp::Date;
@@ -60,16 +51,16 @@ class Feedback;
 class SnippetCatalog;
 class Utils;
 class ShellCommands;
-class WebServer;
+
 class Command;
 class EditorFunctions;
-class UiBackend;
+
 class UppAssembly;
 class UppBuilder;
 class CmdQwen;
 class QwenProtocol;
-class QwenClient;
-class QwenStateManager;
+// class QwenClient;  // Removed to avoid namespace conflict with Qwen::QwenClient
+// class QwenStateManager;  // Removed forward declaration to avoid namespace conflict
 class QwenTcpServer;
 class QwenManager;
 
@@ -123,10 +114,11 @@ class QwenManager;
 #include "Sexp.h"
 #include "Planner.h"
 #include "AiBridge.h"
-#include "ContextBuilder.h"
 #include "BuildGraph.h"
 #include "Make.h"
 #include "Hypothesis.h"
+#include "ContextBuilder.h"
+#include "HypothesisTestSuite.h"
 #include "ScopeStore.h"
 #include "Feedback.h"
 #include "SnippetCatalog.h"
@@ -135,6 +127,7 @@ class QwenManager;
 #include "Command.h"
 #include "EditorFunctions.h"
 #include "UiBackend.h"
+#include "Registry.h"
 
 // Include headers from other packages
 #include "../VfsCore/VfsCommon.h"
@@ -153,6 +146,7 @@ class QwenManager;
 #include "../Qwen/QwenManager.h"
 
 // Using Upp::String instead of std::string
-USING_NAMESPACE_UPP
+// USING_NAMESPACE_UPP  // This was causing compilation errors, replaced with explicit using below
+using namespace Upp;
 
 #endif

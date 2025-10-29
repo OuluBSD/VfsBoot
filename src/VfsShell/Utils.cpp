@@ -2,6 +2,28 @@
 
 // String utilities
 
+std::string trim_copy(const std::string& s) {
+    if (s.empty()) return s;
+    
+    // Find first non-whitespace character
+    size_t start = 0;
+    while (start < s.length() && std::isspace(static_cast<unsigned char>(s[start]))) {
+        ++start;
+    }
+    
+    // If all whitespace, return empty string
+    if (start == s.length()) return std::string();
+    
+    // Find last non-whitespace character
+    size_t end = s.length() - 1;
+    while (end > start && std::isspace(static_cast<unsigned char>(s[end]))) {
+        --end;
+    }
+    
+    // Return substring from start to end (inclusive)
+    return s.substr(start, end - start + 1);
+}
+
 std::string join_args(const std::vector<std::string>& args, size_t start){
     std::string out;
     for(size_t i = start; i < args.size(); ++i){

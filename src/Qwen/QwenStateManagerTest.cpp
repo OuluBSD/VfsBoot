@@ -1,4 +1,4 @@
-#include "VfsShell.h"
+#include "../VfsShell/VfsShell.h"
 
 // Global instance needed by upp_workspace_build.cpp
 extern UppBuilderRegistry g_upp_builder_registry;
@@ -388,7 +388,7 @@ void test_tool_groups(QwenStateManager& mgr) {
     test_pass("Tool group retrieved by ID");
 
     // Update tool status
-    if (!mgr.update_tool_status(1, "tool-1", ToolStatus::SUCCESS)) {
+    if (!mgr.update_tool_status(1, "tool-1", Qwen::ToolStatus::SUCCESS)) {
         test_fail("Failed to update tool status");
     }
     test_pass("Tool status updated");

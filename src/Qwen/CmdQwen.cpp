@@ -1,7 +1,9 @@
-#include "VfsShell.h"
+#include "registry.h"
+#include "QwenStateManager.h"
+#include "QwenClient.h"
 
 // External registry from main.cpp
-extern Registry g_registry;
+extern QwenRegistry g_registry;
 
 namespace QwenCmd {
 
@@ -154,7 +156,7 @@ void show_help() {
 }
 
 // List all sessions
-void list_sessions(QwenStateManager& state_mgr) {
+void list_sessions(Qwen::QwenStateManager& state_mgr) {
     std::vector<Qwen::SessionInfo> sessions = state_mgr.list_sessions();
 
     if (sessions.empty()) {
@@ -269,7 +271,7 @@ bool prompt_tool_approval(const Qwen::ToolGroup& group) {
 }
 
 // Handle special commands (return true if command was handled and should exit loop)
-bool handle_special_command(const std::string& input, QwenStateManager& state_mgr,
+bool handle_special_command(const std::string& input, Qwen::QwenStateManager& state_mgr,
                             Qwen::QwenClient& client, bool& should_exit) {
     if (input.empty()) {
         return false;
@@ -448,7 +450,7 @@ static void restore_signal_handler() {
     sigaction(SIGINT, &g_old_sigint_handler, nullptr);
 }
 
-bool run_ncurses_mode(QwenStateManager& state_mgr, Qwen::QwenClient& client, const QwenConfig& config) {
+bool run_ncurses_mode(Qwen::QwenStateManager& state_mgr, Qwen::QwenClient& client, const QwenConfig& config) {
     // Install signal handler to catch Ctrl+C
     install_ncurses_signal_handler();
 
@@ -1356,7 +1358,7 @@ void cmd_qwen(const std::vector<std::string>& args,
         manager_config.tcp_port = opts.port;  // Use port from command-line args
 
         // Try to read /Manager/Path from registry first, then fall back to command-line or default
-        std::string registry_path = g_registry.getValue("/Manager/Path");
+        std::string registry_path = g_registry.getValue("/Manager/Path").value_or("");
         if (!registry_path.empty()) {
             manager_config.management_repo_path = registry_path;
         } else if (!opts.workspace_root.empty()) {
@@ -1403,7 +1405,7 @@ void cmd_qwen(const std::vector<std::string>& args,
     }
 
     // Create state manager with VFS
-    QwenStateManager state_mgr(&vfs);
+    Qwen::QwenStateManager state_mgr(&vfs);
 
     if (opts.list_sessions) {
         list_sessions(state_mgr);

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <VfsCore/VfsCore.h>  // For VfsNode, Vfs
+#include "../Logic/TagSystem.h"  // For TagSet, TagStorage, TagRegistry
 
 //
 // Action Planner Context Builder (AI context offloader)

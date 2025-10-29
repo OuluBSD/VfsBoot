@@ -1,4 +1,4 @@
-#include "VfsShell.h"
+#include "../VfsShell/VfsShell.h"
 
 // Simple echo server for testing qwen protocol
 // Reads commands from stdin, echoes messages to stdout

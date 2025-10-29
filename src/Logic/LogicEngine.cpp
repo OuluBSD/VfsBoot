@@ -1,4 +1,5 @@
-#include "VfsShell.h"
+#include "../Logic/LogicEngine.h"
+#include "../VfsShell/VfsShell.h"
 
 // ====== Logic System for Tag Theorem Proving ======
 

@@ -1,80 +1,16 @@
-#pragma once
-
-#include <set>
-
-//
-// VFS perus
-//
-#include <memory>
-#include <string>
-#include <map>
-#include <vector>
-#include <functional>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <algorithm>
-#include <chrono>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <atomic>
-#include <future>
-#include <queue>
-#include <unordered_map>
-#include <unordered_set>
-#include <set>
-#include <list>
-#include <deque>
-#include <array>
-#include <forward_list>
-#include <stack>
-#include <utility>
-#include <tuple>
-#include <iterator>
-#include <type_traits>
-#include <stdexcept>
-#include <exception>
-#include <system_error>
-#include <cerrno>
-#include <cstring>
-#include <cstddef>
-#include <cstdint>
-#include <climits>
-#include <cfloat>
-#include <cmath>
-#include <cassert>
-#include <cctype>
-#include <cwctype>
-#include <cstdarg>
-#include <ctime>
-#include <cstdlib>
-#include <cstdio>
-#include <csignal>
-#include <csetjmp>
-#include <new>
-#include <limits>
-#include <ratio>
-#include <cfenv>
-#include <locale>
-#include <clocale>
-#include <codecvt>
-#include <random>
-#include <ratio>
-#include <regex>
-#include <filesystem>
-#include <optional>
-#include <variant>
-#include <any>
-#include <typeinfo>
-#include <typeindex>
 #ifndef _VfsCore_VfsCore_h_
 #define _VfsCore_VfsCore_h_
 
 #include <Core/Core.h>
 #include <dlfcn.h>  // For dlopen, dlerror, etc.
 
-// Define missing trace macros as no-ops for now
+// Missing standard library includes
+#include <set>
+#include <optional>
+#include <unordered_set>
+
+// Define missing trace macros only if not defined elsewhere
+// These are also defined in VfsCommon.h, so we should avoid redefinition
 #ifndef TRACE_FN
 #define TRACE_FN(...) ((void)0)
 #endif
@@ -106,9 +42,6 @@ struct FeedbackLoop;
 struct MetricsCollector;
 
 // VfsNode definition needs to be here since other classes inherit from it
-
-#endif
-
 struct VfsNode : std::enable_shared_from_this<VfsNode> {
     enum class Kind { Dir, File, Ast, Mount, Library };
     std::string name;
@@ -295,3 +228,5 @@ private:
 };
 
 char type_char(const std::shared_ptr<VfsNode>& node);
+
+#endif // _VfsCore_VfsCore_h_

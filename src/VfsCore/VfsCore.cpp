@@ -1,6 +1,6 @@
 #include "VfsCore.h"
-#include "../VfsShell/ContextBuilder.h"
 #include "../Logic/TagSystem.h"
+#include "../VfsShell/ContextBuilder.h"
 #include "../Logic/LogicEngine.h"
 #include "VfsMount.h"
 
@@ -9,8 +9,16 @@ static TagRegistry* getTagRegistry(Vfs* vfs) {
     return static_cast<TagRegistry*>(vfs->tag_registry_ptr);
 }
 
+static const TagRegistry* getTagRegistry(const Vfs* vfs) {
+    return static_cast<const TagRegistry*>(vfs->tag_registry_ptr);
+}
+
 static TagStorage* getTagStorage(Vfs* vfs) {
     return static_cast<TagStorage*>(vfs->tag_storage_ptr);
+}
+
+static const TagStorage* getTagStorage(const Vfs* vfs) {
+    return static_cast<const TagStorage*>(vfs->tag_storage_ptr);
 }
 
 static LogicEngine* getLogicEngine(Vfs* vfs) {

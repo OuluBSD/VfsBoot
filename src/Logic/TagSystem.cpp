@@ -1,4 +1,5 @@
-#include "VfsShell.h"
+#include "TagSystem.h"
+#include "../VfsShell/VfsShell.h"
 
 // ====== Tag Registry & Storage ======
 TagId TagRegistry::registerTag(const std::string& name){

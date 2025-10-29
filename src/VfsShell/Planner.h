@@ -1,5 +1,10 @@
 #pragma once
 
+// Explicitly include dependencies in correct order
+#include <VfsCore/VfsCore.h>  // For VfsNode
+#include "Sexp.h"  // For SexpValue, AstNode, Env
+#include "Utils.h"  // For trim_copy
+
 //
 // Planner AST nodes (hierarchical planning system)
 //
@@ -10,7 +15,7 @@ struct PlanNode : AstNode {
     PlanNode(std::string n, std::string c = "") : AstNode(std::move(n)), content(std::move(c)) {}
     bool isDir() const override { return true; }
     std::map<std::string, std::shared_ptr<VfsNode>>& children() override { return ch; }
-    Value eval(std::shared_ptr<Env>) override { return Value::S(content); }
+    SexpValue eval(std::shared_ptr<Env>) override { return SexpValue::S(content); }
     std::string read() const override { return content; }
     void write(const std::string& s) override { content = s; }
 };

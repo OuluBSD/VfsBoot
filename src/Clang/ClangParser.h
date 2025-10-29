@@ -2,6 +2,7 @@
 #define _Clang_ClangParser_h_
 
 #include <Core/Core.h>
+#include <atomic>                     // For std::atomic<bool>
 #include "../VfsCore/VfsCore.h"   // For VfsNode and Vfs
 #include "../VfsShell/Sexp.h"   // For AstNode, Value, Env
 
@@ -10,9 +11,6 @@ using namespace Upp;
 // Forward declarations for types defined elsewhere
 struct Vfs;
 struct VfsNode;
-struct AstNode;
-struct Value;
-struct Env;
 struct CppExpr;
 struct CppCompound;
 struct SolutionContext;
@@ -88,14 +86,7 @@ struct BinaryReader {
 };
 
 
-// Working directory context
-struct WorkingDirectory {
-    std::string path = "/";
-    std::vector<size_t> overlays{0};
-    size_t primary_overlay = 0;
-    enum class ConflictPolicy { Manual, Oldest, Newest };
-    ConflictPolicy conflict_policy = ConflictPolicy::Manual;
-};
+
 
 // Solution context for .cxpkg/.cxasm files
 struct SolutionContext {
@@ -195,7 +186,7 @@ struct ClangAstNode : AstNode {
 
     bool isDir() const override { return true; }
     std::map<std::string, std::shared_ptr<VfsNode>>& children() override { return ch; }
-    Value eval(std::shared_ptr<Env>) override { return Value::S(spelling); }
+    SexpValue eval(std::shared_ptr<Env>) override { return SexpValue::S(spelling); }
     std::string read() const override { return spelling; }
 
     virtual std::string dump(int indent = 0) const = 0;

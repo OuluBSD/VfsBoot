@@ -1,6 +1,6 @@
-#include "upp_workspace_build.h"
+#include "UppWorkspaceBuild.h"
 
-#include "VfsShell.h"
+#include "../VfsShell/VfsShell.h"
 #include "upp_toolchain.h"
 
 #include <algorithm>
@@ -93,19 +93,13 @@ std::string default_output_path(const UppWorkspace& workspace,
 std::string render_command_template(const std::string& tpl,
                                     const std::map<std::string, std::string>& vars);
 
-std::string generate_internal_upp_build_command(const UppWorkspace& workspace,
-                                               const UppPackage& pkg,
-                                               const WorkspaceBuildOptions& options,
-                                               Vfs& vfs,
-                                               const UppBuildMethod* builder);
-
 std::string make_command_for_package(const UppWorkspace& workspace,
                                      const UppPackage& pkg,
                                      const WorkspaceBuildOptions& options,
                                      Vfs& vfs,
                                      const UppBuildMethod* builder);
 
-std::string generate_internal_upp_build_command(const UppWorkspace& workspace,
+std::string generate_internal_upp_workspace_build_command(const UppWorkspace& workspace,
                                                const UppPackage& pkg,
                                                const WorkspaceBuildOptions& options,
                                                Vfs& vfs,
@@ -337,7 +331,7 @@ std::string make_command_for_package(const UppWorkspace& workspace,
             }
         } else {
             // Generate internal build command
-            command_body = generate_internal_upp_build_command(workspace, pkg, options, vfs, builder);
+            command_body = generate_internal_upp_workspace_build_command(workspace, pkg, options, vfs, builder);
         }
     }
 
