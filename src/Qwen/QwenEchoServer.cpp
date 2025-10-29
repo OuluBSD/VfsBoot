@@ -6,7 +6,7 @@
 
 int qwen_echo_server() {
     // Send init message
-    std::cout << R"({"type":"init","version":"0.0.14","workspaceRoot":"/test","model":"qwen-echo"})" << "\n";
+    std::cout << R"({"type":"init","version":"0.1.1","workspaceRoot":"/test","model":"qwen-echo"})" << "\n";
     std::cout.flush();
 
     // Send idle status

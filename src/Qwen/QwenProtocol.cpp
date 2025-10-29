@@ -259,7 +259,7 @@ std::unique_ptr<StateMessage> ProtocolParser::parse_message(const std::string& j
     if (type_str == "init") {
         msg->type = MessageType::INIT;
         // TODO: Parse init fields properly
-        msg->data = InitMessage{"0.0.14", "/workspace", "qwen"};
+        msg->data = InitMessage{"0.1.1", "/workspace", "qwen"};
     } else if (type_str == "conversation") {
         msg->type = MessageType::CONVERSATION;
         MessageRole role = MessageRole::USER;

@@ -26,7 +26,7 @@ static int failed = 0;
 // ============================================================================
 
 TEST(parse_init_message) {
-    std::string json = R"({"type":"init","version":"0.0.14","workspaceRoot":"/test","model":"qwen"})";
+    std::string json = R"({"type":"init","version":"0.1.1","workspaceRoot":"/test","model":"qwen"})";
 
     auto msg = ProtocolParser::parse_message(json);
     assert(msg != nullptr);
