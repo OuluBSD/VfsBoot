@@ -38,4 +38,11 @@ UppBuildSummary build_upp_workspace(UppAssembly& assembly,
                                    Vfs& vfs,
                                    const UppBuildOptions& options);
 
+// Helper function to get host filesystem path from VFS path
+std::string prefer_host_path(Vfs& vfs, const std::string& path);
+
+// Helper function to quote shell arguments
+std::string g_shell_quote(const std::string& value);
+std::string g_shell_quote(const String& value);  // Overload for U++ String
+
 #endif

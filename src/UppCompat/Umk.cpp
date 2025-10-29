@@ -13,7 +13,7 @@ extern UppBuilderRegistry g_upp_builder_registry;
 
 namespace {
 
-std::string shell_quote(const std::string& value) {
+std::string g_shell_quote(const std::string& value) {
     if(value.empty()) return "''";
     std::string quoted = "'";
     for(char ch : value) {
@@ -25,6 +25,11 @@ std::string shell_quote(const std::string& value) {
     }
     quoted.push_back('\'');
     return quoted;
+}
+
+// Overload for U++ String
+std::string g_shell_quote(const String& value) {
+    return g_shell_quote(value.ToStd());
 }
 
 std::vector<std::string> split_env_paths(const std::string& value) {
@@ -214,13 +219,13 @@ std::string generate_internal_upp_build_command_impl(const UppWorkspace& workspa
         : prefer_host_path(vfs, workspace.base_dir);
 
     std::map<std::string, std::string> vars = {
-        {"assembly", shell_quote(assembly_arg)},
-        {"package", shell_quote(pkg.name)},
-        {"package_path", shell_quote(package_path)},
-        {"build_type", shell_quote(options.build_type)},
-        {"flags", shell_quote(flags)},
-        {"output", output_path.empty() ? "" : shell_quote(output_path)},
-        {"workspace", shell_quote(workspace.name)}
+        {"assembly", g_shell_quote(assembly_arg)},
+        {"package", g_shell_quote(pkg.name)},
+        {"package_path", g_shell_quote(package_path)},
+        {"build_type", g_shell_quote(options.build_type)},
+        {"flags", g_shell_quote(flags)},
+        {"output", output_path.empty() ? "" : g_shell_quote(output_path)},
+        {"workspace", g_shell_quote(workspace.name)}
     };
 
     if(builder) {
@@ -228,10 +233,10 @@ std::string generate_internal_upp_build_command_impl(const UppWorkspace& workspa
         if(!builder_source.empty()) {
             builder_source = prefer_host_path(vfs, builder_source);
         }
-        vars["builder"] = shell_quote(builder->id);
+        vars["builder"] = g_shell_quote(builder->id);
         vars["builder_path"] = builder_source.empty()
-            ? shell_quote(builder->id)
-            : shell_quote(builder_source);
+            ? g_shell_quote(builder->id)
+            : g_shell_quote(builder_source);
     } else {
         vars["builder"] = "''";
         vars["builder_path"] = "''";
@@ -272,9 +277,9 @@ std::string generate_internal_upp_build_command_impl(const UppWorkspace& workspa
                 if (output_dir.empty()) {
                     output_dir = "./out/" + pkg.name;
                 }
-                command_body = "mkdir -p " + shell_quote(output_dir) + " && " +
-                               "find " + shell_quote(pkg.path.empty() ? "." : pkg.path) + " -name \"*.cpp\" -type f | " +
-                               "xargs -I {} c++ -std=c++17 {} -o " + shell_quote(output_dir + "/" + pkg.name);
+                command_body = "mkdir -p " + g_shell_quote(output_dir) + " && " +
+                               "find " + g_shell_quote(pkg.path.empty() ? "." : pkg.path) + " -name \"*.cpp\" -type f | " +
+                               "xargs -I {} c++ -std=c++17 {} -o " + g_shell_quote(output_dir + "/" + pkg.name);
             } else {
                 // For non-GCC/CLANG builders, show the error as before
                 std::string builder_label = builder->id;
@@ -285,11 +290,11 @@ std::string generate_internal_upp_build_command_impl(const UppWorkspace& workspa
         } else {
             // Generate internal build command
             command_body = "echo 'Using internal U++ builder for " + pkg.name + "' && "
-                         "mkdir -p " + shell_quote(output_path.empty() ? "./out/" + pkg.name : output_path) + " && "
+                         "mkdir -p " + g_shell_quote(output_path.empty() ? "./out/" + pkg.name : output_path) + " && "
                          "find . -name \"*.cpp\" -type f | "
-                         "xargs -I {} c++ -std=c++17 -O2 -c {} -o " + shell_quote(output_path.empty() ? "./out/" + pkg.name : output_path) + "/$(basename {} .cpp).o && "
-                         "find " + shell_quote(output_path.empty() ? "./out/" + pkg.name : output_path) + " -name \"*.o\" -type f | "
-                         "xargs c++ -std=c++17 -O2 -o " + shell_quote(output_path.empty() ? "./out/" + pkg.name + "/" + pkg.name : output_path);
+                         "xargs -I {} c++ -std=c++17 -O2 -c {} -o " + g_shell_quote(output_path.empty() ? "./out/" + pkg.name : output_path) + "/$(basename {} .cpp).o && "
+                         "find " + g_shell_quote(output_path.empty() ? "./out/" + pkg.name : output_path) + " -name \"*.o\" -type f | "
+                         "xargs c++ -std=c++17 -O2 -o " + g_shell_quote(output_path.empty() ? "./out/" + pkg.name + "/" + pkg.name : output_path);
         }
     }
 
@@ -297,11 +302,11 @@ std::string generate_internal_upp_build_command_impl(const UppWorkspace& workspa
         std::filesystem::path out_path(output_path);
         auto parent = out_path.parent_path();
         if(!parent.empty()) {
-            command_body = "mkdir -p " + shell_quote(parent.string()) + " && " + command_body;
+            command_body = "mkdir -p " + g_shell_quote(parent.string()) + " && " + command_body;
         }
     }
 
-    return "cd " + shell_quote(working_dir) + " && " + command_body;
+    return "cd " + g_shell_quote(working_dir) + " && " + command_body;
 }
 
 

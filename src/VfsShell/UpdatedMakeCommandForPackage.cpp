@@ -31,13 +31,13 @@ std::string make_command_for_package(const UppWorkspace& workspace,
         : prefer_host_path(vfs, workspace.base_dir);
 
     std::map<std::string, std::string> vars = {
-        {"assembly", shell_quote(assembly_arg)},
-        {"package", shell_quote(pkg.name)},
-        {"package_path", shell_quote(package_path)},
-        {"build_type", shell_quote(options.build_type)},
-        {"flags", shell_quote(flags)},
-        {"output", output_path.empty() ? "" : shell_quote(output_path)},
-        {"workspace", shell_quote(workspace.name)}
+        {"assembly", g_shell_quote(assembly_arg)},
+        {"package", g_shell_quote(pkg.name)},
+        {"package_path", g_shell_quote(package_path)},
+        {"build_type", g_shell_quote(options.build_type)},
+        {"flags", g_shell_quote(flags)},
+        {"output", output_path.empty() ? "" : g_shell_quote(output_path)},
+        {"workspace", g_shell_quote(workspace.name)}
     };
 
     if(builder) {
@@ -45,10 +45,10 @@ std::string make_command_for_package(const UppWorkspace& workspace,
         if(!builder_source.empty()) {
             builder_source = prefer_host_path(vfs, builder_source);
         }
-        vars["builder"] = shell_quote(builder->id);
+        vars["builder"] = g_shell_quote(builder->id);
         vars["builder_path"] = builder_source.empty()
-            ? shell_quote(builder->id)
-            : shell_quote(builder_source);
+            ? g_shell_quote(builder->id)
+            : g_shell_quote(builder_source);
     } else {
         vars["builder"] = "''";
         vars["builder_path"] = "''";
@@ -105,7 +105,7 @@ std::string make_command_for_package(const UppWorkspace& workspace,
                 
                 // Add include directories
                 for (const auto& inc : toolchain.include_dirs) {
-                    compiler_cmd += " -I" + shell_quote(inc);
+                    compiler_cmd += " -I" + g_shell_quote(inc);
                 }
                 
                 // Build linker command
@@ -119,7 +119,7 @@ std::string make_command_for_package(const UppWorkspace& workspace,
                 
                 // Add library directories
                 for (const auto& lib : toolchain.library_dirs) {
-                    linker_cmd += " -L" + shell_quote(lib);
+                    linker_cmd += " -L" + g_shell_quote(lib);
                 }
                 
                 // Discover sources
@@ -129,18 +129,18 @@ std::string make_command_for_package(const UppWorkspace& workspace,
                 if (sources.empty() || sources[0] == "./main.cpp") {
                     sources.clear();
                     // Simple source discovery - look for all .cpp files
-                    command_body = "mkdir -p " + shell_quote(output_dir) + " && " +
-                                   "find " + shell_quote(pkg.path.empty() ? "." : pkg.path) + " -name \"*.cpp\" -type f -print0 | " +
-                                   "xargs -0 " + compiler_cmd + " -o " + shell_quote(output_dir + "/" + pkg.name);
+                    command_body = "mkdir -p " + g_shell_quote(output_dir) + " && " +
+                                   "find " + g_shell_quote(pkg.path.empty() ? "." : pkg.path) + " -name \"*.cpp\" -type f -print0 | " +
+                                   "xargs -0 " + compiler_cmd + " -o " + g_shell_quote(output_dir + "/" + pkg.name);
                 } else {
                     // Use discovered sources
                     std::string source_list;
                     for (const auto& src : sources) {
                         if (!source_list.empty()) source_list += " ";
-                        source_list += shell_quote(src);
+                        source_list += g_shell_quote(src);
                     }
-                    command_body = "mkdir -p " + shell_quote(output_dir) + " && " +
-                                   compiler_cmd + " " + source_list + " -o " + shell_quote(output_dir + "/" + pkg.name);
+                    command_body = "mkdir -p " + g_shell_quote(output_dir) + " && " +
+                                   compiler_cmd + " " + source_list + " -o " + g_shell_quote(output_dir + "/" + pkg.name);
                 }
             } else {
                 // For non-GCC/CLANG builders, show the error as before
@@ -159,9 +159,9 @@ std::string make_command_for_package(const UppWorkspace& workspace,
         std::filesystem::path out_path(output_path);
         auto parent = out_path.parent_path();
         if(!parent.empty()) {
-            command_body = "mkdir -p " + shell_quote(parent.string()) + " && " + command_body;
+            command_body = "mkdir -p " + g_shell_quote(parent.string()) + " && " + command_body;
         }
     }
 
-    return "cd " + shell_quote(working_dir) + " && " + command_body;
+    return "cd " + g_shell_quote(working_dir) + " && " + command_body;
 }

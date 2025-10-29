@@ -1,5 +1,6 @@
 #include "VfsShell.h"
 #include "../Clang/ClangParser.h"  // For sanitize_component, fnv1a64, hash_hex
+#include <blake3.h>  // For blake3_hasher, BLAKE3_OUT_LEN
 
 // ====== OpenAI helpers ======
 static std::string system_prompt_text(){
