@@ -208,6 +208,11 @@ std::unique_ptr<StateMessage> ProtocolParser::parse_message(const std::string& j
     int id = 0;
     std::optional<bool> is_streaming;
 
+    // Storage for init message fields
+    std::string version;
+    std::string workspace_root;
+    std::string model;
+
     // Storage for tool_group fields
     int tool_group_id = 0;
     std::string tools_json;  // Raw JSON for tools array
@@ -242,6 +247,12 @@ std::unique_ptr<StateMessage> ProtocolParser::parse_message(const std::string& j
             tool_group_id = id;  // Use same id for tool group
         } else if (key == "isStreaming") {
             is_streaming = parse_bool(p);
+        } else if (key == "version") {
+            version = parse_string(p);
+        } else if (key == "workspaceRoot") {
+            workspace_root = parse_string(p);
+        } else if (key == "model") {
+            model = parse_string(p);
         } else if (key == "tools") {
             // Capture raw JSON for tools array (we'll parse it later if needed)
             const char* array_start = p;
@@ -258,8 +269,8 @@ std::unique_ptr<StateMessage> ProtocolParser::parse_message(const std::string& j
     // Determine message type and construct data
     if (type_str == "init") {
         msg->type = MessageType::INIT;
-        // TODO: Parse init fields properly
-        msg->data = InitMessage{"0.1.1", "/workspace", "qwen"};
+        // Use parsed fields from JSON
+        msg->data = InitMessage{version, workspace_root, model};
     } else if (type_str == "conversation") {
         msg->type = MessageType::CONVERSATION;
         MessageRole role = MessageRole::USER;

@@ -1,12 +1,17 @@
 #include "../VfsShell/VfsShell.h"
+#include "QwenVersion.h"
+#include <sstream>
 
 // Simple echo server for testing qwen protocol
 // Reads commands from stdin, echoes messages to stdout
 
 
 int qwen_echo_server() {
-    // Send init message
-    std::cout << R"({"type":"init","version":"0.1.1","workspaceRoot":"/test","model":"qwen-echo"})" << "\n";
+    // Send init message with dynamic version
+    std::ostringstream init_msg;
+    init_msg << R"({"type":"init","version":")" << QWEN_PROTOCOL_VERSION
+             << R"(","workspaceRoot":"/test","model":"qwen-echo"})";
+    std::cout << init_msg.str() << "\n";
     std::cout.flush();
 
     // Send idle status

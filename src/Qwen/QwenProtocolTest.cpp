@@ -1,4 +1,6 @@
 #include "../VfsShell/VfsShell.h"
+#include "QwenVersion.h"
+#include <sstream>
 
 using namespace Qwen;
 
@@ -26,7 +28,10 @@ static int failed = 0;
 // ============================================================================
 
 TEST(parse_init_message) {
-    std::string json = R"({"type":"init","version":"0.1.1","workspaceRoot":"/test","model":"qwen"})";
+    std::ostringstream json_stream;
+    json_stream << R"({"type":"init","version":")" << QWEN_PROTOCOL_VERSION
+                << R"(","workspaceRoot":"/test","model":"qwen"})";
+    std::string json = json_stream.str();
 
     auto msg = ProtocolParser::parse_message(json);
     assert(msg != nullptr);
