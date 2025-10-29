@@ -1,27 +1,23 @@
-#pragma once
+#ifndef _WebServer_WebServer_h_
+#define _WebServer_WebServer_h_
 
-#include <string>
-#include <functional>
-#include <utility>
+#include <Core/Core.h>
+#include <CtrlLib/CtrlLib.h>
 
-// WebServer namespace for browser-based terminal
+using namespace Upp;
+
 namespace WebServer {
-    // Callback type for command execution
-    // Returns (success, output) pair
-    using CommandCallback = std::function<std::pair<bool, std::string>(const std::string&)>;
 
-    // Start the web server on specified port
-    bool start(int port);
+// Function type for handling commands
+using CommandCallback = std::function<std::pair<bool, String>(const String&)>;
 
-    // Stop the web server
-    void stop();
+// Public API functions
+bool start(int port);
+void stop();
+bool is_running();
+void send_output(const String& output);
+void set_command_callback(CommandCallback callback);
 
-    // Check if server is running
-    bool is_running();
+} // namespace WebServer
 
-    // Send output to all connected clients
-    void send_output(const std::string& output);
-
-    // Set command execution callback
-    void set_command_callback(CommandCallback callback);
-}
+#endif

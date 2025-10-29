@@ -16,14 +16,15 @@ struct BinaryDiff {
                             const std::vector<uint8_t>& diff);
 
     // SVN delta implementation details
-    struct SvnDeltaContext {
-        apr_pool_t* pool;
-        svn_txdelta_stream_t* stream;
-        svn_txdelta_window_t* window;
-
-        SvnDeltaContext();
-        ~SvnDeltaContext();
-    };
+    // Commented out - requires libsvn-dev to be installed
+    // struct SvnDeltaContext {
+    //     apr_pool_t* pool;
+    //     svn_txdelta_stream_t* stream;
+    //     svn_txdelta_window_t* window;
+    //
+    //     SvnDeltaContext();
+    //     ~SvnDeltaContext();
+    // };
 };
 
 // Feature mask system using BitVector

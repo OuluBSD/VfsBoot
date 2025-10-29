@@ -1,37 +1,37 @@
-#include "CppAst.h"
+#include "Clang.h"  // Include main header instead of individual header
 
 // ====== C++ AST nodes ======
-CppInclude::CppInclude(std::string n, std::string h, bool a)
-    : CppNode(std::move(n)), header(std::move(h)), angled(a) { kind=Kind::Ast; }
-std::string CppInclude::dump(int) const {
-    return std::string("#include ") + (angled?"<":"\"") + header + (angled?">":"\"") + "\n";
+CppInclude::CppInclude(String n, String h, bool a)
+    : CppNode(pick(n)), header(pick(h)), angled(a) { kind=Kind::Ast; }
+String CppInclude::dump(int) const {
+    return String("#include ") + (angled?"<":"\"") + header + (angled?">":"\"") + "\n";
 }
-CppId::CppId(std::string n, std::string i) : CppExpr(std::move(n)), id(std::move(i)) { kind=Kind::Ast; }
-std::string CppId::dump(int) const { return id; }
+CppId::CppId(String n, String i) : CppExpr(pick(n)), id(pick(i)) { kind=Kind::Ast; }
+String CppId::dump(int) const { return id; }
 namespace {
 bool is_octal_digit(char c){ return c>='0' && c<='7'; }
 bool is_hex_digit(char c){ return std::isxdigit(static_cast<unsigned char>(c)) != 0; }
 
-void verify_cpp_string_literal(const std::string& lit){
-    for(size_t i=0;i<lit.size();++i){
+void verify_cpp_string_literal(const String& lit){
+    for(int i=0;i<lit.GetCount();++i){
         unsigned char uc = static_cast<unsigned char>(lit[i]);
         if(uc=='\n' || uc=='\r') throw std::runtime_error("cpp string literal contains raw newline");
         if(uc=='\\'){
-            if(++i>=lit.size()) throw std::runtime_error("unterminated escape in cpp string literal");
+            if(++i>=lit.GetCount()) throw std::runtime_error("unterminated escape in cpp string literal");
             unsigned char esc = static_cast<unsigned char>(lit[i]);
             switch(esc){
                 case '"': case '\\': case 'n': case 'r': case 't':
                 case 'b': case 'f': case 'v': case 'a': case '?':
                     break;
                 case 'x': {
-                    size_t digits=0;
-                    while(i+1<lit.size() && is_hex_digit(lit[i+1]) && digits<2){ ++i; ++digits; }
+                    int digits=0;
+                    while(i+1<lit.GetCount() && is_hex_digit(lit[i+1]) && digits<2){ ++i; ++digits; }
                     if(digits==0) throw std::runtime_error("\\x escape missing hex digits");
                     break;
                 }
                 case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': {
-                    size_t digits=0;
-                    while(i+1<lit.size() && is_octal_digit(lit[i+1]) && digits<2){ ++i; ++digits; }
+                    int digits=0;
+                    while(i+1<lit.GetCount() && is_octal_digit(lit[i+1]) && digits<2){ ++i; ++digits; }
                     break;
                 }
                 default:
@@ -44,26 +44,26 @@ void verify_cpp_string_literal(const std::string& lit){
 }
 }
 
-CppString::CppString(std::string n, std::string v) : CppExpr(std::move(n)), s(std::move(v)) { kind=Kind::Ast; }
-std::string CppString::esc(const std::string& x){
-    std::string out;
-    out.reserve(x.size()+8);
+CppString::CppString(String n, String v) : CppExpr(pick(n)), s(pick(v)) { kind=Kind::Ast; }
+String CppString::esc(const String& x){
+    String out;
+    // Reserve space - this is a simplified version for U++
     auto append_octal = [&out](unsigned char uc){
-        out.push_back('\\');
-        out.push_back(static_cast<char>('0' + ((uc >> 6) & 0x7)));
-        out.push_back(static_cast<char>('0' + ((uc >> 3) & 0x7)));
-        out.push_back(static_cast<char>('0' + (uc & 0x7)));
+        out.Cat('\\');
+        out.Cat(static_cast<char>('0' + ((uc >> 6) & 0x7)));
+        out.Cat(static_cast<char>('0' + ((uc >> 3) & 0x7)));
+        out.Cat(static_cast<char>('0' + (uc & 0x7)));
     };
 
     bool escape_next_question = false;
-    for(size_t i=0;i<x.size();++i){
+    for(int i=0;i<x.GetCount();++i){
         unsigned char uc = static_cast<unsigned char>(x[i]);
         if(uc=='?'){
-            if(escape_next_question || (i+1<x.size() && x[i+1]=='?')){
-                out += "\\?";
-                escape_next_question = (i+1<x.size() && x[i+1]=='?');
+            if(escape_next_question || (i+1<x.GetCount() && x[i+1]=='?')){
+                out.Cat("\\?");
+                escape_next_question = (i+1<x.GetCount() && x[i+1]=='?');
             } else {
-                out.push_back('?');
+                out.Cat('?');
                 escape_next_question = false;
             }
             continue;
@@ -71,147 +71,149 @@ std::string CppString::esc(const std::string& x){
 
         escape_next_question = false;
         switch(uc){
-            case '"': out += "\\\""; break;
-            case '\\': out += "\\\\"; break;
-            case '\n': out += "\\n"; break;
-            case '\r': out += "\\r"; break;
-            case '\t': out += "\\t"; break;
-            case '\b': out += "\\b"; break;
-            case '\f': out += "\\f"; break;
-            case '\v': out += "\\v"; break;
-            case '\a': out += "\\a"; break;
+            case '"': out.Cat("\\\""); break;
+            case '\\': out.Cat("\\\\"); break;
+            case '\n': out.Cat("\\n"); break;
+            case '\r': out.Cat("\\r"); break;
+            case '\t': out.Cat("\\t"); break;
+            case '\b': out.Cat("\\b"); break;
+            case '\f': out.Cat("\\f"); break;
+            case '\v': out.Cat("\\v"); break;
+            case '\a': out.Cat("\\a"); break;
             default:
                 if(uc < 0x20 || uc == 0x7f){
                     append_octal(uc);
                 } else if(uc >= 0x80){
                     append_octal(uc);
                 } else {
-                    out.push_back(static_cast<char>(uc));
+                    out.Cat(static_cast<char>(uc));
                 }
         }
     }
     return out;
 }
-std::string CppString::dump(int) const {
-    std::string escaped = esc(s);
+String CppString::dump(int) const {
+    String escaped = esc(s);
     verify_cpp_string_literal(escaped);
-    return std::string("\"") + escaped + "\"";
+    return String("\"") + escaped + "\"";
 }
-CppInt::CppInt(std::string n, long long x): CppExpr(std::move(n)), v(x) { kind=Kind::Ast; }
-std::string CppInt::dump(int) const { return std::to_string(v); }
-CppCall::CppCall(std::string n, std::shared_ptr<CppExpr> f, std::vector<std::shared_ptr<CppExpr>> a)
-    : CppExpr(std::move(n)), fn(std::move(f)), args(std::move(a)) { kind=Kind::Ast; }
-std::string CppCall::dump(int) const {
-    std::string s = fn->dump(); s+='(';
-    bool first=true; for(auto& a: args){ if(!first) s+=", "; first=false; s+=a->dump(); } s+=')';
+CppInt::CppInt(String n, long long x): CppExpr(pick(n)), v(x) { kind=Kind::Ast; }
+String CppInt::dump(int) const { return IntStr(v); }  // Using U++ IntStr function
+One<CppExpr> make_shared_cppexpr(One<CppExpr> e) { return e; }
+One<CppCompound> make_shared_cppcompound(String name) { return One<CppCompound>(new CppCompound(pick(name))); }
+CppCall::CppCall(String n, One<CppExpr> f, Vector<One<CppExpr>> a)
+    : CppExpr(pick(n)), fn(pick(f)), args(pick(a)) { kind=Kind::Ast; }
+String CppCall::dump(int) const {
+    String s = fn->dump(); s+='(';
+    bool first=true; for(const auto& a : args){ if(!first) s+=", "; first=false; s+=a->dump(); } s+=')';
     return s;
 }
-CppBinOp::CppBinOp(std::string n, std::string o, std::shared_ptr<CppExpr> A, std::shared_ptr<CppExpr> B)
-    : CppExpr(std::move(n)), op(std::move(o)), a(std::move(A)), b(std::move(B)) { kind=Kind::Ast; }
-std::string CppBinOp::dump(int) const { return a->dump()+" "+op+" "+b->dump(); }
-CppStreamOut::CppStreamOut(std::string n, std::vector<std::shared_ptr<CppExpr>> xs)
-    : CppExpr(std::move(n)), chain(std::move(xs)) { kind=Kind::Ast; }
-std::string CppStreamOut::dump(int) const {
-    std::string s="std::cout"; for(auto& e: chain){ s+=" << "; s+=e->dump(); } return s;
+CppBinOp::CppBinOp(String n, String o, One<CppExpr> A, One<CppExpr> B)
+    : CppExpr(pick(n)), op(pick(o)), a(pick(A)), b(pick(B)) { kind=Kind::Ast; }
+String CppBinOp::dump(int) const { return a->dump()+" "+op+" "+b->dump(); }
+CppStreamOut::CppStreamOut(String n, Vector<One<CppExpr>> xs)
+    : CppExpr(pick(n)), chain(pick(xs)) { kind=Kind::Ast; }
+String CppStreamOut::dump(int) const {
+    String s="std::cout"; for(const auto& e : chain){ s+=" << "; s+=e->dump(); } return s;
 }
-CppRawExpr::CppRawExpr(std::string n, std::string t)
-    : CppExpr(std::move(n)), text(std::move(t)) { kind=Kind::Ast; }
-std::string CppRawExpr::dump(int) const { return text; }
-CppExprStmt::CppExprStmt(std::string n, std::shared_ptr<CppExpr> E)
-    : CppStmt(std::move(n)), e(std::move(E)) { kind=Kind::Ast; }
-std::string CppExprStmt::dump(int indent) const { return ind(indent)+e->dump()+";\n"; }
-CppReturn::CppReturn(std::string n, std::shared_ptr<CppExpr> E)
-    : CppStmt(std::move(n)), e(std::move(E)) { kind=Kind::Ast; }
-std::string CppReturn::dump(int indent) const {
-    std::string s = ind(indent) + "return";
+CppRawExpr::CppRawExpr(String n, String t)
+    : CppExpr(pick(n)), text(pick(t)) { kind=Kind::Ast; }
+String CppRawExpr::dump(int) const { return text; }
+CppExprStmt::CppExprStmt(String n, One<CppExpr> E)
+    : CppStmt(pick(n)), e(pick(E)) { kind=Kind::Ast; }
+String CppExprStmt::dump(int indent) const { return ind(indent)+e->dump()+";\n"; }
+CppReturn::CppReturn(String n, One<CppExpr> E)
+    : CppStmt(pick(n)), e(pick(E)) { kind=Kind::Ast; }
+String CppReturn::dump(int indent) const {
+    String s = ind(indent) + "return";
     if (e) s += " " + e->dump();
     s += ";\n";
     return s;
 }
-CppRawStmt::CppRawStmt(std::string n, std::string t)
-    : CppStmt(std::move(n)), text(std::move(t)) { kind=Kind::Ast; }
-std::string CppRawStmt::dump(int indent) const {
-    std::string pad = ind(indent);
-    std::string out;
-    size_t start = 0;
-    while (start <= text.size()){
-        size_t end = text.find('\n', start);
-        std::string line = end==std::string::npos ? text.substr(start) : text.substr(start, end-start);
-        if(!line.empty() || end!=std::string::npos) out += pad + line + "\n";
-        if (end==std::string::npos) break;
+CppRawStmt::CppRawStmt(String n, String t)
+    : CppStmt(pick(n)), text(pick(t)) { kind=Kind::Ast; }
+String CppRawStmt::dump(int indent) const {
+    String pad = ind(indent);
+    String out;
+    int start = 0;
+    while (start <= text.GetCount()){
+        int end = text.Find('\n', start);
+        String line = end<0 ? text.Mid(start) : text.Mid(start, end-start);
+        if(line.GetCount()>0 || end>=0) out += pad + line + "\n";
+        if (end<0) break;
         start = end + 1;
     }
-    if(out.empty()) out = pad + "\n";
+    if(out.IsEmpty()) out = pad + "\n";
     return out;
 }
-CppVarDecl::CppVarDecl(std::string n, std::string ty, std::string nm, std::string in, bool has)
-    : CppStmt(std::move(n)), type(std::move(ty)), name(std::move(nm)), init(std::move(in)), hasInit(has) { kind=Kind::Ast; }
-std::string CppVarDecl::dump(int indent) const {
-    std::string s = ind(indent) + type + " " + name;
+CppVarDecl::CppVarDecl(String n, String ty, String nm, String in, bool has)
+    : CppStmt(pick(n)), type(pick(ty)), name(pick(nm)), init(pick(in)), hasInit(has) { kind=Kind::Ast; }
+String CppVarDecl::dump(int indent) const {
+    String s = ind(indent) + type + " " + name;
     if (hasInit){
-        if (!init.empty() && (init[0]=='{' || init[0]=='(')) s += init;
-        else if (!init.empty() && init[0]=='=') s += " " + init;
-        else if (!init.empty()) s += " = " + init;
+        if (!init.IsEmpty() && (init[0]=='{' || init[0]=='(')) s += init;
+        else if (!init.IsEmpty() && init[0]=='=') s += " " + init;
+        else if (!init.IsEmpty()) s += " = " + init;
     }
     s += ";\n";
     return s;
 }
-CppCompound::CppCompound(std::string n) : CppStmt(std::move(n)) { kind=Kind::Ast; }
-std::string CppCompound::dump(int indent) const {
-    std::string s = ind(indent) + "{\n";
-    for(auto& st: stmts) s += st->dump(indent+2);
+CppCompound::CppCompound(String n) : CppStmt(pick(n)) { kind=Kind::Ast; }
+String CppCompound::dump(int indent) const {
+    String s = ind(indent) + "{\n";
+    for(const auto& st : stmts) s += st->dump(indent+2);
     s += ind(indent) + "}\n"; return s;
 }
-CppFunction::CppFunction(std::string n, std::string rt, std::string nm)
-    : CppNode(std::move(n)), retType(std::move(rt)), name(std::move(nm)) { kind=Kind::Ast; body=std::make_shared<CppCompound>("body"); }
-std::string CppFunction::dump(int indent) const {
-    std::string s; s += retType + " " + name + "(";
-    for(size_t i=0;i<params.size();++i){ if(i) s += ", "; s += params[i].type + " " + params[i].name; }
+CppFunction::CppFunction(String n, String rt, String nm)
+    : CppNode(pick(n)), retType(pick(rt)), name(pick(nm)) { kind=Kind::Ast; body = make_shared_cppcompound("body"); }
+String CppFunction::dump(int indent) const {
+    String s; s += retType + " " + name + "(";
+    for(int i=0;i<params.GetCount();++i){ if(i) s += ", "; s += params[i].type + " " + params[i].name; }
     s += ")\n"; s += body->dump(indent); return s;
 }
-CppRangeFor::CppRangeFor(std::string n, std::string d, std::string r)
-    : CppStmt(std::move(n)), decl(std::move(d)), range(std::move(r)), body(std::make_shared<CppCompound>("body")) { kind=Kind::Ast; }
-std::string CppRangeFor::dump(int indent) const {
-    std::string s = ind(indent) + "for (" + decl + " : " + range + ")\n";
+CppRangeFor::CppRangeFor(String n, String d, String r)
+    : CppStmt(pick(n)), decl(pick(d)), range(pick(r)), body(make_shared_cppcompound("body")) { kind=Kind::Ast; }
+String CppRangeFor::dump(int indent) const {
+    String s = ind(indent) + "for (" + decl + " : " + range + ")\n";
     s += body->dump(indent);
     return s;
 }
-CppTranslationUnit::CppTranslationUnit(std::string n) : CppNode(std::move(n)) { kind=Kind::Ast; }
-std::string CppTranslationUnit::dump(int) const {
-    std::string s;
-    for(auto& i: includes) s += i->dump(0);
+CppTranslationUnit::CppTranslationUnit(String n) : CppNode(pick(n)) { kind=Kind::Ast; }
+String CppTranslationUnit::dump(int) const {
+    String s;
+    for(const auto& i : includes) s += i->dump(0);
     s += "\n";
-    for(auto& f: funcs){ s += f->dump(0); s += "\n"; }
+    for(const auto& f : funcs){ s += f->dump(0); s += "\n"; }
     return s;
 }
 
-std::shared_ptr<CppTranslationUnit> expect_tu(std::shared_ptr<VfsNode> n){
-    auto tu = std::dynamic_pointer_cast<CppTranslationUnit>(n);
+One<CppTranslationUnit> expect_tu(One<VfsNode> n){
+    auto tu = dynamic_cast<CppTranslationUnit*>(n.Get());
     if(!tu) throw std::runtime_error("not a CppTranslationUnit node");
-    return tu;
+    return pick(n);
 }
-std::shared_ptr<CppFunction> expect_fn(std::shared_ptr<VfsNode> n){
-    auto fn = std::dynamic_pointer_cast<CppFunction>(n);
+One<CppFunction> expect_fn(One<VfsNode> n){
+    auto fn = dynamic_cast<CppFunction*>(n.Get());
     if(!fn) throw std::runtime_error("not a CppFunction node");
-    return fn;
+    return pick(n);
 }
-std::shared_ptr<CppCompound> expect_block(std::shared_ptr<VfsNode> n){
-    if(auto fn = std::dynamic_pointer_cast<CppFunction>(n)) return fn->body;
-    if(auto block = std::dynamic_pointer_cast<CppCompound>(n)) return block;
-    if(auto loop = std::dynamic_pointer_cast<CppRangeFor>(n)) return loop->body;
+One<CppCompound> expect_block(One<VfsNode> n){
+    if(auto fn = dynamic_cast<CppFunction*>(n.Get())) return pick(fn->body);
+    if(auto block = dynamic_cast<CppCompound*>(n.Get())) return pick(n);
+    if(auto loop = dynamic_cast<CppRangeFor*>(n.Get())) return pick(loop->body);
     throw std::runtime_error("node does not own a compound body");
 }
-void vfs_add(Vfs& vfs, const std::string& path, std::shared_ptr<VfsNode> node, size_t overlayId){
-    std::string dir = path.substr(0, path.find_last_of('/'));
-    if(dir.empty()) dir = "/";
-    std::string name = path.substr(path.find_last_of('/')+1);
+void vfs_add(Vfs& vfs, const String& path, One<VfsNode> node, size_t overlayId){
+    int last_slash = path.ReverseFind('/');
+    String dir = last_slash >= 0 ? path.Mid(0, last_slash) : String("/");
+    String name = last_slash >= 0 ? path.Mid(last_slash+1) : path;
     node->name = name;
     vfs.addNode(dir, node, overlayId);
 }
-void cpp_dump_to_vfs(Vfs& vfs, size_t overlayId, const std::string& tuPath, const std::string& filePath){
+void cpp_dump_to_vfs(Vfs& vfs, size_t overlayId, const String& tuPath, const String& filePath){
     auto n = vfs.resolveForOverlay(tuPath, overlayId);
     auto tu = expect_tu(n);
-    std::string code = tu->dump(0);
+    String code = tu->dump(0);
     vfs.write(filePath, code, overlayId);
 }
 

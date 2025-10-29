@@ -1,37 +1,36 @@
 #ifndef _UppCompat_Umk_h_
 #define _UppCompat_Umk_h_
 
-#include "../VfsShell/VfsShell.h"
-#include "../UppCompat/UppBuilder.h"
-#include "../VfsShell/BuildGraph.h"
-#include "upp_toolchain.h"
-
-#include <string>
-#include <vector>
-#include <memory>
-#include <optional>
+// All includes have been moved to UppCompat.h - the main header
+// This header is not self-contained as per U++ convention
+// For reference: This header needs types from VfsShell.h, UppBuilder.h, BuildGraph.h, and upp_toolchain.h
+// #include "../VfsShell/VfsShell.h"        // Commented for U++ convention - included in main header
+// #include "../UppCompat/UppBuilder.h"     // Commented for U++ convention - included in main header
+// #include "../VfsShell/BuildGraph.h"      // Commented for U++ convention - included in main header
+// #include "upp_toolchain.h"               // Commented for U++ convention - included in main header
 
 // Forward declarations
 struct Vfs;
 
-
 // Options for U++ build process
 struct UppBuildOptions {
-    std::string build_type = "debug"; // debug or release
-    std::string output_dir;
-    std::vector<std::string> extra_includes;
+    String build_type = "debug"; // debug or release
+    String output_dir;
+    Vector<String> extra_includes;
     bool verbose = false;
     bool dry_run = false;
-    std::string target_package;  // Specific package to build (empty = primary)
-    std::string builder_name;    // Specific builder to use (empty = active)
+    String target_package;  // Specific package to build (empty = primary)
+    String builder_name;    // Specific builder to use (empty = active)
+    typedef UppBuildOptions CLASSNAME;  // Required for THISBACK macros if used
 };
 
 // Summary of U++ build process
 struct UppBuildSummary {
     BuildResult result;
     BuildGraph plan;
-    std::vector<std::string> package_order;
-    std::string builder_used;
+    Vector<String> package_order;
+    String builder_used;
+    typedef UppBuildSummary CLASSNAME;  // Required for THISBACK macros if used
 };
 
 // Main function to build a U++ workspace using the internal umk pipeline

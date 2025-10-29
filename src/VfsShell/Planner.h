@@ -10,14 +10,14 @@
 //
 struct PlanNode : AstNode {
     std::string content;  // Text content for the plan node
-    std::map<std::string, std::shared_ptr<VfsNode>> ch;
+    std::unordered_map<std::string, std::shared_ptr<VfsNode>> ch;
 
     PlanNode(std::string n, std::string c = "") : AstNode(std::move(n)), content(std::move(c)) {}
     bool isDir() const override { return true; }
-    std::map<std::string, std::shared_ptr<VfsNode>>& children() override { return ch; }
+    std::unordered_map<std::string, std::shared_ptr<VfsNode>>& children() override { return ch; }
     SexpValue eval(std::shared_ptr<Env>) override { return SexpValue::S(content); }
-    std::string read() const override { return content; }
-    void write(const std::string& s) override { content = s; }
+    String read() const override { return content.c_str(); }
+    void write(const String& s) override { content = s.ToStd(); }
 };
 
 // Specific plan node types
@@ -32,15 +32,15 @@ struct PlanSubPlan : PlanNode {
 struct PlanGoals : PlanNode {
     std::vector<std::string> goals;
     PlanGoals(std::string n) : PlanNode(std::move(n)) {}
-    std::string read() const override;
-    void write(const std::string& s) override;
+    String read() const override;
+    void write(const String& s) override;
 };
 
 struct PlanIdeas : PlanNode {
     std::vector<std::string> ideas;
     PlanIdeas(std::string n) : PlanNode(std::move(n)) {}
-    std::string read() const override;
-    void write(const std::string& s) override;
+    String read() const override;
+    void write(const String& s) override;
 };
 
 struct PlanStrategy : PlanNode {
@@ -57,8 +57,8 @@ struct PlanJob {
 struct PlanJobs : PlanNode {
     std::vector<PlanJob> jobs;
     PlanJobs(std::string n) : PlanNode(std::move(n)) {}
-    std::string read() const override;
-    void write(const std::string& s) override;
+    String read() const override;
+    void write(const String& s) override;
     void addJob(const std::string& desc, int priority = 100, const std::string& assignee = "");
     void completeJob(size_t index);
     std::vector<size_t> getSortedJobIndices() const;
@@ -67,22 +67,22 @@ struct PlanJobs : PlanNode {
 struct PlanDeps : PlanNode {
     std::vector<std::string> dependencies;
     PlanDeps(std::string n) : PlanNode(std::move(n)) {}
-    std::string read() const override;
-    void write(const std::string& s) override;
+    String read() const override;
+    void write(const String& s) override;
 };
 
 struct PlanImplemented : PlanNode {
     std::vector<std::string> items;
     PlanImplemented(std::string n) : PlanNode(std::move(n)) {}
-    std::string read() const override;
-    void write(const std::string& s) override;
+    String read() const override;
+    void write(const String& s) override;
 };
 
 struct PlanResearch : PlanNode {
     std::vector<std::string> topics;
     PlanResearch(std::string n) : PlanNode(std::move(n)) {}
-    std::string read() const override;
-    void write(const std::string& s) override;
+    String read() const override;
+    void write(const String& s) override;
 };
 
 struct PlanNotes : PlanNode {
@@ -95,7 +95,7 @@ struct PlanNotes : PlanNode {
 struct PlannerContext {
     std::string current_path;  // Current location in /plan tree
     std::vector<std::string> navigation_history;  // Breadcrumbs for backtracking
-    std::set<std::string> visible_nodes;  // Paths of nodes currently "in view" for AI context
+    Index<std::string> visible_nodes;  // Paths of nodes currently "in view" for AI context
 
     enum class Mode { Forward, Backward };
     Mode mode = Mode::Forward;

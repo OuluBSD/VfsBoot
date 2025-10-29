@@ -1,7 +1,5 @@
-#include "Umk.h"
+#include "UppCompat.h"
 #include "../VfsShell/VfsShell.h"
-#include "upp_workspace_build.h"
-#include "upp_builder.h"
 #include <iostream>
 #include <sstream>
 #include <vector>

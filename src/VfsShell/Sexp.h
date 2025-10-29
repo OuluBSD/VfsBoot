@@ -42,7 +42,8 @@ struct SexpValue {
 //
 struct AstNode : VfsNode {
     using VfsNode::VfsNode;
-    AstNode(std::string n) : VfsNode(std::move(n), Kind::Ast) {}
+    AstNode(std::string n) : VfsNode(Kind::Ast, String(n.c_str())) {}
+    AstNode(String n) : VfsNode(Kind::Ast, n) {}
     virtual SexpValue eval(std::shared_ptr<Env>) = 0;
 };
 
@@ -77,13 +78,13 @@ struct AstHolder: AstNode {
 // Ympäristö
 //
 struct Env : std::enable_shared_from_this<Env> {
-    std::map<std::string, SexpValue> tbl;
+    VectorMap<String, SexpValue> tbl;
     std::shared_ptr<Env> up;
     explicit Env(std::shared_ptr<Env> p = nullptr) : up(std::move(p)) {}
-    void set(const std::string& k, const SexpValue& v) { tbl[k]=v; }
+    void set(const std::string& k, const SexpValue& v) { tbl.GetAdd(String(k.c_str())) = v; }
     std::optional<SexpValue> get(const std::string& k){
-        auto it = tbl.find(k);
-        if(it!=tbl.end()) return it->second;
+        int pos = tbl.Find(String(k.c_str()));
+        if(pos >= 0) return tbl[pos];
         if(up) return up->get(k);
         return std::nullopt;
     }

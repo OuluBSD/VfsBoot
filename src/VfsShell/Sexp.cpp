@@ -16,23 +16,23 @@ AstInt::AstInt(std::string n, int64_t v) : AstNode(std::move(n)), val(v) { kind=
 AstBool::AstBool(std::string n, bool v)  : AstNode(std::move(n)), val(v) { kind=Kind::Ast; }
 AstStr::AstStr(std::string n, std::string v): AstNode(std::move(n)), val(std::move(v)) { kind=Kind::Ast; }
 AstSym::AstSym(std::string n, std::string s): AstNode(std::move(n)), id(std::move(s)) { kind=Kind::Ast; }
-AstIf::AstIf(std::string n, std::shared_ptr<AstNode> C, std::shared_ptr<AstNode> A, std::shared_ptr<AstNode> B)
+AstIf::AstIf(std::string n, Shared<AstNode> C, Shared<AstNode> A, Shared<AstNode> B)
     : AstNode(std::move(n)), c(std::move(C)), a(std::move(A)), b(std::move(B)) { kind=Kind::Ast; }
-AstLambda::AstLambda(std::string n, std::vector<std::string> ps, std::shared_ptr<AstNode> b)
+AstLambda::AstLambda(std::string n, std::vector<std::string> ps, Shared<AstNode> b)
     : AstNode(std::move(n)), params(std::move(ps)), body(std::move(b)){ kind=Kind::Ast; }
-AstCall::AstCall(std::string n, std::shared_ptr<AstNode> f, std::vector<std::shared_ptr<AstNode>> a)
+AstCall::AstCall(std::string n, Shared<AstNode> f, std::vector<Shared<AstNode>> a)
     : AstNode(std::move(n)), fn(std::move(f)), args(std::move(a)){ kind=Kind::Ast; }
-AstHolder::AstHolder(std::string n, std::shared_ptr<AstNode> in)
+AstHolder::AstHolder(std::string n, Shared<AstNode> in)
     : AstNode(std::move(n)), inner(std::move(in)){ kind=Kind::Ast; }
 
 // ====== AST eval ======
-SexpValue AstInt::eval(std::shared_ptr<Env>) { return SexpValue::I(val); }
-SexpValue AstBool::eval(std::shared_ptr<Env>) { return SexpValue::B(val); }
-SexpValue AstStr::eval(std::shared_ptr<Env>) { return SexpValue::S(val); }
-SexpValue AstSym::eval(std::shared_ptr<Env> e) {
+SexpValue AstInt::eval(Shared<Env>) { return SexpValue::I(val); }
+SexpValue AstBool::eval(Shared<Env>) { return SexpValue::B(val); }
+SexpValue AstStr::eval(Shared<Env>) { return SexpValue::S(val); }
+SexpValue AstSym::eval(Shared<Env> e) {
     auto v = e->get(id); if(!v) throw std::runtime_error("unbound "+id); return *v;
 }
-SexpValue AstIf::eval(std::shared_ptr<Env> e){
+SexpValue AstIf::eval(Shared<Env> e){
     auto cv=c->eval(e);
     bool t = std::visit([](auto&& x)->bool{
         using T = std::decay_t<decltype(x)>;
@@ -44,10 +44,10 @@ SexpValue AstIf::eval(std::shared_ptr<Env> e){
     }, cv.v);
     return (t? a: b)->eval(e);
 }
-SexpValue AstLambda::eval(std::shared_ptr<Env> e){
+SexpValue AstLambda::eval(Shared<Env> e){
     return SexpValue::Clo(SexpValue::Closure{params, body, e});
 }
-SexpValue AstCall::eval(std::shared_ptr<Env> e){
+SexpValue AstCall::eval(Shared<Env> e){
     SexpValue f = fn->eval(e);
     std::vector<SexpValue> av; av.reserve(args.size());
     for (auto& a: args) av.push_back(a->eval(e));
@@ -57,17 +57,17 @@ SexpValue AstCall::eval(std::shared_ptr<Env> e){
     } else if (std::holds_alternative<SexpValue::Closure>(f.v)) {
         auto clo = std::get<SexpValue::Closure>(f.v);
         if (clo.params.size()!=av.size()) throw std::runtime_error("arity mismatch");
-        auto child = std::make_shared<Env>(clo.env);
+        auto child = Shared<Env>(new Env(clo.env));
         for (size_t i=0;i<av.size();++i) child->set(clo.params[i], av[i]);
         return clo.body->eval(child);
     }
     throw std::runtime_error("call of non-function");
 }
-SexpValue AstHolder::eval(std::shared_ptr<Env> e){ return inner->eval(e); }
+SexpValue AstHolder::eval(Shared<Env> e){ return inner->eval(e); }
 
 // ====== Parser ======
 static size_t POS;
-static std::shared_ptr<AstNode> parseExpr(const std::vector<Token>& T);
+static Shared<AstNode> parseExpr(const std::vector<Token>& T);
 
 std::vector<Token> lex(const std::string& src){
     std::vector<Token> t; std::string cur;
@@ -95,22 +95,22 @@ static bool isInt(const std::string& s){
     return true;
 }
 
-static std::shared_ptr<AstNode> atom(const std::string& s){
-    if (s=="#t") return std::make_shared<AstBool>("<b>", true);
-    if (s=="#f") return std::make_shared<AstBool>("<b>", false);
+static SharedPtr<AstNode> atom(const std::string& s){
+    if (s=="#t") return SharedPtr<AstNode>(new AstBool("<b>", true));
+    if (s=="#f") return SharedPtr<AstNode>(new AstBool("<b>", false));
     if (s.size()>=2 && s.front()=='"' && s.back()=='"')
-        return std::make_shared<AstStr>("<s>", s.substr(1, s.size()-2));
-    if (isInt(s)) return std::make_shared<AstInt>("<i>", std::stoll(s));
-    return std::make_shared<AstSym>("<sym>", s);
+        return SharedPtr<AstNode>(new AstStr("<s>", s.substr(1, s.size()-2)));
+    if (isInt(s)) return SharedPtr<AstNode>(new AstInt("<i>", std::stoll(s)));
+    return SharedPtr<AstNode>(new AstSym("<sym>", s));
 }
 
-static std::shared_ptr<AstNode> parseList(const std::vector<Token>& T){
+static SharedPtr<AstNode> parseList(const std::vector<Token>& T){
     if (POS>=T.size() || T[POS].s!="(") throw std::runtime_error("expected (");
     ++POS;
-    if (POS<T.size() && T[POS].s==")"){ ++POS; return std::make_shared<AstStr>("<s>",""); }
+    if (POS<T.size() && T[POS].s==")"){ ++POS; return SharedPtr<AstNode>(new AstStr("<s>","")); }
     auto head = parseExpr(T);
-    auto sym  = std::dynamic_pointer_cast<AstSym>(head);
-    std::vector<std::shared_ptr<AstNode>> items;
+    auto sym  = dynamic_cast<AstSym*>(head.get());  // Note: dynamic_pointer_cast not available with U++ Shared, using raw pointer method
+    std::vector<SharedPtr<AstNode>> items;
     while (POS<T.size() && T[POS].s!=")") items.push_back(parseExpr(T));
     if (POS>=T.size()) throw std::runtime_error("missing )");
     ++POS;
@@ -118,22 +118,22 @@ static std::shared_ptr<AstNode> parseList(const std::vector<Token>& T){
     std::string H = sym? sym->id : std::string();
     if (H=="if"){
         if (items.size()!=3) throw std::runtime_error("if needs 3 args");
-        return std::make_shared<AstIf>("<if>", items[0], items[1], items[2]);
+        return SharedPtr<AstNode>(new AstIf("<if>", items[0], items[1], items[2]));
     }
     if (H=="lambda"){
         if (items.size()<2) throw std::runtime_error("lambda needs params and body");
         // proto: single param only: (lambda x body)
         std::vector<std::string> ps;
-        if (auto sp=std::dynamic_pointer_cast<AstSym>(items[0])) ps.push_back(sp->id);
+        if (auto sp=dynamic_cast<AstSym*>(items[0].get())) ps.push_back(sp->id);  // Note: dynamic_pointer_cast not available with U++ Shared
         else throw std::runtime_error("lambda single param only");
         auto body=items.back();
-        return std::make_shared<AstLambda>("<lam>", ps, body);
+        return SharedPtr<AstNode>(new AstLambda("<lam>", ps, body));
     }
     // generic call
-    return std::make_shared<AstCall>("<call>", head, items);
+    return SharedPtr<AstNode>(new AstCall("<call>", head, items));
 }
 
-static std::shared_ptr<AstNode> parseExpr(const std::vector<Token>& T){
+static SharedPtr<AstNode> parseExpr(const std::vector<Token>& T){
     if (POS>=T.size()) throw std::runtime_error("unexpected EOF");
     auto s = T[POS].s;
     if (s=="(") return parseList(T);
@@ -142,7 +142,7 @@ static std::shared_ptr<AstNode> parseExpr(const std::vector<Token>& T){
     return atom(s);
 }
 
-std::shared_ptr<AstNode> parse(const std::string& src){
+SharedPtr<AstNode> parse(const std::string& src){
     POS=0; auto T = lex(src);
     auto n = parseExpr(T);
     if (POS!=T.size()) throw std::runtime_error("extra tokens");
@@ -150,9 +150,9 @@ std::shared_ptr<AstNode> parse(const std::string& src){
 }
 
 // ====== Builtins ======
-void install_builtins(std::shared_ptr<Env> g){
+void install_builtins(SharedPtr<Env> g){
     auto wrap = [&](auto op){
-        return SexpValue::Built([op](std::vector<SexpValue>& av, std::shared_ptr<Env>){
+        return SexpValue::Built([op](std::vector<SexpValue>& av, SharedPtr<Env>){
             if (av.size()<2) throw std::runtime_error("need at least 2 args");
             auto gi=[](const SexpValue& v)->int64_t{
                 if (!std::holds_alternative<int64_t>(v.v)) throw std::runtime_error("int expected");
@@ -167,51 +167,51 @@ void install_builtins(std::shared_ptr<Env> g){
     g->set("-", wrap(std::minus<int64_t>()));
     g->set("*", wrap(std::multiplies<int64_t>()));
 
-    g->set("=", SexpValue::Built([](std::vector<SexpValue>& av, std::shared_ptr<Env>){
+    g->set("=", SexpValue::Built([](std::vector<SexpValue>& av, SharedPtr<Env>){
         if (av.size()!=2) throw std::runtime_error("= needs 2 args");
         return SexpValue::B(av[0].show()==av[1].show());
     }));
-    g->set("<", SexpValue::Built([](std::vector<SexpValue>& av, std::shared_ptr<Env>){
+    g->set("<", SexpValue::Built([](std::vector<SexpValue>& av, SharedPtr<Env>){
         if (av.size()!=2) throw std::runtime_error("< needs 2 args");
         if (!std::holds_alternative<int64_t>(av[0].v) || !std::holds_alternative<int64_t>(av[1].v))
             throw std::runtime_error("int expected");
         return SexpValue::B(std::get<int64_t>(av[0].v) < std::get<int64_t>(av[1].v));
     }));
-    g->set("print", SexpValue::Built([](std::vector<SexpValue>& av, std::shared_ptr<Env>){
+    g->set("print", SexpValue::Built([](std::vector<SexpValue>& av, SharedPtr<Env>){
         for (size_t i=0;i<av.size();++i){ if(i) std::cout<<" "; std::cout<<av[i].show(); }
         std::cout<<"\n"; return av.empty()? SexpValue() : av.back();
     }));
 
     // lists
-    g->set("list", SexpValue::Built([](std::vector<SexpValue>& av, std::shared_ptr<Env>){ return SexpValue::L(av); }));
-    g->set("cons", SexpValue::Built([](std::vector<SexpValue>& av, std::shared_ptr<Env>){
+    g->set("list", SexpValue::Built([](std::vector<SexpValue>& av, SharedPtr<Env>){ return SexpValue::L(av); }));
+    g->set("cons", SexpValue::Built([](std::vector<SexpValue>& av, SharedPtr<Env>){
         if (av.size()!=2) throw std::runtime_error("cons x xs");
         if (!std::holds_alternative<SexpValue::List>(av[1].v)) throw std::runtime_error("cons expects list");
         SexpValue::List out; const auto& xs = std::get<SexpValue::List>(av[1].v);
         out.reserve(xs.size()+1); out.push_back(av[0]); out.insert(out.end(), xs.begin(), xs.end());
         return SexpValue::L(out);
     }));
-    g->set("head", SexpValue::Built([](std::vector<SexpValue>& av, std::shared_ptr<Env>){
+    g->set("head", SexpValue::Built([](std::vector<SexpValue>& av, SharedPtr<Env>){
         if (av.size()!=1 || !std::holds_alternative<SexpValue::List>(av[0].v)) throw std::runtime_error("head xs");
         const auto& xs = std::get<SexpValue::List>(av[0].v); if(xs.empty()) throw std::runtime_error("head of empty");
         return xs.front();
     }));
-    g->set("tail", SexpValue::Built([](std::vector<SexpValue>& av, std::shared_ptr<Env>){
+    g->set("tail", SexpValue::Built([](std::vector<SexpValue>& av, SharedPtr<Env>){
         if (av.size()!=1 || !std::holds_alternative<SexpValue::List>(av[0].v)) throw std::runtime_error("tail xs");
         const auto& xs = std::get<SexpValue::List>(av[0].v); if(xs.empty()) throw std::runtime_error("tail of empty");
         return SexpValue::L(SexpValue::List(xs.begin()+1, xs.end()));
     }));
-    g->set("null?", SexpValue::Built([](std::vector<SexpValue>& av, std::shared_ptr<Env>){
+    g->set("null?", SexpValue::Built([](std::vector<SexpValue>& av, SharedPtr<Env>){
         if (av.size()!=1) throw std::runtime_error("null? xs");
         return SexpValue::B(std::holds_alternative<SexpValue::List>(av[0].v) && std::get<SexpValue::List>(av[0].v).empty());
     }));
 
     // strings
-    g->set("str.cat", SexpValue::Built([](std::vector<SexpValue>& av, std::shared_ptr<Env>){
+    g->set("str.cat", SexpValue::Built([](std::vector<SexpValue>& av, SharedPtr<Env>){
         std::string s; for(auto& v: av){ if(!std::holds_alternative<std::string>(v.v)) throw std::runtime_error("str.cat expects strings"); s += std::get<std::string>(v.v); }
         return SexpValue::S(s);
     }));
-    g->set("str.sub", SexpValue::Built([](std::vector<SexpValue>& av, std::shared_ptr<Env>){
+    g->set("str.sub", SexpValue::Built([](std::vector<SexpValue>& av, SharedPtr<Env>){
         if(av.size()!=3) throw std::runtime_error("str.sub s start len");
         if(!std::holds_alternative<std::string>(av[0].v) || !std::holds_alternative<int64_t>(av[1].v) || !std::holds_alternative<int64_t>(av[2].v))
             throw std::runtime_error("str.sub types");
@@ -221,7 +221,7 @@ void install_builtins(std::shared_ptr<Env> g){
         if (st > s.size()) return SexpValue::S("");
         return SexpValue::S(s.substr(st, ln));
     }));
-    g->set("str.find", SexpValue::Built([](std::vector<SexpValue>& av, std::shared_ptr<Env>){
+    g->set("str.find", SexpValue::Built([](std::vector<SexpValue>& av, SharedPtr<Env>){
         if(av.size()!=2 || !std::holds_alternative<std::string>(av[0].v) || !std::holds_alternative<std::string>(av[1].v))
             throw std::runtime_error("str.find s sub");
         auto pos = std::get<std::string>(av[0].v).find(std::get<std::string>(av[1].v));
@@ -229,20 +229,20 @@ void install_builtins(std::shared_ptr<Env> g){
     }));
 
     // VFS helpers
-    g->set("vfs-write", SexpValue::Built([](std::vector<SexpValue>& av, std::shared_ptr<Env>){
+    g->set("vfs-write", SexpValue::Built([](std::vector<SexpValue>& av, SharedPtr<Env>){
         if(!G_VFS) throw std::runtime_error("no vfs");
         if(av.size()!=2 || !std::holds_alternative<std::string>(av[0].v) || !std::holds_alternative<std::string>(av[1].v))
             throw std::runtime_error("vfs-write path string");
         G_VFS->write(std::get<std::string>(av[0].v), std::get<std::string>(av[1].v), 0);
         return av[0];
     }));
-    g->set("vfs-read", SexpValue::Built([](std::vector<SexpValue>& av, std::shared_ptr<Env>){
+    g->set("vfs-read", SexpValue::Built([](std::vector<SexpValue>& av, SharedPtr<Env>){
         if(!G_VFS) throw std::runtime_error("no vfs");
         if(av.size()!=1 || !std::holds_alternative<std::string>(av[0].v))
             throw std::runtime_error("vfs-read path");
         return SexpValue::S(G_VFS->read(std::get<std::string>(av[0].v), 0));
     }));
-    g->set("vfs-ls", SexpValue::Built([](std::vector<SexpValue>& av, std::shared_ptr<Env>){
+    g->set("vfs-ls", SexpValue::Built([](std::vector<SexpValue>& av, SharedPtr<Env>){
         if(!G_VFS) throw std::runtime_error("no vfs");
         if(av.size()!=1 || !std::holds_alternative<std::string>(av[0].v))
             throw std::runtime_error("vfs-ls \"/path\"");
@@ -259,7 +259,7 @@ void install_builtins(std::shared_ptr<Env> g){
     }));
 
     // export & sys
-    g->set("export", SexpValue::Built([](std::vector<SexpValue>& av, std::shared_ptr<Env>){
+    g->set("export", SexpValue::Built([](std::vector<SexpValue>& av, SharedPtr<Env>){
         if(!G_VFS) throw std::runtime_error("no vfs");
         if(av.size()!=2 || !std::holds_alternative<std::string>(av[0].v) || !std::holds_alternative<std::string>(av[1].v))
             throw std::runtime_error("export vfs host");
@@ -270,7 +270,7 @@ void install_builtins(std::shared_ptr<Env> g){
         f.write(data.data(), static_cast<std::streamsize>(data.size()));
         return SexpValue::S(host);
     }));
-    g->set("sys", SexpValue::Built([](std::vector<SexpValue>& av, std::shared_ptr<Env>){
+    g->set("sys", SexpValue::Built([](std::vector<SexpValue>& av, SharedPtr<Env>){
         if(av.size()!=1 || !std::holds_alternative<std::string>(av[0].v))
             throw std::runtime_error("sys \"cmd\"");
         std::string cmd = std::get<std::string>(av[0].v);
@@ -286,7 +286,7 @@ void install_builtins(std::shared_ptr<Env> g){
     }));
 
     // C++ apuri: hello-koodi
-    g->set("cpp:hello", SexpValue::Built([](std::vector<SexpValue>&, std::shared_ptr<Env>){
+    g->set("cpp:hello", SexpValue::Built([](std::vector<SexpValue>&, SharedPtr<Env>){
         std::string code = "#include <iostream>\nint main(){ std::cout<<\"Hello, world!\\n\"; return 0; }\n";
         return SexpValue::S(code);
     }));

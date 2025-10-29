@@ -1,144 +1,70 @@
-#pragma once
-
-
-#include <string>
-#include <map>
-#include <memory>
-#include <vector>
-#include <functional>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <algorithm>
-#include <memory>
-#include <chrono>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <atomic>
-#include <future>
-#include <queue>
-#include <unordered_map>
-#include <unordered_set>
-#include <set>
-#include <list>
-#include <deque>
-#include <array>
-#include <forward_list>
-#include <stack>
-#include <utility>
-#include <tuple>
-#include <iterator>
-#include <type_traits>
-#include <stdexcept>
-#include <exception>
-#include <system_error>
-#include <cerrno>
-#include <cstring>
-#include <cstddef>
-#include <cstdint>
-#include <climits>
-#include <cfloat>
-#include <cmath>
-#include <cassert>
-#include <cctype>
-#include <cwctype>
-#include <cstdarg>
-#include <ctime>
-#include <cstdlib>
-#include <cstdio>
-#include <csignal>
-#include <csetjmp>
-#include <new>
-#include <limits>
-#include <ratio>
-#include <cfenv>
-#include <locale>
-#include <clocale>
-#include <codecvt>
-#include <random>
-#include <chrono>
-#include <ratio>
-#include <regex>
-#include <filesystem>
-#include <optional>
-#include <variant>
-#include <any>
-#include <typeinfo>
-#include <typeindex>
-#include <atomic>
-#include <thread>
-#include <mutex>
-#include <shared_mutex>
-
 #ifndef _VfsCore_VfsMount_h_
 #define _VfsCore_VfsMount_h_
 
-#include <Core/Core.h>
-#include "VfsCore.h"  // Include the main package header which has VfsNode definition
-
-using namespace Upp;
+// All includes have been moved to VfsCore.h - the main header
+// This header is not self-contained as per U++ convention
+// For reference: This header needs VfsNode definition from VfsCore.h
+// #include "VfsCore.h"  // Commented for U++ convention - included in main header
 
 // Forward declarations for types defined elsewhere
 struct WorkingDirectory;
 struct SolutionContext;
 
-#endif
-#include <condition_variable>
-#include <future>
-#include <chrono>
-#include <ratio>
-#include <ctime>
-
 struct MountNode : VfsNode {
-    std::string host_path;
-    mutable std::map<std::string, std::shared_ptr<VfsNode>> cache;
-    MountNode(std::string n, std::string hp);
+    String host_path;
+    mutable std::unordered_map<std::string, std::shared_ptr<VfsNode>> cache;
+    MountNode(String n, String hp);
     bool isDir() const override;
-    std::string read() const override;
-    void write(const std::string& s) override;
-    std::map<std::string, std::shared_ptr<VfsNode>>& children() override;
+    String read() const override;
+    void write(const String& s) override;
+    std::unordered_map<std::string, std::shared_ptr<VfsNode>>& children() override;
 private:
     void populateCache() const;
+    typedef MountNode CLASSNAME;  // Required for THISBACK macros if used
 };
 
 struct LibraryNode : VfsNode {
-    std::string lib_path;
+    String lib_path;
     void* handle;
-    std::map<std::string, std::shared_ptr<VfsNode>> symbols;
-    LibraryNode(std::string n, std::string lp);
+    std::unordered_map<std::string, std::shared_ptr<VfsNode>> symbols;
+    LibraryNode(String n, String lp);
     ~LibraryNode() override;
     bool isDir() const override { return true; }
-    std::map<std::string, std::shared_ptr<VfsNode>>& children() override { return symbols; }
+    std::unordered_map<std::string, std::shared_ptr<VfsNode>>& children() override { return symbols; }
+    typedef LibraryNode CLASSNAME;  // Required for THISBACK macros if used
 };
 
 struct LibrarySymbolNode : VfsNode {
     void* func_ptr;
-    std::string signature;
-    LibrarySymbolNode(std::string n, void* ptr, std::string sig);
-    std::string read() const override { return signature; }
+    String signature;
+    LibrarySymbolNode(String n, void* ptr, String sig);
+    String read() const override { return signature; }
+    typedef LibrarySymbolNode CLASSNAME;  // Required for THISBACK macros if used
 };
 
 struct RemoteNode : VfsNode {
-    std::string host;
+    String host;
     int port;
-    std::string remote_path;  // VFS path on remote server
+    String remote_path;  // VFS path on remote server
     mutable int sock_fd;
-    mutable std::map<std::string, std::shared_ptr<VfsNode>> cache;
+    mutable std::unordered_map<std::string, std::shared_ptr<VfsNode>> cache;
     mutable bool cache_valid;
     mutable std::mutex conn_mutex;
 
-    RemoteNode(std::string n, std::string h, int p, std::string rp);
+    RemoteNode(String n, String h, int p, String rp);
     ~RemoteNode() override;
 
     bool isDir() const override;
-    std::string read() const override;
-    void write(const std::string& s) override;
-    std::map<std::string, std::shared_ptr<VfsNode>>& children() override;
+    String read() const override;
+    void write(const String& s) override;
+    std::unordered_map<std::string, std::shared_ptr<VfsNode>>& children() override;
 
 private:
     void ensureConnected() const;
     void disconnect() const;
-    std::string execRemote(const std::string& command) const;
+    String execRemote(const String& command) const;
     void populateCache() const;
+    typedef RemoteNode CLASSNAME;  // Required for THISBACK macros if used
 };
+
+#endif

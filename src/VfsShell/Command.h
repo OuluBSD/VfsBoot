@@ -10,6 +10,14 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+// Forward declarations
+struct Vfs;
+struct WorkingDirectory;
+struct Env;
+struct RulePatchStaging;
+struct FeedbackLoop;
+struct MetricsCollector;
+
 extern RulePatchStaging* G_PATCH_STAGING;
 extern FeedbackLoop* G_FEEDBACK_LOOP;
 

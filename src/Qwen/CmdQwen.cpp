@@ -1,6 +1,5 @@
+#include "Qwen.h"  // Include main header instead of individual headers
 #include "registry.h"
-#include "QwenStateManager.h"
-#include "QwenClient.h"
 
 // External registry from main.cpp
 extern QwenRegistry g_registry;

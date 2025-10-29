@@ -1,5 +1,8 @@
 #pragma once
 
+// Forward declarations
+struct LogicFormula;
+struct LogicEngine;
 
 // ============================================================================
 // Feedback Pipeline for Planner Rule Evolution

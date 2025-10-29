@@ -1,7 +1,7 @@
 #ifndef _VfsShell_file_browser_h_
 #define _VfsShell_file_browser_h_
 
-#include "ui_backend.h"
+#include "../UppCompat/UiBackend.h"
 #include <string>
 #include <vector>
 

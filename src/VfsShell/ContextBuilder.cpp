@@ -7,21 +7,30 @@
 ContextFilter ContextFilter::tagAny(const TagSet& t){
     ContextFilter f;
     f.type = Type::TagAny;
-    f.tags = t;
+    // Manual copy since TagSet copy assignment is deleted
+    for(const auto& chunk : t.chunks) {
+        f.tags.chunks.Add(chunk);
+    }
     return f;
 }
 
 ContextFilter ContextFilter::tagAll(const TagSet& t){
     ContextFilter f;
     f.type = Type::TagAll;
-    f.tags = t;
+    // Manual copy since TagSet copy assignment is deleted
+    for(const auto& chunk : t.chunks) {
+        f.tags.chunks.Add(chunk);
+    }
     return f;
 }
 
 ContextFilter ContextFilter::tagNone(const TagSet& t){
     ContextFilter f;
     f.type = Type::TagNone;
-    f.tags = t;
+    // Manual copy since TagSet copy assignment is deleted
+    for(const auto& chunk : t.chunks) {
+        f.tags.chunks.Add(chunk);
+    }
     return f;
 }
 
@@ -74,7 +83,7 @@ bool ContextFilter::matches(VfsNode* node, const std::string& path, Vfs& vfs) co
         case Type::TagAny: {
             const TagSet* node_tags = vfs.tag_storage->getTags(node);
             if(!node_tags) return false;
-            for(TagId tag : tags){
+            for(TagId tag : tags.toVector()){
                 if(node_tags->count(tag) > 0) return true;
             }
             return false;
@@ -82,7 +91,7 @@ bool ContextFilter::matches(VfsNode* node, const std::string& path, Vfs& vfs) co
         case Type::TagAll: {
             const TagSet* node_tags = vfs.tag_storage->getTags(node);
             if(!node_tags) return false;
-            for(TagId tag : tags){
+            for(TagId tag : tags.toVector()){
                 if(node_tags->count(tag) == 0) return false;
             }
             return true;
@@ -90,7 +99,7 @@ bool ContextFilter::matches(VfsNode* node, const std::string& path, Vfs& vfs) co
         case Type::TagNone: {
             const TagSet* node_tags = vfs.tag_storage->getTags(node);
             if(!node_tags) return true;
-            for(TagId tag : tags){
+            for(TagId tag : tags.toVector()){
                 if(node_tags->count(tag) > 0) return false;
             }
             return true;
@@ -118,11 +127,11 @@ bool ContextFilter::matches(VfsNode* node, const std::string& path, Vfs& vfs) co
             }
         }
         case Type::ContentMatch: {
-            std::string content = node->read();
+            std::string content = node->read().ToStd();
             return content.find(pattern) != std::string::npos;
         }
         case Type::ContentRegex: {
-            std::string content = node->read();
+            std::string content = node->read().ToStd();
             try {
                 return std::regex_search(content, std::regex(pattern));
             } catch(...) {
@@ -171,7 +180,7 @@ void ContextBuilder::visitNode(const std::string& path, VfsNode* node){
 
     // Check if node matches any filter
     if(matchesAnyFilter(path, node)){
-        std::string content = node->read();
+        std::string content = node->read().ToStd();
         int priority = 100;  // Default priority
 
         // Higher priority for tagged nodes with "important" or "critical"
@@ -184,7 +193,12 @@ void ContextBuilder::visitNode(const std::string& path, VfsNode* node){
         }
 
         ContextEntry entry(path, node, content, priority);
-        if(tags) entry.tags = *tags;
+        if(tags) {
+            entry.tags.chunks.Clear();
+            for(const auto& chunk : tags->chunks) {
+                entry.tags.chunks.Add(chunk);
+            }
+        }
         entries.push_back(std::move(entry));
     }
 
@@ -218,9 +232,9 @@ std::string ContextBuilder::build(){
         if(!entry.tags.empty()){
             oss << "Tags: ";
             bool first = true;
-            for(TagId tag : entry.tags){
+            for(TagId tag : entry.tags.toVector()){
                 if(!first) oss << ", ";
-                oss << tag_registry.getTagName(tag);
+                oss << tag_registry.getTagName(tag).ToStd();
                 first = false;
             }
             oss << "\n";
@@ -307,9 +321,9 @@ std::string ContextBuilder::buildWithOptions(const ContextOptions& opts){
             if(!entry.tags.empty()){
                 oss << "Tags: ";
                 bool first = true;
-                for(TagId tag : entry.tags){
+                for(TagId tag : entry.tags.toVector()){
                     if(!first) oss << ", ";
-                    oss << tag_registry.getTagName(tag);
+                    oss << tag_registry.getTagName(tag).ToStd();
                     first = false;
                 }
                 oss << "\n";
@@ -366,8 +380,8 @@ void ContextBuilder::deduplicateEntries(){
     std::vector<ContextEntry> unique_entries;
     for(auto& entry : entries){
         std::string content_hash = compute_string_hash(entry.content);
-        if(seen_content.find(content_hash) == seen_content.end()){
-            seen_content.insert(content_hash);
+        if(seen_content.Find(content_hash) < 0){
+            seen_content.Add(content_hash);
             unique_entries.push_back(std::move(entry));
         }
     }
@@ -386,9 +400,9 @@ std::pair<std::string, std::string> ContextBuilder::buildHierarchical(){
         if(!entry.tags.empty()){
             overview_oss << " [";
             bool first = true;
-            for(TagId tag : entry.tags){
+            for(TagId tag : entry.tags.toVector()){
                 if(!first) overview_oss << ",";
-                overview_oss << tag_registry.getTagName(tag);
+                overview_oss << tag_registry.getTagName(tag).ToStd();
                 first = false;
             }
             overview_oss << "]";
@@ -518,7 +532,7 @@ bool ReplacementStrategy::apply(Vfs& vfs) const {
     auto node = vfs.resolve(target_path);
     if(!node) return false;
 
-    std::string content = node->read();
+    std::string content = node->read().ToStd();
     std::istringstream iss(content);
     std::vector<std::string> lines;
     std::string line;

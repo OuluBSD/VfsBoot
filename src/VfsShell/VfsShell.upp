@@ -2,6 +2,9 @@ description "VfsBoot - Main Shell\377255,165,0";
 
 uses
 	Core,
+	Draw,
+	CtrlCore,
+	CtrlLib,
 	VfsCore,
 	Clang,
 	UppCompat,
@@ -9,79 +12,47 @@ uses
 	Logic,
 	WebServer;
 
-library(LINUX) blake3;
-
-library(LINUX) svn_delta-1;
-
-library(LINUX) svn_subr-1;
-
-library(LINUX) aprutil-1;
-
-library(LINUX) apr-1;
-
-library(LINUX) z;
-
-library(LINUX) expat;
-
-library(LINUX) magic;
-
-library(LINUX) lz4;
-
-library(LINUX) utf8proc;
-
-library(LINUX) clang;
-
-library(LINUX) websockets;
-
-library(LINUX) pthread;
-
-library(LINUX) "ncurses tinfo";
-
-include(LINUX) /usr/include/subversion-1;
-
-include(LINUX) /usr/include/apr-1;
-
-include(LINUX) /usr/lib/llvm/21/include;
-
 file
 	VfsShell.h,
+	Command.h,
+	Command.cpp,
 	Config.h,
-	Main.cpp,
-	UiBackend.h,
-	UiBackendQtExample.h,
-	Sexp.h,
-	Sexp.cpp,
-	Planner.h,
-	Planner.cpp,
-	AiBridge.h,
-	AiBridge.cpp,
 	ContextBuilder.h,
 	ContextBuilder.cpp,
-	Make.h,
-	Make.cpp,
-	Hypothesis.h,
-	Hypothesis.cpp,
-	ScopeStore.h,
-	ScopeStore.cpp,
 	Feedback.h,
 	Feedback.cpp,
-	ShellCommands.h,
-	ShellCommands.cpp,
+	Hypothesis.h,
+	Hypothesis.cpp,
+	Planner.h,
+	Planner.cpp,
+	Registry.h,
+	Registry.cpp,
 	Repl.h,
 	Repl.cpp,
-	Daemon.cpp,
+	ScopeStore.h,
+	ScopeStore.cpp,
+	Sexp.h,
+	Sexp.cpp,
+	ShellCommands.h,
+	ShellCommands.cpp,
 	SnippetCatalog.h,
 	SnippetCatalog.cpp,
 	Utils.h,
 	Utils.cpp,
-	Command.h,
-	Command.cpp,
+	AiBridge.h,
+	AiBridge.cpp,
 	EditorFunctions.h,
-	Registry.h,
-	Registry.cpp,
-	BuildGraph.h,
-	BuildGraph.cpp;
+	FileBrowser.h,
+	UiBackend.h,
+	UiBackendQtExample.h,
+	CodexOriginal.h,
+	Make.h,
+	Make.cpp,
+	UpdatedMakeCommandForPackage.cpp,
+	Daemon.cpp,
+	Main.cpp,
+	HypothesisTestSuite.h;
 
 mainconfig
-	"" = "";
+	"" = "GUI";
 

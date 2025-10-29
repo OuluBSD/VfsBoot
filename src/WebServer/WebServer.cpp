@@ -1,4 +1,4 @@
-#include "WebServer.h"
+#include "WebServer.h"  // Include main header instead of individual header
 #include <libwebsockets.h>
 #include <queue>
 #include <map>
@@ -11,7 +11,7 @@
 // WebSocket session tracking
 struct WebSocketSession {
     lws *wsi;
-    std::queue<std::string> outgoing_messages;
+    std::queue<String> outgoing_messages;
     std::mutex mutex;
 };
 
@@ -227,15 +227,15 @@ static int callback_http(lws *wsi, enum lws_callback_reasons reason,
         }
 
         // Serve static files from src/www directory
-        std::string file_path = "/common/active/sblo/Dev/VfsBoot/src/www";
+        String file_path = "/common/active/sblo/Dev/VfsBoot/src/www";
         if (strcmp(requested_uri, "/") == 0) {
-            file_path += "/index.html";
+            file_path.Cat("/index.html");
         } else {
-            file_path += requested_uri;
+            file_path.Cat(requested_uri);
         }
 
         // Check if file exists
-        std::ifstream file(file_path);
+        std::ifstream file(String(file_path).ToStd());
         if (!file.good()) {
             // 404 for non-existent files
             lws_return_http_status(wsi, HTTP_STATUS_NOT_FOUND, nullptr);
@@ -247,16 +247,16 @@ static int callback_http(lws *wsi, enum lws_callback_reasons reason,
         buffer << file.rdbuf();
         file.close();
         
-        std::string content = buffer.str();
-        std::cout << "[WebServer] Serving file: " << file_path << " (" << content.length() << " bytes)" << std::endl;
+        String content = buffer.str().c_str();
+        std::cout << "[WebServer] Serving file: " << String(file_path).ToStd() << " (" << content.GetCount() << " bytes)" << std::endl;
 
         // Determine content type based on file extension
-        std::string content_type = "text/plain";
-        if (file_path.substr(file_path.find_last_of(".") + 1) == "html") {
+        String content_type = "text/plain";
+        if (file_path.Right(5) == ".html") {
             content_type = "text/html";
-        } else if (file_path.substr(file_path.find_last_of(".") + 1) == "css") {
+        } else if (file_path.Right(4) == ".css") {
             content_type = "text/css";
-        } else if (file_path.substr(file_path.find_last_of(".") + 1) == "js") {
+        } else if (file_path.Right(3) == ".js") {
             content_type = "application/javascript";
         }
 
@@ -271,15 +271,15 @@ static int callback_http(lws *wsi, enum lws_callback_reasons reason,
         
         // Add content type header
         if (lws_add_http_header_by_token(wsi, WSI_TOKEN_HTTP_CONTENT_TYPE, 
-                                        (unsigned char*)content_type.c_str(), 
-                                        content_type.length(), &p, end))
+                                        (unsigned char*)content_type.ToStd().c_str(), 
+                                        content_type.GetCount(), &p, end))
             return 1;
             
         // Add content length header
-        std::string content_length = std::to_string(content.length());
+        String content_length = IntStr(content.GetCount());
         if (lws_add_http_header_by_token(wsi, WSI_TOKEN_HTTP_CONTENT_LENGTH,
-                                        (unsigned char*)content_length.c_str(),
-                                        content_length.length(), &p, end))
+                                        (unsigned char*)content_length.ToStd().c_str(),
+                                        content_length.GetCount(), &p, end))
             return 1;
 
         // Finalize headers
@@ -291,7 +291,7 @@ static int callback_http(lws *wsi, enum lws_callback_reasons reason,
             return 1;
 
         // Write content
-        if (lws_write(wsi, (unsigned char*)content.c_str(), content.length(), LWS_WRITE_HTTP_FINAL) != (int)content.length())
+        if (lws_write(wsi, (unsigned char*)content.ToStd().c_str(), content.GetCount(), LWS_WRITE_HTTP_FINAL) != (int)content.GetCount())
             return 1;
 
         // Complete HTTP transaction
@@ -306,29 +306,29 @@ static int callback_http(lws *wsi, enum lws_callback_reasons reason,
         char *requested_uri = (char *)in;
         
         // Construct file path
-        std::string file_path = "/common/active/sblo/Dev/VfsBoot/src/www";
+        String file_path = "/common/active/sblo/Dev/VfsBoot/src/www";
         if (strcmp(requested_uri, "/") == 0) {
-            file_path += "/index.html";
+            file_path.Cat("/index.html");
         } else {
             // Prevent directory traversal attacks by sanitizing the URI
-            std::string uri_str = requested_uri;
-            if (uri_str.find("..") != std::string::npos) {
+            String uri_str = requested_uri;
+            if (uri_str.Find("..") >= 0) {
                 lws_return_http_status(wsi, HTTP_STATUS_FORBIDDEN, nullptr);
                 return -1;
             }
             // Ensure we don't add double slashes
-            if (uri_str[0] != '/') {
-                file_path += "/";
+            if (uri_str.GetCount() > 0 && uri_str[0] != '/') {
+                file_path.Cat("/");
             }
-            file_path += requested_uri;
+            file_path.Cat(requested_uri);
         }
         
-        std::cout << "[WebServer] Serving file: " << file_path << std::endl;
+        std::cout << "[WebServer] Serving file: " << String(file_path).ToStd() << std::endl;
         
         // Check if file exists
-        std::ifstream file(file_path);
+        std::ifstream file(String(file_path).ToStd());
         if (!file.good()) {
-            std::cout << "[WebServer] File not found: " << file_path << std::endl;
+            std::cout << "[WebServer] File not found: " << String(file_path).ToStd() << std::endl;
             // 404 for non-existent files
             lws_return_http_status(wsi, HTTP_STATUS_NOT_FOUND, nullptr);
             return -1;
@@ -339,16 +339,16 @@ static int callback_http(lws *wsi, enum lws_callback_reasons reason,
         buffer << file.rdbuf();
         file.close();
         
-        std::string content = buffer.str();
-        std::cout << "[WebServer] File content length: " << content.length() << std::endl;
+        String content = buffer.str().c_str();
+        std::cout << "[WebServer] File content length: " << content.GetCount() << std::endl;
 
         // Determine content type based on file extension
-        std::string content_type = "text/plain";
-        if (file_path.substr(file_path.find_last_of(".") + 1) == "html") {
+        String content_type = "text/plain";
+        if (file_path.Right(5) == ".html") {
             content_type = "text/html";
-        } else if (file_path.substr(file_path.find_last_of(".") + 1) == "css") {
+        } else if (file_path.Right(4) == ".css") {
             content_type = "text/css";
-        } else if (file_path.substr(file_path.find_last_of(".") + 1) == "js") {
+        } else if (file_path.Right(3) == ".js") {
             content_type = "application/javascript";
         }
 
@@ -363,15 +363,15 @@ static int callback_http(lws *wsi, enum lws_callback_reasons reason,
         
         // Add content type header
         if (lws_add_http_header_by_token(wsi, WSI_TOKEN_HTTP_CONTENT_TYPE, 
-                                        (unsigned char*)content_type.c_str(), 
-                                        content_type.length(), &p, end))
+                                        (unsigned char*)content_type.ToStd().c_str(), 
+                                        content_type.GetCount(), &p, end))
             return 1;
             
         // Add content length header
-        std::string content_length = std::to_string(content.length());
+        String content_length = IntStr(content.GetCount());
         if (lws_add_http_header_by_token(wsi, WSI_TOKEN_HTTP_CONTENT_LENGTH,
-                                        (unsigned char*)content_length.c_str(),
-                                        content_length.length(), &p, end))
+                                        (unsigned char*)content_length.ToStd().c_str(),
+                                        content_length.GetCount(), &p, end))
             return 1;
 
         // Finalize headers
@@ -383,7 +383,7 @@ static int callback_http(lws *wsi, enum lws_callback_reasons reason,
             return 1;
 
         // Write content
-        if (lws_write(wsi, (unsigned char*)content.c_str(), content.length(), LWS_WRITE_HTTP_FINAL) != (int)content.length())
+        if (lws_write(wsi, (unsigned char*)content.ToStd().c_str(), content.GetCount(), LWS_WRITE_HTTP_FINAL) != (int)content.GetCount())
             return 1;
 
         // Complete HTTP transaction
@@ -440,14 +440,14 @@ static int callback_websocket(lws *wsi, enum lws_callback_reasons reason,
             break;
 
         session = it->second;
-        std::string command((char*)in, len);
+        String command = String().Cat() << std::string((char*)in, len);
 
         // Strip trailing newline if present
-        while (!command.empty() && (command.back() == '\n' || command.back() == '\r')) {
-            command.pop_back();
+        while (command.GetCount() > 0 && (command[command.GetCount()-1] == '\n' || command[command.GetCount()-1] == '\r')) {
+            command.Trim(command.GetCount()-1);
         }
 
-        std::cout << "[WebServer] Received command: " << command << std::endl;
+        std::cout << "[WebServer] Received command: " << command.ToStd() << std::endl;
 
         // Execute command through callback
         if (g_command_callback) {
@@ -455,33 +455,34 @@ static int callback_websocket(lws *wsi, enum lws_callback_reasons reason,
                 auto [success, output] = g_command_callback(command);
 
                 // Convert \n to \r\n for proper terminal display
-                std::string terminal_output;
-                terminal_output.reserve(output.size() + 100); // Reserve extra space for \r characters
-                for (size_t i = 0; i < output.size(); i++) {
-                    if (output[i] == '\n' && (i == 0 || output[i-1] != '\r')) {
-                        terminal_output += '\r';
+                String terminal_output;
+                terminal_output = output;
+                // For U++ String, we need to do character replacement differently
+                for (int i = 0; i < terminal_output.GetCount(); i++) {
+                    if (terminal_output[i] == '\n' && (i == 0 || terminal_output[i-1] != '\r')) {
+                        terminal_output.Insert(i, "\r");
+                        i++; // Skip the inserted character
                     }
-                    terminal_output += output[i];
                 }
 
                 // Send output back to client
                 // Split large messages into chunks to avoid buffer overflow and UTF-8 truncation
                 {
                     std::lock_guard<std::mutex> msg_lock(session->mutex);
-                    if (!terminal_output.empty()) {
-                        const size_t CHUNK_SIZE = 4000; // Leave room for safety
-                        size_t offset = 0;
-                        while (offset < terminal_output.length()) {
-                            size_t chunk_len = std::min(CHUNK_SIZE, terminal_output.length() - offset);
+                    if (terminal_output.GetCount() > 0) {
+                        const int CHUNK_SIZE = 4000; // Leave room for safety
+                        int offset = 0;
+                        while (offset < terminal_output.GetCount()) {
+                            int chunk_len = std::min(CHUNK_SIZE, terminal_output.GetCount() - offset);
 
                             // Make sure we don't split a UTF-8 character
-                            if (offset + chunk_len < terminal_output.length()) {
+                            if (offset + chunk_len < terminal_output.GetCount()) {
                                 unsigned char byte_at_boundary = terminal_output[offset + chunk_len];
 
                                 // If we're about to split in the middle of a continuation byte, back up
                                 while (chunk_len > 0 && (byte_at_boundary & 0xC0) == 0x80) {
                                     chunk_len--;
-                                    if (offset + chunk_len < terminal_output.length()) {
+                                    if (offset + chunk_len < terminal_output.GetCount()) {
                                         byte_at_boundary = terminal_output[offset + chunk_len];
                                     } else {
                                         break;
@@ -490,9 +491,9 @@ static int callback_websocket(lws *wsi, enum lws_callback_reasons reason,
 
                                 // Now check if the last byte in our chunk starts a multibyte sequence
                                 // that would be incomplete
-                                if (chunk_len > 0 && offset + chunk_len - 1 < terminal_output.length()) {
+                                if (chunk_len > 0 && offset + chunk_len - 1 < terminal_output.GetCount()) {
                                     unsigned char last_byte = terminal_output[offset + chunk_len - 1];
-                                    size_t bytes_needed = 0;
+                                    int bytes_needed = 0;
 
                                     if ((last_byte & 0xF8) == 0xF0) bytes_needed = 4; // 4-byte UTF-8
                                     else if ((last_byte & 0xF0) == 0xE0) bytes_needed = 3; // 3-byte UTF-8
@@ -500,7 +501,7 @@ static int callback_websocket(lws *wsi, enum lws_callback_reasons reason,
 
                                     // Check if we have all the bytes we need
                                     if (bytes_needed > 0) {
-                                        size_t bytes_available = terminal_output.length() - (offset + chunk_len - 1);
+                                        int bytes_available = terminal_output.GetCount() - (offset + chunk_len - 1);
                                         if (bytes_available < bytes_needed) {
                                             // Incomplete sequence - back up to before it starts
                                             chunk_len--;
@@ -510,11 +511,13 @@ static int callback_websocket(lws *wsi, enum lws_callback_reasons reason,
                             }
 
                             if (chunk_len > 0) {
-                                session->outgoing_messages.push(terminal_output.substr(offset, chunk_len));
+                                String substr = terminal_output.Mid(offset, chunk_len);
+                                session->outgoing_messages.push(substr);
                                 offset += chunk_len;
                             } else {
-                                // Safeguard: if we can't find a valid boundary, just send one byte
-                                session->outgoing_messages.push(terminal_output.substr(offset, 1));
+                                // Safeguard: if we can't find a valid boundary, just send one character
+                                String substr = terminal_output.Mid(offset, 1);
+                                session->outgoing_messages.push(substr);
                                 offset++;
                             }
                         }
@@ -555,11 +558,11 @@ static int callback_websocket(lws *wsi, enum lws_callback_reasons reason,
         if (session->outgoing_messages.empty())
             break;
 
-        std::string msg = session->outgoing_messages.front();
+        String msg = session->outgoing_messages.front();
         session->outgoing_messages.pop();
 
         unsigned char buffer[LWS_PRE + 4096];
-        size_t msg_len = msg.length();
+        int msg_len = msg.GetCount();
 
         // Ensure we don't exceed buffer size and preserve UTF-8 boundaries
         if (msg_len > 4095) {
@@ -570,11 +573,11 @@ static int callback_websocket(lws *wsi, enum lws_callback_reasons reason,
             }
         }
 
-        memcpy(buffer + LWS_PRE, msg.c_str(), msg_len);
+        memcpy(buffer + LWS_PRE, msg.ToStd().c_str(), msg_len);
 
         // Debug: Check for invalid UTF-8 sequences
         bool valid_utf8 = true;
-        for (size_t i = 0; i < msg_len; i++) {
+        for (int i = 0; i < msg_len; i++) {
             unsigned char c = buffer[LWS_PRE + i];
             if ((c & 0x80) == 0) continue; // ASCII
             if ((c & 0xE0) == 0xC0) { // 2-byte sequence
@@ -615,7 +618,7 @@ static int callback_websocket(lws *wsi, enum lws_callback_reasons reason,
         if (!valid_utf8) {
             std::cerr << "[WebSocket] Message contains invalid UTF-8, length=" << msg_len << std::endl;
             std::cerr << "[WebSocket] First 100 chars: ";
-            for (size_t i = 0; i < std::min(msg_len, size_t(100)); i++) {
+            for (int i = 0; i < std::min(msg_len, int(100)); i++) {
                 unsigned char c = buffer[LWS_PRE + i];
                 if (c >= 32 && c < 127) std::cerr << c;
                 else std::cerr << "\\x" << std::hex << (int)c << std::dec;
@@ -750,7 +753,7 @@ bool is_running() {
     return g_server_running;
 }
 
-void send_output(const std::string& output) {
+void send_output(const String& output) {
     // Broadcast output to all connected sessions
     std::lock_guard<std::mutex> lock(g_sessions_mutex);
 

@@ -1,39 +1,39 @@
-#include "../Logic/LogicEngine.h"
+#include "Logic.h"
 #include "../VfsShell/VfsShell.h"
 
 // ====== Logic System for Tag Theorem Proving ======
 
 // LogicFormula factory methods
 std::shared_ptr<LogicFormula> LogicFormula::makeVar(TagId id){
-    auto f = std::make_shared<LogicFormula>();
+    auto f = std::shared_ptr<LogicFormula>(new LogicFormula());
     f->op = LogicOp::VAR;
     f->var_id = id;
     return f;
 }
 
 std::shared_ptr<LogicFormula> LogicFormula::makeNot(std::shared_ptr<LogicFormula> f){
-    auto result = std::make_shared<LogicFormula>();
+    auto result = std::shared_ptr<LogicFormula>(new LogicFormula());
     result->op = LogicOp::NOT;
     result->children.push_back(f);
     return result;
 }
 
 std::shared_ptr<LogicFormula> LogicFormula::makeAnd(std::vector<std::shared_ptr<LogicFormula>> fs){
-    auto result = std::make_shared<LogicFormula>();
+    auto result = std::shared_ptr<LogicFormula>(new LogicFormula());
     result->op = LogicOp::AND;
     result->children = std::move(fs);
     return result;
 }
 
 std::shared_ptr<LogicFormula> LogicFormula::makeOr(std::vector<std::shared_ptr<LogicFormula>> fs){
-    auto result = std::make_shared<LogicFormula>();
+    auto result = std::shared_ptr<LogicFormula>(new LogicFormula());
     result->op = LogicOp::OR;
     result->children = std::move(fs);
     return result;
 }
 
 std::shared_ptr<LogicFormula> LogicFormula::makeImplies(std::shared_ptr<LogicFormula> lhs, std::shared_ptr<LogicFormula> rhs){
-    auto result = std::make_shared<LogicFormula>();
+    auto result = std::shared_ptr<LogicFormula>(new LogicFormula());
     result->op = LogicOp::IMPLIES;
     result->children.push_back(lhs);
     result->children.push_back(rhs);

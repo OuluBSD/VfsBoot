@@ -57,7 +57,7 @@ MetricsCollector* G_METRICS_COLLECTOR = nullptr;
 RulePatchStaging* G_PATCH_STAGING = nullptr;
 FeedbackLoop* G_FEEDBACK_LOOP = nullptr;
 
-std::shared_ptr<VfsNode> traverse_optional(const Vfs::Overlay& overlay, const std::vector<std::string>& parts){
+std::shared_ptr<VfsNode> traverse_optional(const Overlay& overlay, const std::vector<std::string>& parts){
     std::shared_ptr<VfsNode> cur = overlay.root;
     if(parts.empty()) return cur;
     for(const auto& part : parts){
@@ -90,7 +90,7 @@ Vfs::Vfs() {
     G_VFS = this;
 }
 
-std::vector<std::string> Vfs::splitPath(const std::string& p){
+std::vector<std::string> Vfs::splitPath(const std::string& p) const {
     TRACE_FN("p=", p);
     std::vector<std::string> parts; std::string cur;
     for(char c: p){ if(c=='/'){ if(!cur.empty()){ parts.push_back(cur); cur.clear(); } } else cur.push_back(c); }
@@ -106,7 +106,7 @@ const std::string& Vfs::overlayName(size_t id) const {
     return overlay_stack[id].name;
 }
 
-std::shared_ptr<DirNode> Vfs::overlayRoot(size_t id) const {
+std::shared_ptr<VfsNode> Vfs::overlayRoot(size_t id) const {
     if(id >= overlay_stack.size()) throw std::out_of_range("overlay id");
     return overlay_stack[id].root;
 }
@@ -144,13 +144,12 @@ std::optional<size_t> Vfs::findOverlayByName(const std::string& name) const {
     return std::nullopt;
 }
 
-size_t Vfs::registerOverlay(std::string name, std::shared_ptr<DirNode> overlayRoot){
+size_t Vfs::registerOverlay(std::string name, std::shared_ptr<VfsNode> overlayRoot){
     TRACE_FN("name=", name);
     if(name.empty()) throw std::runtime_error("overlay name required");
     if(findOverlayByName(name)) throw std::runtime_error("overlay name already in use");
     if(!overlayRoot) overlayRoot = std::make_shared<DirNode>("/");
     overlayRoot->name = "/";
-    overlayRoot->parent.reset();
     overlay_stack.push_back(Overlay{std::move(name), overlayRoot, "", ""});
     overlay_dirty.push_back(false);
     overlay_source.emplace_back();
@@ -235,11 +234,11 @@ std::shared_ptr<VfsNode> Vfs::tryResolveForOverlay(const std::string& path, size
     return traverse_optional(overlay_stack[overlayId], parts);
 }
 
-std::shared_ptr<DirNode> Vfs::ensureDir(const std::string& path, size_t overlayId){
+std::shared_ptr<VfsNode> Vfs::ensureDir(const std::string& path, size_t overlayId){
     return ensureDirForOverlay(path, overlayId);
 }
 
-std::shared_ptr<DirNode> Vfs::ensureDirForOverlay(const std::string& path, size_t overlayId){
+std::shared_ptr<VfsNode> Vfs::ensureDirForOverlay(const std::string& path, size_t overlayId){
     TRACE_FN("path=", path, ", overlay=", overlayId);
     if(overlayId >= overlay_stack.size()) throw std::out_of_range("overlay id");
     if(path.empty() || path[0] != '/') throw std::runtime_error("abs path required");
@@ -251,8 +250,7 @@ std::shared_ptr<DirNode> Vfs::ensureDirForOverlay(const std::string& path, size_
         auto& ch = cur->children();
         auto it = ch.find(part);
         if(it == ch.end()){
-            auto dir = std::make_shared<DirNode>(part);
-            dir->parent = cur;
+            auto dir = std::make_shared<DirNode>(String(part.c_str()));
             ch[part] = dir;
             markOverlayDirty(overlayId);
             cur = dir;
@@ -261,7 +259,7 @@ std::shared_ptr<DirNode> Vfs::ensureDirForOverlay(const std::string& path, size_
         }
     }
     if(!cur->isDir()) throw std::runtime_error("exists but not dir");
-    return std::static_pointer_cast<DirNode>(cur);
+    return cur;
 }
 
 void Vfs::mkdir(const std::string& path, size_t overlayId){
@@ -323,7 +321,7 @@ std::string Vfs::read(const std::string& path, std::optional<size_t> overlayId) 
         auto node = tryResolveForOverlay(path, *overlayId);
         if(!node) throw std::runtime_error("not found: " + path);
         if(node->kind != VfsNode::Kind::File) throw std::runtime_error("read non-file");
-        return node->read();
+        return node->read().ToStd();
     }
     auto hits = resolveMulti(path);
     if(hits.empty()) throw std::runtime_error("not found: " + path);
@@ -338,7 +336,7 @@ std::string Vfs::read(const std::string& path, std::optional<size_t> overlayId) 
         }
     }
     if(!target) throw std::runtime_error("read non-file");
-    return target->read();
+    return target->read().ToStd();
 }
 
 void Vfs::addNode(const std::string& dirpath, std::shared_ptr<VfsNode> n, size_t overlayId){
@@ -346,7 +344,7 @@ void Vfs::addNode(const std::string& dirpath, std::shared_ptr<VfsNode> n, size_t
     if(!n) throw std::runtime_error("null node");
     auto dirNode = ensureDirForOverlay(dirpath.empty() ? std::string("/") : dirpath, overlayId);
     n->parent = dirNode;
-    dirNode->children()[n->name] = n;
+    dirNode->children()[n->name.ToStd()] = n;
     markOverlayDirty(overlayId);
 }
 
@@ -356,7 +354,7 @@ void Vfs::rm(const std::string& path, size_t overlayId){
     auto node = resolveForOverlay(path, overlayId);
     auto parent = node->parent.lock();
     if(!parent) throw std::runtime_error("parent missing");
-    parent->children().erase(node->name);
+    parent->children().erase(node->name.ToStd());
     markOverlayDirty(overlayId);
 }
 
@@ -365,7 +363,7 @@ void Vfs::mv(const std::string& src, const std::string& dst, size_t overlayId){
     auto node = resolveForOverlay(src, overlayId);
     auto parent = node->parent.lock();
     if(!parent) throw std::runtime_error("parent missing");
-    parent->children().erase(node->name);
+    parent->children().erase(node->name.ToStd());
 
     auto parts = splitPath(dst);
     if(parts.empty()) throw std::runtime_error("bad path");
@@ -374,7 +372,7 @@ void Vfs::mv(const std::string& src, const std::string& dst, size_t overlayId){
     std::string dir = "/";
     for(const auto& part : parts) dir = join_path(dir, part);
     auto dirNode = ensureDirForOverlay(dir, overlayId);
-    node->name = name;
+    node->name = String(name.c_str());
     node->parent = dirNode;
     dirNode->children()[name] = node;
     markOverlayDirty(overlayId);
@@ -397,6 +395,7 @@ void Vfs::link(const std::string& src, const std::string& dst, size_t overlayId)
 Vfs::DirListing Vfs::listDir(const std::string& p, const std::vector<size_t>& overlays) const {
     TRACE_FN("path=", p);
     DirListing listing;
+    std::unordered_set<std::string> seen;
     std::vector<size_t> allowed = overlays;
     if(allowed.empty()) allowed.push_back(0);
     for(size_t overlayId : allowed){
@@ -404,11 +403,11 @@ Vfs::DirListing Vfs::listDir(const std::string& p, const std::vector<size_t>& ov
         auto node = tryResolveForOverlay(p, overlayId);
         if(!node || !node->isDir()) continue;
         for(auto& kv : node->children()){
-            auto child = kv.second;
-            auto& entry = listing[kv.first];
-            entry.overlays.push_back(overlayId);
-            entry.nodes.push_back(child);
-            entry.types.insert(type_char(child));
+            if(seen.find(kv.first) == seen.end()){
+                seen.insert(kv.first);
+                listing.entries.push_back(kv.first);
+                listing.types.push_back(type_char(kv.second));
+            }
         }
     }
     return listing;
@@ -430,7 +429,7 @@ void Vfs::ls(const std::string& p){
 void Vfs::tree(std::shared_ptr<VfsNode> n, std::string pref){
     TRACE_FN("node=", n ? n->name : std::string("<root>"), ", pref=", pref);
     if(!n) n = root;
-    std::cout << pref << type_char(n) << " " << n->name << "\n";
+    std::cout << pref << type_char(n) << " " << n->name.ToStd() << "\n";
     if(n->isDir()){
         for(auto& kv : n->children()){
             tree(kv.second, pref + "  ");
@@ -458,14 +457,14 @@ std::string Vfs::formatTreeNode(VfsNode* node, const std::string& /* path */, co
             case VfsNode::Kind::Library:  color = "\033[33m"; break; // Yellow
             default:                      color = "\033[37m"; break; // White
         }
-        oss << color << node->name << "\033[0m";
+        oss << color << node->name.ToStd() << "\033[0m";
     } else {
-        oss << node->name;
+        oss << node->name.ToStd();
     }
 
     // Show size/token estimate
     if(opts.show_sizes && !node->isDir()){
-        std::string content = node->read();
+        std::string content = node->read().ToStd();
         size_t tokens = ContextEntry::estimate_tokens(content);
         oss << " (" << tokens << " tok)";
     }
@@ -476,9 +475,9 @@ std::string Vfs::formatTreeNode(VfsNode* node, const std::string& /* path */, co
         if(tags && !tags->empty()){
             oss << " [";
             bool first = true;
-            for(TagId tid : *tags){
+            for(TagId tid : tags->toVector()){
                 if(!first) oss << ",";
-                oss << getTagRegistry(this)->getTagName(tid);
+                oss << getTagRegistry(this)->getTagName(tid).ToStd();
                 first = false;
             }
             oss << "]";
@@ -559,7 +558,7 @@ TagId Vfs::getTagId(const std::string& name) const {
 }
 
 std::string Vfs::getTagName(TagId id) const {
-    return getTagRegistry(this)->getTagName(id);
+    return getTagRegistry(this)->getTagName(id).ToStd();
 }
 
 bool Vfs::hasTagRegistered(const std::string& name) const {
@@ -567,7 +566,12 @@ bool Vfs::hasTagRegistered(const std::string& name) const {
 }
 
 std::vector<std::string> Vfs::allRegisteredTags() const {
-    return getTagRegistry(this)->allTags();
+    Vector<String> tags = getTagRegistry(this)->allTags();
+    std::vector<std::string> result;
+    for(const auto& tag : tags) {
+        result.push_back(tag.ToStd());
+    }
+    return result;
 }
 
 void Vfs::addTag(const std::string& vfs_path, const std::string& tag_name){
@@ -601,8 +605,8 @@ std::vector<std::string> Vfs::getNodeTags(const std::string& vfs_path) const {
 
     std::vector<std::string> result;
     result.reserve(tags->size());
-    for(TagId tag_id : *tags){
-        result.push_back(getTagRegistry(this)->getTagName(tag_id));
+    for(TagId tag_id : tags->toVector()){
+        result.push_back(getTagRegistry(this)->getTagName(tag_id).ToStd());
     }
     return result;
 }

@@ -1,4 +1,5 @@
 #include "VfsShell.h"
+#include "../Logic/Logic.h"
 
 // ============================================================================
 // Feedback Pipeline Implementation
@@ -257,12 +258,12 @@ std::string RulePatch::serialize(const TagRegistry& reg) const {
     oss << rule_name << "|";
 
     if (new_premise) {
-        oss << new_premise->toString(reg);
+        oss << new_premise->toString(reg).ToStd();
     }
     oss << "|";
 
     if (new_conclusion) {
-        oss << new_conclusion->toString(reg);
+        oss << new_conclusion->toString(reg).ToStd();
     }
     oss << "|";
 

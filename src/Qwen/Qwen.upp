@@ -2,43 +2,14 @@ description "Qwen AI Integration\377255,128,0";
 
 uses
 	Core,
-	VfsCore;
-
-library(LINUX) blake3;
-
-library(LINUX) svn_delta-1;
-
-library(LINUX) svn_subr-1;
-
-library(LINUX) aprutil-1;
-
-library(LINUX) apr-1;
-
-library(LINUX) z;
-
-library(LINUX) expat;
-
-library(LINUX) magic;
-
-library(LINUX) lz4;
-
-library(LINUX) utf8proc;
-
-library(LINUX) clang;
-
-library(LINUX) websockets;
-
-library(LINUX) pthread;
-
-library(LINUX) "ncurses tinfo";
-
-include(LINUX) /usr/include/subversion-1;
-
-include(LINUX) /usr/include/apr-1;
-
-include(LINUX) /usr/lib/llvm/21/include;
+	Draw,
+	CtrlCore,
+	CtrlLib,
+	VfsCore,
+	VfsShell;
 
 file
+	Qwen.h,
 	CmdQwen.h,
 	CmdQwen.cpp,
 	QwenClient.h,
@@ -56,7 +27,9 @@ file
 	QwenStateManager.cpp,
 	QwenStateManagerTest.cpp,
 	QwenTcpServer.h,
-	QwenTcpServer.cpp;
+	QwenTcpServer.cpp,
+	QwenVersion.h,
+	registry.h;
 
 mainconfig
 	"" = "";

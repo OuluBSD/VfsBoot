@@ -1,4 +1,4 @@
-#include "ClangParser.h"
+#include "Clang.h"  // Include main header instead of individual header
 #include "CppAst.h"                    // For CppTranslationUnit, CppInclude, CppFunction, etc.
 #include "../VfsShell/Utils.h"        // For trim_copy
 #include "../VfsShell/AiBridge.h"     // For compute_file_hash

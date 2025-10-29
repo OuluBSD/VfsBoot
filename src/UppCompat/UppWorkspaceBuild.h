@@ -1,34 +1,58 @@
-#pragma once
+#ifndef _UppCompat_upp_workspace_build_h_
+#define _UppCompat_upp_workspace_build_h_
 
-#include "../VfsShell/VfsShell.h"
-#include "../VfsShell/BuildGraph.h"
-
-#include <map>
-#include <optional>
 #include <string>
 #include <vector>
+#include <map>
+#include <memory>
+#include <functional>
 
-class Vfs;
-class UppAssembly;
+// Forward declarations
+struct Vfs;
 
-struct WorkspaceBuildOptions {
-    std::string build_type = "debug";
-    std::string builder_name;
+// UppWorkspaceBuild represents a U++ workspace build configuration
+struct UppWorkspaceBuild {
+    std::string workspace_path;
+    std::string build_type = "debug";  // debug or release
+    std::string target_package;
     std::string output_dir;
     std::vector<std::string> extra_includes;
-    std::string target_package;
     bool verbose = false;
     bool dry_run = false;
+    int max_jobs = 1;  // Number of parallel jobs
+    
+    // Load from VFS
+    bool load_from_vfs(Vfs& vfs, const std::string& vfs_path);
+    
+    // Save to VFS
+    bool save_to_vfs(Vfs& vfs, const std::string& vfs_path);
+    
+    // Get effective command-line arguments for umk
+    std::vector<std::string> get_umk_args() const;
+    
+    // Execute the build
+    bool execute(Vfs& vfs) const;
 };
 
-struct WorkspaceBuildSummary {
-    BuildResult result;
-    BuildGraph plan;
-    std::vector<std::string> package_order;
-    std::string builder_used;
-    std::map<std::string, std::string> package_outputs;  // package_name -> output_path (host filesystem)
+// UppBuildResult represents the result of a U++ build
+struct UppBuildResult {
+    bool success = false;
+    std::string output;
+    std::string error;
+    long duration_ms = 0;
+    std::vector<std::string> built_files;
+    
+    // Clear the result
+    void clear();
+    
+    // Merge with another result
+    void merge(const UppBuildResult& other);
 };
 
-WorkspaceBuildSummary build_workspace(UppAssembly& assembly,
-                                      Vfs& vfs,
-                                      const WorkspaceBuildOptions& options);
+// Parse build options from command-line arguments
+UppWorkspaceBuild parse_build_options(const std::vector<std::string>& args);
+
+// Show help for build options
+void show_build_help();
+
+#endif

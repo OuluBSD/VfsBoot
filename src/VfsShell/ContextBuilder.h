@@ -121,7 +121,7 @@ struct ContextBuilder {
 
         while(i + 8 <= len) {
             uint64_t chunk;
-            std::memcpy(&chunk, data + i, 8);
+            memcpy(&chunk, data + i, 8);
             hash = (hash ^ chunk) * prime;
             i += 8;
         }
@@ -143,8 +143,8 @@ struct ContextBuilder {
 private:
     void visitNode(const std::string& path, VfsNode* node);
     bool matchesAnyFilter(const std::string& path, VfsNode* node) const;
-    std::unordered_set<std::string> seen_content;  // For deduplication (fallback)
-    std::unordered_set<uint64_t> seen_fingerprints;  // Fast hash-based deduplication
+    Index<std::string> seen_content;  // For deduplication (fallback)
+    Index<uint64_t> seen_fingerprints;  // Fast hash-based deduplication
 };
 
 // Code replacement strategy for determining what statements to remove/modify
