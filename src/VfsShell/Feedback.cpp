@@ -198,6 +198,32 @@ void MetricsCollector::loadFromVfs(Vfs& vfs, const std::string& path) {
 }
 
 // RulePatch implementation
+RulePatch::RulePatch(const RulePatch& other)
+    : operation(other.operation), rule_name(other.rule_name),
+      new_confidence(other.new_confidence), source(other.source),
+      rationale(other.rationale), evidence_count(other.evidence_count),
+      supporting_scenarios(other.supporting_scenarios) {
+    if(other.new_premise) new_premise = other.new_premise->clone();
+    if(other.new_conclusion) new_conclusion = other.new_conclusion->clone();
+}
+
+RulePatch& RulePatch::operator=(const RulePatch& other) {
+    if(this != &other) {
+        operation = other.operation;
+        rule_name = other.rule_name;
+        new_confidence = other.new_confidence;
+        source = other.source;
+        rationale = other.rationale;
+        evidence_count = other.evidence_count;
+        supporting_scenarios = other.supporting_scenarios;
+        if(other.new_premise) new_premise = other.new_premise->clone();
+        else new_premise.Clear();
+        if(other.new_conclusion) new_conclusion = other.new_conclusion->clone();
+        else new_conclusion.Clear();
+    }
+    return *this;
+}
+
 RulePatch RulePatch::addRule(const std::string& name,
                               One<LogicFormula> premise,
                               One<LogicFormula> conclusion,

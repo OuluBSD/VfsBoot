@@ -84,13 +84,13 @@ std::unordered_map<std::string, std::shared_ptr<VfsNode>>& MountNode::children()
     return cache;
 }
 
-LibrarySymbolNode::LibrarySymbolNode(std::string n, void* ptr, std::string sig)
-    : VfsNode(std::move(n), Kind::File), func_ptr(ptr), signature(std::move(sig)) {}
+LibrarySymbolNode::LibrarySymbolNode(String n, void* ptr, String sig)
+    : VfsNode(Kind::File, n), func_ptr(ptr), signature(sig) {}
 
-LibraryNode::LibraryNode(std::string n, std::string lp)
-    : VfsNode(std::move(n), Kind::Library), lib_path(std::move(lp)), handle(nullptr) {
+LibraryNode::LibraryNode(String n, String lp)
+    : VfsNode(Kind::Library, n), lib_path(lp), handle(nullptr) {
 
-    handle = dlopen(lib_path.c_str(), RTLD_LAZY);
+    handle = dlopen(lib_path.ToStd().c_str(), RTLD_LAZY);
     if(!handle){
         throw std::runtime_error(std::string("mount.lib: dlopen failed: ") + dlerror());
     }
@@ -99,7 +99,7 @@ LibraryNode::LibraryNode(std::string n, std::string lp)
     // For now, we create a placeholder. Users can query symbols manually or
     // we can extend this with platform-specific code (e.g., parsing .so with libelf)
     auto placeholder = std::make_shared<FileNode>("_info",
-        "Library loaded: " + lib_path + "\nUse dlsym or add symbol discovery");
+        ("Library loaded: " + lib_path + "\nUse dlsym or add symbol discovery").ToStd().c_str());
     symbols["_info"] = placeholder;
 }
 
@@ -117,9 +117,9 @@ LibraryNode::~LibraryNode() {
 #include <unistd.h>
 #include <netdb.h>
 
-RemoteNode::RemoteNode(std::string n, std::string h, int p, std::string rp)
-    : VfsNode(std::move(n), Kind::Mount), host(std::move(h)), port(p),
-      remote_path(std::move(rp)), sock_fd(-1), cache_valid(false) {}
+RemoteNode::RemoteNode(String n, String h, int p, String rp)
+    : VfsNode(Kind::Remote, n), host(h), port(p),
+      remote_path(rp), sock_fd(-1), cache_valid(false) {}
 
 RemoteNode::~RemoteNode() {
     disconnect();

@@ -97,31 +97,9 @@ struct RulePatch {
     RulePatch()
         : operation(Operation::Add), new_confidence(1.0f), evidence_count(0) {}
 
-    // Copy constructor (needed because One<> can't be copied)
-    RulePatch(const RulePatch& other)
-        : operation(other.operation), rule_name(other.rule_name),
-          new_confidence(other.new_confidence), source(other.source),
-          rationale(other.rationale), evidence_count(other.evidence_count) {
-        if(other.new_premise) new_premise = other.new_premise->clone();
-        if(other.new_conclusion) new_conclusion = other.new_conclusion->clone();
-    }
-
-    // Copy assignment operator
-    RulePatch& operator=(const RulePatch& other) {
-        if(this != &other) {
-            operation = other.operation;
-            rule_name = other.rule_name;
-            new_confidence = other.new_confidence;
-            source = other.source;
-            rationale = other.rationale;
-            evidence_count = other.evidence_count;
-            if(other.new_premise) new_premise = other.new_premise->clone();
-            else new_premise.Clear();
-            if(other.new_conclusion) new_conclusion = other.new_conclusion->clone();
-            else new_conclusion.Clear();
-        }
-        return *this;
-    }
+    // Copy constructor and assignment declared (implemented in .cpp to avoid incomplete type issues)
+    RulePatch(const RulePatch& other);
+    RulePatch& operator=(const RulePatch& other);
 
     // Create patches
     static RulePatch addRule(const std::string& name,
