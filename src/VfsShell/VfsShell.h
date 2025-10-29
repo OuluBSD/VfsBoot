@@ -12,6 +12,7 @@ using namespace Upp;
 #include "ContextBuilder.h"
 #include "Feedback.h"
 #include "Hypothesis.h"
+#include "HypothesisTestSuite.h"
 #include "Planner.h"
 #include "Registry.h"
 #include "Repl.h"
