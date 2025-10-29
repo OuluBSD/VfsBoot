@@ -199,16 +199,16 @@ void MetricsCollector::loadFromVfs(Vfs& vfs, const std::string& path) {
 
 // RulePatch implementation
 RulePatch RulePatch::addRule(const std::string& name,
-                              std::shared_ptr<LogicFormula> premise,
-                              std::shared_ptr<LogicFormula> conclusion,
+                              One<LogicFormula> premise,
+                              One<LogicFormula> conclusion,
                               float confidence,
                               const std::string& source,
                               const std::string& rationale) {
     RulePatch patch;
     patch.operation = Operation::Add;
     patch.rule_name = name;
-    patch.new_premise = premise;
-    patch.new_conclusion = conclusion;
+    patch.new_premise = pick(premise);
+    patch.new_conclusion = pick(conclusion);
     patch.new_confidence = confidence;
     patch.source = source;
     patch.rationale = rationale;
@@ -216,15 +216,15 @@ RulePatch RulePatch::addRule(const std::string& name,
 }
 
 RulePatch RulePatch::modifyRule(const std::string& name,
-                                std::shared_ptr<LogicFormula> new_premise,
-                                std::shared_ptr<LogicFormula> new_conclusion,
+                                One<LogicFormula> new_premise,
+                                One<LogicFormula> new_conclusion,
                                 float new_confidence,
                                 const std::string& rationale) {
     RulePatch patch;
     patch.operation = Operation::Modify;
     patch.rule_name = name;
-    patch.new_premise = new_premise;
-    patch.new_conclusion = new_conclusion;
+    patch.new_premise = pick(new_premise);
+    patch.new_conclusion = pick(new_conclusion);
     patch.new_confidence = new_confidence;
     patch.source = "learned";
     patch.rationale = rationale;
@@ -306,14 +306,14 @@ bool RulePatchStaging::applyPatch(size_t index) {
     try {
         switch (patch.operation) {
             case RulePatch::Operation::Add: {
-                ImplicationRule rule(patch.rule_name, patch.new_premise, patch.new_conclusion,
+                ImplicationRule rule(patch.rule_name, patch.new_premise->clone(), patch.new_conclusion->clone(),
                                     patch.new_confidence, patch.source);
                 logic_engine->addRule(rule);
                 break;
             }
             case RulePatch::Operation::Modify: {
                 logic_engine->removeRule(patch.rule_name);
-                ImplicationRule rule(patch.rule_name, patch.new_premise, patch.new_conclusion,
+                ImplicationRule rule(patch.rule_name, patch.new_premise->clone(), patch.new_conclusion->clone(),
                                     patch.new_confidence, patch.source);
                 logic_engine->addRule(rule);
                 break;

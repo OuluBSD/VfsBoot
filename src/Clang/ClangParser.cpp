@@ -103,7 +103,7 @@ static void save_crash_recovery(Vfs& vfs, const AutosaveContext& autosave_ctx){
                             out << "D " << path << "\n";
                         }
                     } else if(node->kind == VfsNode::Kind::File){
-                        auto data = node->read();
+                        std::string data = node->read().ToStd();
                         out << "F " << path << " " << data.size() << "\n";
                         if(!data.empty()){
                             out.write(data.data(), static_cast<std::streamsize>(data.size()));
@@ -443,7 +443,7 @@ void save_overlay_to_file(Vfs& vfs, size_t overlayId, const std::string& hostPat
                 out << "D " << path << "\n";
             }
         } else if(node->kind == VfsNode::Kind::File){
-            auto data = node->read();
+            std::string data = node->read().ToStd();
             out << "F " << path << " " << data.size() << "\n";
             if(!data.empty()){
                 out.write(data.data(), static_cast<std::streamsize>(data.size()));

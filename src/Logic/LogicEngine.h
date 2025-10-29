@@ -29,6 +29,7 @@ struct LogicFormula {
 
     bool evaluate(const TagSet& tags) const;
     String toString(const TagRegistry& reg) const;
+    One<LogicFormula> clone() const;
     typedef LogicFormula CLASSNAME;  // Required for THISBACK macros if used
 };
 

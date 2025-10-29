@@ -185,6 +185,8 @@ struct Overlay {
     std::shared_ptr<VfsNode> root;
     std::string policy;
     std::string mount_path;
+    std::string source_file;  // For overlays loaded from disk
+    std::string source_hash;  // Hash of source file for change detection
 };
 
 // Tree options for advanced tree display

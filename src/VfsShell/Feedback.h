@@ -82,8 +82,8 @@ struct RulePatch {
     std::string rule_name;
 
     // For Add/Modify operations
-    std::shared_ptr<LogicFormula> new_premise;
-    std::shared_ptr<LogicFormula> new_conclusion;
+    One<LogicFormula> new_premise;
+    One<LogicFormula> new_conclusion;
     float new_confidence;
     std::string source;  // "ai-generated", "learned", "user"
 
@@ -99,15 +99,15 @@ struct RulePatch {
 
     // Create patches
     static RulePatch addRule(const std::string& name,
-                             std::shared_ptr<LogicFormula> premise,
-                             std::shared_ptr<LogicFormula> conclusion,
+                             One<LogicFormula> premise,
+                             One<LogicFormula> conclusion,
                              float confidence,
                              const std::string& source,
                              const std::string& rationale);
 
     static RulePatch modifyRule(const std::string& name,
-                                std::shared_ptr<LogicFormula> new_premise,
-                                std::shared_ptr<LogicFormula> new_conclusion,
+                                One<LogicFormula> new_premise,
+                                One<LogicFormula> new_conclusion,
                                 float new_confidence,
                                 const std::string& rationale);
 

@@ -1,4 +1,4 @@
-#include "VfsMount.h"
+#include "VfsCore.h"
 #include <dlfcn.h>
 #include "../Clang/ClangParser.h"
 

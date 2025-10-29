@@ -91,6 +91,16 @@ std::string LogicFormula::toString(const TagRegistry& reg) const {
     return "?";
 }
 
+One<LogicFormula> LogicFormula::clone() const {
+    auto result = new LogicFormula();
+    result->op = op;
+    result->var_id = var_id;
+    for(const auto& child : children) {
+        result->children.Add(child->clone());
+    }
+    return One<LogicFormula>(result);
+}
+
 // LogicEngine implementation
 void LogicEngine::addRule(const ImplicationRule& rule){
     rules.push_back(rule);

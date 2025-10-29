@@ -208,12 +208,12 @@ void vfs_add(Vfs& vfs, const String& path, One<VfsNode> node, size_t overlayId){
     String dir = last_slash >= 0 ? path.Mid(0, last_slash) : String("/");
     String name = last_slash >= 0 ? path.Mid(last_slash+1) : path;
     node->name = name;
-    vfs.addNode(dir, node, overlayId);
+    vfs.addNode(dir.ToStd(), node, overlayId);
 }
 void cpp_dump_to_vfs(Vfs& vfs, size_t overlayId, const String& tuPath, const String& filePath){
-    auto n = vfs.resolveForOverlay(tuPath, overlayId);
+    auto n = vfs.resolveForOverlay(tuPath.ToStd(), overlayId);
     auto tu = expect_tu(n);
     String code = tu->dump(0);
-    vfs.write(filePath, code, overlayId);
+    vfs.write(filePath.ToStd(), code.ToStd(), overlayId);
 }
 
