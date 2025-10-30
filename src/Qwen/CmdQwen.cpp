@@ -753,7 +753,7 @@ bool run_ncurses_mode(Qwen::QwenStateManager& state_mgr, Qwen::QwenClient& clien
         }
         // Update session model from server
         if (!msg.model.IsEmpty()) {
-            state_mgr.set_session_model(msg.model);
+            state_mgr.set_session_model(msg.model.ToStd());
             add_output_line("[Model: " + msg.model.ToStd() + "]", has_colors() ? 5 : 0);
         }
         redraw_output();
@@ -861,7 +861,7 @@ bool run_ncurses_mode(Qwen::QwenStateManager& state_mgr, Qwen::QwenClient& clien
             redraw_output();
 
             for (const auto& tool : group.tools) {
-                client.send_tool_approval(tool.tool_id, true);
+                client.send_tool_approval(tool.tool_id.ToStd(), true);
                 output_buffer.emplace_back("  ✓ Approved: " + tool.tool_name, has_colors() ? 1 : 0, true);
             }
             redraw_output();
@@ -1095,7 +1095,7 @@ bool run_ncurses_mode(Qwen::QwenStateManager& state_mgr, Qwen::QwenClient& clien
                 if (handled) {
                     // Send approval/rejection for all tools
                     for (const auto& tool : pending_tool_group.tools) {
-                        client.send_tool_approval(tool.tool_id, approved);
+                        client.send_tool_approval(tool.tool_id.ToStd(), approved);
 
                         if (approved) {
                             add_output_line("  ✓ Approved: " + tool.tool_name, has_colors() ? 1 : 0);
@@ -1119,7 +1119,7 @@ bool run_ncurses_mode(Qwen::QwenStateManager& state_mgr, Qwen::QwenClient& clien
                     // Approve and exit discuss mode
                     if (has_pending_tool_group) {
                         for (const auto& tool : pending_tool_group.tools) {
-                            client.send_tool_approval(tool.tool_id, true);
+                            client.send_tool_approval(tool.tool_id.ToStd(), true);
                             add_output_line("  ✓ Approved: " + tool.tool_name, has_colors() ? 1 : 0);
                         }
                         has_pending_tool_group = false;
@@ -1133,7 +1133,7 @@ bool run_ncurses_mode(Qwen::QwenStateManager& state_mgr, Qwen::QwenClient& clien
                     // Reject and exit discuss mode
                     if (has_pending_tool_group) {
                         for (const auto& tool : pending_tool_group.tools) {
-                            client.send_tool_approval(tool.tool_id, false);
+                            client.send_tool_approval(tool.tool_id.ToStd(), false);
                             add_output_line("  ✗ Rejected: " + tool.tool_name, has_colors() ? 4 : 0);
                         }
                         has_pending_tool_group = false;
@@ -1539,7 +1539,7 @@ void cmd_qwen(const std::vector<std::string>& args,
             std::cout << Color::YELLOW << "[Auto-approving tools]\n" << Color::RESET;
             // Send approval for all tools
             for (const auto& tool : group.tools) {
-                client.send_tool_approval(tool.tool_id, true);
+                client.send_tool_approval(tool.tool_id.ToStd(), true);
             }
         } else {
             // Prompt user for approval
@@ -1547,7 +1547,7 @@ void cmd_qwen(const std::vector<std::string>& args,
 
             // Send approval/rejection for all tools in the group
             for (const auto& tool : group.tools) {
-                client.send_tool_approval(tool.tool_id, approved);
+                client.send_tool_approval(tool.tool_id.ToStd(), approved);
 
                 if (approved) {
                     std::cout << Color::GREEN << "  ✓ Approved: " << tool.tool_name << Color::RESET << "\n";

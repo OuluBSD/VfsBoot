@@ -183,7 +183,7 @@ public:
             return false;
         }
 
-        std::string json = ProtocolParser::serialize_command(cmd);
+        std::string json = ProtocolParser::serialize_command(cmd).ToStd();
         json += '\n'; // Line-buffered protocol
 
         // Log the command type and content (truncate if too long)

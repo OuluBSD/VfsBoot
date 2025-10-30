@@ -68,7 +68,7 @@ bool LogicFormula::evaluate(const TagSet& tags) const {
 std::string LogicFormula::toString(const TagRegistry& reg) const {
     switch(op){
         case LogicOp::VAR:
-            return reg.getTagName(var_id);
+            return reg.getTagName(var_id).ToStd();
         case LogicOp::NOT:
             return "(not " + children[0]->toString(reg) + ")";
         case LogicOp::AND:{

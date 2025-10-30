@@ -157,7 +157,7 @@ void FeatureMask::disableAll(const std::vector<Feature>& features) {
 }
 
 std::string FeatureMask::toString() const {
-    return mask.toString();  // Uses BitVector's toString()
+    return mask.toString().ToStd();  // Uses BitVector's toString()
 }
 
 FeatureMask FeatureMask::fromString(const std::string& s) {
