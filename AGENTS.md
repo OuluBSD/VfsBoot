@@ -16,7 +16,12 @@
 **Implementation notes.**
 - Source is organized into U++ packages under `src/`: `VfsCore/`, `VfsShell/`, `Clang/`, `UppCompat/`, `Qwen/`, `Logic/`, `WebServer/`.
 - Build system uses U++ `umk` (Ultimate++ make) with package dependencies defined in `.upp` files.
-- **Package dependency constraint**: VfsShell and its dependencies should ONLY use U++ Core package. Do NOT use CtrlLib or CtrlCore recursively in the "uses" sections of .upp files. Do NOT include CtrlLib/CtrlCore headers. This keeps VfsShell as a pure console application without GUI dependencies.
+- **CRITICAL PACKAGE DEPENDENCY RULE**: VfsShell and ALL packages it depends on (recursively) must ONLY use U++ Core package. **VIOLATION FOUND**: CtrlCore and CtrlLib appear in "uses" sections recursively from VfsShell. This MUST be fixed:
+  - Check ALL .upp files in the dependency tree from VfsShell
+  - Remove CtrlCore and CtrlLib from ALL "uses" sections
+  - Remove ALL CtrlCore/CtrlLib header includes
+  - VfsShell is a pure console application and must not depend on GUI packages
+  - Only Core is allowed in the entire dependency chain
 - Build VfsShell package: `./umk_build_VfsShell.sh` (builds VfsShell and all dependencies; reference for Core/non-GUI packages).
 - Quick syntax check single file: `c++ -std=gnu++17 -fsyntax-only -I. -I.. -I$HOME/Dev/ai-upp/uppsrc -DGUI -DCLANG -DDEBUG src/VfsShell/Registry.cpp`
 - U++ headers location: `$HOME/Dev/ai-upp/uppsrc` (required for Core headers)
