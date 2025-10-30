@@ -1,7 +1,10 @@
 #include "UppWorkspaceBuild.h"
 
 #include "../VfsShell/VfsShell.h"
-#include "upp_toolchain.h"
+#include "UppAssembly.h"
+#include "UppBuilder.h"
+#include "UppToolchain.h"
+#include "Umk.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -54,54 +57,24 @@ std::string join_with(const std::vector<std::string>& items, char delimiter) {
     return result;
 }
 
-std::string package_target(const std::string& name) {
-    return "pkg." + name;
-}
-
-std::string prefer_host_path(Vfs& vfs, const std::string& path) {
-    // If the path is within the virtual filesystem, return the host path
-    // Otherwise return the original path
-    if (path.empty()) return path;
-
-    // Try to map VFS path to host filesystem path
-    auto host_path = vfs.mapToHostPath(path);
-    if (host_path.has_value()) {
-        return host_path.value();
-    }
-
-    // If no mapping found, return original path
-    return path;
-}
-
-void collect_packages(const std::shared_ptr<UppWorkspace>& workspace,
-                      const std::string& pkg_name,
-                      std::unordered_set<std::string>& visiting,
-                      std::unordered_set<std::string>& visited,
-                      std::vector<std::string>& order);
-
-std::vector<std::string> build_asmlist(const UppWorkspace& workspace,
-                                       const UppPackage& pkg,
-                                       const WorkspaceBuildOptions& options,
-                                       Vfs& vfs,
-                                       const UppBuildMethod* builder);
-
-std::string umk_flags(const WorkspaceBuildOptions& options, bool verbose);
+// Forward declarations
+std::string umk_flags(const UppBuildOptions& options, bool verbose);
 std::string default_output_path(const UppWorkspace& workspace,
                                 const UppPackage& pkg,
-                                const WorkspaceBuildOptions& options,
+                                const UppBuildOptions& options,
                                 Vfs& vfs);
 std::string render_command_template(const std::string& tpl,
                                     const std::map<std::string, std::string>& vars);
 
 std::string make_command_for_package(const UppWorkspace& workspace,
                                      const UppPackage& pkg,
-                                     const WorkspaceBuildOptions& options,
+                                     const UppBuildOptions& options,
                                      Vfs& vfs,
                                      const UppBuildMethod* builder);
 
 std::string generate_internal_upp_workspace_build_command(const UppWorkspace& workspace,
                                                const UppPackage& pkg,
-                                               const WorkspaceBuildOptions& options,
+                                               const UppBuildOptions& options,
                                                Vfs& vfs,
                                                const UppBuildMethod* builder) {
     // Determine output directory
@@ -132,56 +105,7 @@ std::string generate_internal_upp_workspace_build_command(const UppWorkspace& wo
     return cmd;
 }
 
-std::vector<std::string> build_asmlist(const UppWorkspace& workspace,
-                                       const UppPackage& pkg,
-                                       const WorkspaceBuildOptions& options,
-                                       Vfs& vfs,
-                                       const UppBuildMethod* builder) {
-    std::unordered_set<std::string> dirs;
-    auto capture = [&](const std::string& raw) {
-        if(raw.empty()) return;
-        auto normalized = prefer_host_path(vfs, raw);
-        dirs.insert(std::filesystem::path(normalized).lexically_normal().string());
-    };
-
-    if(!workspace.base_dir.empty()) capture(workspace.base_dir);
-
-    if(!workspace.assembly_path.empty()) {
-        auto parent = std::filesystem::path(workspace.assembly_path).parent_path();
-        if(!parent.empty()) capture(parent.string());
-    }
-
-    if(!pkg.path.empty()) {
-        std::filesystem::path pkg_path(pkg.path);
-        if(pkg_path.is_relative() && !workspace.base_dir.empty()) {
-            pkg_path = std::filesystem::path(workspace.base_dir) / pkg_path;
-        }
-        auto parent = pkg_path.parent_path();
-        if(!parent.empty()) capture(parent.lexically_normal().string());
-    }
-
-    for(const auto& inc : options.extra_includes) {
-        capture(inc);
-    }
-
-    if(builder) {
-        for(const auto& inc : builder->splitList("INCLUDES", ';')) {
-            capture(inc);
-        }
-    }
-
-    if(const char* upp_env = std::getenv("UPP")) {
-        for(const auto& inc : split_env_paths(upp_env)) {
-            capture(inc);
-        }
-    }
-
-    std::vector<std::string> result(dirs.begin(), dirs.end());
-    std::sort(result.begin(), result.end());
-    return result;
-}
-
-std::string umk_flags(const WorkspaceBuildOptions& options, bool verbose) {
+std::string umk_flags(const UppBuildOptions& options, bool verbose) {
     std::string flags;
     if(options.build_type == "release") {
         flags = "-r";
@@ -194,7 +118,7 @@ std::string umk_flags(const WorkspaceBuildOptions& options, bool verbose) {
 
 std::string default_output_path(const UppWorkspace& workspace,
                                 const UppPackage& pkg,
-                                const WorkspaceBuildOptions& options,
+                                const UppBuildOptions& options,
                                 Vfs& vfs) {
     if(!options.output_dir.empty()) {
         std::filesystem::path base(options.output_dir);
@@ -232,7 +156,7 @@ std::string render_command_template(const std::string& tpl,
 
 std::string make_command_for_package(const UppWorkspace& workspace,
                                      const UppPackage& pkg,
-                                     const WorkspaceBuildOptions& options,
+                                     const UppBuildOptions& options,
                                      Vfs& vfs,
                                      const UppBuildMethod* builder) {
     auto assembly_dirs = build_asmlist(workspace, pkg, options, vfs, builder);
@@ -346,37 +270,12 @@ std::string make_command_for_package(const UppWorkspace& workspace,
     return "cd " + g_shell_quote(working_dir) + " && " + command_body;
 }
 
-void collect_packages(const std::shared_ptr<UppWorkspace>& workspace,
-                      const std::string& pkg_name,
-                      std::unordered_set<std::string>& visiting,
-                      std::unordered_set<std::string>& visited,
-                      std::vector<std::string>& order) {
-    if(visited.count(pkg_name)) return;
-    if(visiting.count(pkg_name)) {
-        throw std::runtime_error("Circular package dependency detected around '" + pkg_name + "'");
-    }
-
-    visiting.insert(pkg_name);
-    auto pkg = workspace->get_package(pkg_name);
-    if(pkg) {
-        for(const auto& dep : pkg->dependencies) {
-            if(workspace->get_package(dep)) {
-                collect_packages(workspace, dep, visiting, visited, order);
-            }
-        }
-    }
-    visiting.erase(pkg_name);
-
-    visited.insert(pkg_name);
-    order.push_back(pkg_name);
-}
-
 } // namespace
 
-WorkspaceBuildSummary build_workspace(UppAssembly& assembly,
-                                      Vfs& vfs,
-                                      const WorkspaceBuildOptions& options) {
-    WorkspaceBuildSummary summary;
+UppBuildSummary build_workspace(UppAssembly& assembly,
+                                Vfs& vfs,
+                                const UppBuildOptions& options) {
+    UppBuildSummary summary;
 
     auto workspace = assembly.get_workspace();
     if(!workspace) {

@@ -28,7 +28,7 @@ struct QwenConfig {
     int max_retries = 3;
 
     // Load from VFS (/env/qwen_config.json) or environment
-    void load_from_env(const Map<String, String>& env);
+    void load_from_env(const VectorMap<String, String>& env);
 
     // Load from VFS file
     bool load_from_file(const String& vfs_path, Vfs& vfs);

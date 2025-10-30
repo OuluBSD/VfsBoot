@@ -19,7 +19,7 @@ namespace Color {
 }
 
 // Configuration implementation
-void QwenConfig::load_from_env(const std::map<std::string, std::string>& /*env*/) {
+void QwenConfig::load_from_env(const VectorMap<String, String>& /*env*/) {
     // Read from process environment
     if (const char* val = std::getenv("QWEN_MODEL"); val && *val) {
         model = val;
@@ -38,7 +38,7 @@ void QwenConfig::load_from_env(const std::map<std::string, std::string>& /*env*/
     }
 }
 
-bool QwenConfig::load_from_file(const std::string& /*vfs_path*/, Vfs& /*vfs*/) {
+bool QwenConfig::load_from_file(const String& /*vfs_path*/, Vfs& /*vfs*/) {
     // TODO: Implement VFS config file loading
     // For now, return false (no config file)
     return false;
@@ -233,7 +233,7 @@ void display_tool_group(const Qwen::ToolGroup& group) {
 
     for (const auto& tool : group.tools) {
         std::cout << "    - " << Color::MAGENTA << tool.tool_name.ToStd() << Color::RESET;
-        std::cout << " (ID: " << tool.tool_id << ")\n";
+        Cout() << " (ID: " << tool.tool_id << ")\n";
 
         // Display confirmation details if present
         if (tool.confirmation_details.has_value()) {
@@ -243,8 +243,8 @@ void display_tool_group(const Qwen::ToolGroup& group) {
         // Display arguments
         if (!tool.args.empty()) {
             std::cout << "      Arguments:\n";
-            for (const auto& [key, value] : tool.args) {
-                std::cout << "        " << key << ": " << value << "\n";
+            for (int i = 0; i < tool.args.GetCount(); i++) {
+                Cout() << "        " << tool.args.GetKey(i) << ": " << tool.args[i] << "\n";
             }
         }
     }
@@ -764,7 +764,7 @@ bool run_ncurses_mode(Qwen::QwenStateManager& state_mgr, Qwen::QwenClient& clien
         if (msg.role == Qwen::MessageRole::USER) {
             streaming_in_progress = false;
             streaming_buffer.clear();
-            add_output_line("You: " + msg.content, has_colors() ? 1 : 0);
+            add_output_line("You: " + msg.content.ToStd(), has_colors() ? 1 : 0);
             redraw_output();
             redraw_input();
         } else if (msg.role == Qwen::MessageRole::ASSISTANT) {
@@ -789,7 +789,7 @@ bool run_ncurses_mode(Qwen::QwenStateManager& state_mgr, Qwen::QwenClient& clien
                 if (streaming_in_progress) {
                     streaming_in_progress = false;
                     streaming_buffer.clear();
-                } else if (!msg.content.empty()) {
+                } else if (!msg.content.IsEmpty()) {
                     // Create a box for AI responses
                     // Add a marker line to indicate the start of box content
                     output_buffer.emplace_back("", 0); // Empty line to separate
@@ -842,8 +842,8 @@ bool run_ncurses_mode(Qwen::QwenStateManager& state_mgr, Qwen::QwenClient& clien
 
             if (!tool.args.empty()) {
                 output_buffer.emplace_back("      Arguments:", has_colors() ? 5 : 0, true);
-                for (const auto& [key, value] : tool.args) {
-                    std::string arg_line = "        " + key + ": " + value;
+                for (int i = 0; i < tool.args.GetCount(); i++) {
+                    std::string arg_line = "        " + tool.args.GetKey(i).ToStd() + ": " + tool.args[i].ToStd();
                     // Truncate very long argument values
                     if (arg_line.length() > 120) {
                         arg_line = arg_line.substr(0, 117) + "...";
@@ -878,8 +878,8 @@ bool run_ncurses_mode(Qwen::QwenStateManager& state_mgr, Qwen::QwenClient& clien
             cursor_pos = 0;
             redraw_input();
 
-            // Store pending tool group and change state
-            pending_tool_group = group;
+            // Store pending tool group and change state (use deep copy since group is const&)
+            pending_tool_group = clone(group);
             has_pending_tool_group = true;
             ui_state = UIState::ToolApproval;
         }
@@ -918,7 +918,7 @@ bool run_ncurses_mode(Qwen::QwenStateManager& state_mgr, Qwen::QwenClient& clien
         if (stats.completion_tokens.has_value()) {
             stats_line += ", Completion: " + std::to_string(stats.completion_tokens.value());
         }
-        if (!stats.duration.empty()) {
+        if (!stats.duration.IsEmpty()) {
             stats_line += ", Duration: " + stats.duration;
         }
         stats_line += "]";
@@ -1098,9 +1098,9 @@ bool run_ncurses_mode(Qwen::QwenStateManager& state_mgr, Qwen::QwenClient& clien
                         client.send_tool_approval(tool.tool_id.ToStd(), approved);
 
                         if (approved) {
-                            add_output_line("  ✓ Approved: " + tool.tool_name, has_colors() ? 1 : 0);
+                            add_output_line("  ✓ Approved: " + tool.tool_name.ToStd(), has_colors() ? 1 : 0);
                         } else {
-                            add_output_line("  ✗ Rejected: " + tool.tool_name, has_colors() ? 4 : 0);
+                            add_output_line("  ✗ Rejected: " + tool.tool_name.ToStd(), has_colors() ? 4 : 0);
                         }
                     }
 
@@ -1120,7 +1120,7 @@ bool run_ncurses_mode(Qwen::QwenStateManager& state_mgr, Qwen::QwenClient& clien
                     if (has_pending_tool_group) {
                         for (const auto& tool : pending_tool_group.tools) {
                             client.send_tool_approval(tool.tool_id.ToStd(), true);
-                            add_output_line("  ✓ Approved: " + tool.tool_name, has_colors() ? 1 : 0);
+                            add_output_line("  ✓ Approved: " + tool.tool_name.ToStd(), has_colors() ? 1 : 0);
                         }
                         has_pending_tool_group = false;
                     }
@@ -1134,7 +1134,7 @@ bool run_ncurses_mode(Qwen::QwenStateManager& state_mgr, Qwen::QwenClient& clien
                     if (has_pending_tool_group) {
                         for (const auto& tool : pending_tool_group.tools) {
                             client.send_tool_approval(tool.tool_id.ToStd(), false);
-                            add_output_line("  ✗ Rejected: " + tool.tool_name, has_colors() ? 4 : 0);
+                            add_output_line("  ✗ Rejected: " + tool.tool_name.ToStd(), has_colors() ? 4 : 0);
                         }
                         has_pending_tool_group = false;
                     }
@@ -1360,7 +1360,7 @@ void cmd_qwen(const std::vector<std::string>& args,
         std::string registry_path = g_registry.getValue("/Manager/Path").value_or("");
         if (!registry_path.empty()) {
             manager_config.management_repo_path = registry_path;
-        } else if (!opts.workspace_root.empty()) {
+        } else if (!opts.workspace_root.IsEmpty()) {
             manager_config.management_repo_path = opts.workspace_root;
         } else {
             manager_config.management_repo_path = ".";
@@ -1396,10 +1396,10 @@ void cmd_qwen(const std::vector<std::string>& args,
     config.load_from_file("/env/qwen_config.json", vfs);
 
     // Override config with command-line options
-    if (!opts.model.empty()) {
+    if (!opts.model.IsEmpty()) {
         config.model = opts.model;
     }
-    if (!opts.workspace_root.empty()) {
+    if (!opts.workspace_root.IsEmpty()) {
         config.workspace_root = opts.workspace_root;
     }
 
@@ -1414,7 +1414,7 @@ void cmd_qwen(const std::vector<std::string>& args,
     // Create or load session
     std::string session_id;
     if (opts.attach) {
-        std::cout << "Loading session: " << opts.session_id << "\n";
+        Cout() << "Loading session: " << opts.session_id << "\n";
         bool loaded = state_mgr.load_session(opts.session_id);
         if (!loaded) {
             std::cout << Color::RED << "Failed to load session." << Color::RESET << "\n";
@@ -1423,7 +1423,7 @@ void cmd_qwen(const std::vector<std::string>& args,
         session_id = opts.session_id;
         std::cout << Color::GREEN << "Session loaded successfully!" << Color::RESET << "\n";
     } else {
-        std::cout << "Creating new session with model: " << config.model << "\n";
+        Cout() << "Creating new session with model: " << config.model << "\n";
         session_id = state_mgr.create_session(config.model, config.workspace_root);
         if (session_id.empty()) {
             std::cout << Color::RED << "Failed to create session." << Color::RESET << "\n";
@@ -1448,7 +1448,7 @@ void cmd_qwen(const std::vector<std::string>& args,
         client_config.mode = Qwen::CommunicationMode::TCP;
         client_config.tcp_host = opts.host;
         client_config.tcp_port = opts.port;
-        std::cout << "Using TCP mode: " << opts.host << ":" << opts.port << "\n";
+        Cout() << "Using TCP mode: " << opts.host << ":" << opts.port << "\n";
     } else {
         // Default to stdin/stdout mode - spawn qwen-code process
         client_config.mode = Qwen::CommunicationMode::STDIN_STDOUT;
@@ -1510,7 +1510,7 @@ void cmd_qwen(const std::vector<std::string>& args,
     handlers.on_init = [&](const Qwen::InitMessage& msg) {
         std::cout << Color::GRAY << "[Connected to qwen-code]" << Color::RESET << "\n";
         if (!msg.version.empty()) {
-            std::cout << Color::GRAY << "[Version: " << msg.version << "]" << Color::RESET << "\n";
+            Cout() << Color::GRAY << "[Version: " << msg.version << "]" << Color::RESET << "\n";
         }
         // Update session model from server
         if (!msg.model.empty()) {
@@ -1582,7 +1582,7 @@ void cmd_qwen(const std::vector<std::string>& args,
         if (stats.completion_tokens.has_value()) {
             std::cout << ", Completion: " << stats.completion_tokens.value();
         }
-        if (!stats.duration.empty()) {
+        if (!stats.duration.IsEmpty()) {
             std::cout << ", Duration: " << stats.duration;
         }
         std::cout << "]" << Color::RESET << "\n";

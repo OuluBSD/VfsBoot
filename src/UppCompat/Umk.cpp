@@ -11,8 +11,7 @@
 // Global U++ builder registry
 extern UppBuilderRegistry g_upp_builder_registry;
 
-namespace {
-
+// Public API helper functions
 std::string g_shell_quote(const std::string& value) {
     if(value.empty()) return "''";
     std::string quoted = "'";
@@ -27,10 +26,7 @@ std::string g_shell_quote(const std::string& value) {
     return quoted;
 }
 
-// Overload for U++ String
-std::string g_shell_quote(const String& value) {
-    return g_shell_quote(value.ToStd());
-}
+namespace {
 
 std::vector<std::string> split_env_paths(const std::string& value) {
     std::vector<std::string> paths;
@@ -52,6 +48,9 @@ std::string join_with(const std::vector<std::string>& items, char delimiter) {
     return oss.str();
 }
 
+} // namespace
+
+// Public API functions
 std::string package_target(const std::string& name) {
     return "pkg:" + name;
 }
@@ -406,6 +405,4 @@ UppBuildSummary build_upp_workspace(UppAssembly& assembly,
     summary.result = summary.plan.build(target_name, vfs, build_options);
     return summary;
 }
-
-} // namespace
 

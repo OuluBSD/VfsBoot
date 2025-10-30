@@ -9,6 +9,21 @@
 
 // Forward declarations
 struct Vfs;
+struct UppWorkspace;
+struct UppPackage;
+struct UppBuildMethod;
+
+// WorkspaceBuildOptions represents build configuration for a workspace
+struct WorkspaceBuildOptions {
+    std::string target_package;
+    std::string build_type = "debug";  // debug or release
+    std::string output_dir;
+    std::string builder_name;
+    std::vector<std::string> extra_includes;
+    bool verbose = false;
+    bool dry_run = false;
+    int max_jobs = 1;
+};
 
 // UppWorkspaceBuild represents a U++ workspace build configuration
 struct UppWorkspaceBuild {

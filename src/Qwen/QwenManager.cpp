@@ -1,4 +1,4 @@
-#include "../VfsShell/VfsShell.h"
+#include "Qwen.h"
 #include "registry.h"
 
 // External registry from main.cpp
@@ -253,7 +253,7 @@ This will initialize the manager, load the account configurations, start the TCP
         // Check if VFSBOOT.md already exists
         bool should_write = true;
         try {
-            std::string existing = vfs_->read("VFSBOOT.md");
+            std::string existing = vfs_->read("VFSBOOT.md", std::nullopt);
             if (existing == content) {
                 should_write = false;
             }
@@ -262,7 +262,7 @@ This will initialize the manager, load the account configurations, start the TCP
         }
 
         if (should_write) {
-            vfs_->write("VFSBOOT.md", content);
+            vfs_->write("VFSBOOT.md", content, 0);
             std::cout << "[QwenManager] VFSBOOT.md generated successfully\n";
         }
     }
@@ -323,7 +323,7 @@ std::string QwenManager::load_instructions_from_file(const std::string& filename
 
     // Try to load the file from VFS
     try {
-        return vfs_->read(filename);
+        return vfs_->read(filename, std::nullopt);
     } catch (const std::runtime_error&) {
         // File not found in VFS, will try filesystem
     }
@@ -1416,7 +1416,7 @@ void QwenManager::accounts_json_watcher_thread() {
 
     if (vfs_) {
         try {
-            last_content = vfs_->read("ACCOUNTS.json");
+            last_content = vfs_->read("ACCOUNTS.json", std::nullopt);
         } catch (const std::runtime_error&) {
             // File doesn't exist yet
         }
@@ -1429,7 +1429,7 @@ void QwenManager::accounts_json_watcher_thread() {
         std::string current_content;
         if (vfs_) {
             try {
-                current_content = vfs_->read("ACCOUNTS.json");
+                current_content = vfs_->read("ACCOUNTS.json", std::nullopt);
             } catch (const std::runtime_error&) {
                 // File doesn't exist yet
             }

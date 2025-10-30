@@ -1,4 +1,4 @@
-#include "../VfsShell/VfsShell.h"
+#include "Qwen.h"
 
 using namespace Qwen;
 
@@ -17,19 +17,19 @@ int qwen_integration_test(int argc, char** argv) {
     MessageHandlers handlers;
 
     handlers.on_init = [](const InitMessage& msg) {
-        std::cout << "[INIT] Version: " << msg.version
-                  << ", Model: " << msg.model << "\n";
+        Cout() << "[INIT] Version: " << msg.version
+               << ", Model: " << msg.model << "\n";
     };
 
     handlers.on_conversation = [&](const ConversationMessage& msg) {
         if (msg.role == MessageRole::USER) {
-            std::cout << "[YOU] " << msg.content << "\n";
+            Cout() << "[YOU] " << msg.content << "\n";
         } else if (msg.role == MessageRole::ASSISTANT) {
             if (msg.is_streaming.value_or(false)) {
-                std::cout << msg.content << std::flush;
+                Cout() << msg.content << Flush;
             } else {
-                if (!msg.content.empty()) {
-                    std::cout << "\n";
+                if (!msg.content.IsEmpty()) {
+                    Cout() << "\n";
                 }
             }
         }
@@ -37,25 +37,25 @@ int qwen_integration_test(int argc, char** argv) {
     };
 
     handlers.on_status = [](const StatusUpdate& msg) {
-        std::cout << "[STATUS] ";
+        Cout() << "[STATUS] ";
         if (msg.message.has_value()) {
-            std::cout << msg.message.value();
+            Cout() << msg.message.value();
         }
-        std::cout << "\n";
+        Cout() << "\n";
     };
 
     handlers.on_info = [](const InfoMessage& msg) {
-        std::cout << "[INFO] " << msg.message << "\n";
+        Cout() << "[INFO] " << msg.message << "\n";
     };
 
     handlers.on_error = [](const ErrorMessage& msg) {
-        std::cout << "[ERROR] " << msg.message << "\n";
+        Cout() << "[ERROR] " << msg.message << "\n";
     };
 
     handlers.on_tool_group = [](const ToolGroup& group) {
-        std::cout << "\n[TOOL REQUEST]\n";
+        Cout() << "\n[TOOL REQUEST]\n";
         for (const auto& tool : group.tools) {
-            std::cout << "  - " << tool.tool_name << " (id: " << tool.tool_id << ")\n";
+            Cout() << "  - " << tool.tool_name << " (id: " << tool.tool_id << ")\n";
         }
     };
 

@@ -110,5 +110,6 @@ If class' methods uses THISBACK macros, then class definition must have e.g. (th
 
 So, because we use RAII, avoid using new operator everywhere. If it is being used, it must be contained in RAII containers immediately. It cannot be created just for stack memory, to a pointer in the middle of a function. You will NEVER use pointers for OWNED variables, but if you need to transfer ownership, you may create One<T> wrapper. You will NEVER need to delete values in destructor (unless you are making a container template class).
 
+You should use Upp::Cout() for std::cout replacement. You decompose with iterator i and GetKey and operator[]. copy constructor deletion   is intentional: you must use pick semantics or deep copy for clarity.
 
-
+std::string::substr -> Upp::String::Mid

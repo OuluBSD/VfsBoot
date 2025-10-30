@@ -2,7 +2,7 @@
 #define _UppCompat_upp_toolchain_h_
 
 #include "../VfsShell/VfsShell.h"
-#include "upp_builder.h"
+#include "UppBuilder.h"
 #include <string>
 #include <vector>
 #include <map>

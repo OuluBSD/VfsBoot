@@ -1,4 +1,4 @@
-#include "../VfsShell/VfsShell.h"
+#include "Qwen.h"
 
 // Global instance needed by upp_workspace_build.cpp
 extern UppBuilderRegistry g_upp_builder_registry;

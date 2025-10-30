@@ -2,7 +2,7 @@
 #define _UppCompat_UppCompat_h_
 
 #include <Core/Core.h>
-#include <CtrlLib/CtrlLib.h>
+// Not in this package: #include <CtrlLib/CtrlLib.h>
 
 using namespace Upp;
 
@@ -11,7 +11,6 @@ using namespace Upp;
 #include "UppBuilder.h"
 #include "UppToolchain.h"
 #include "UppWorkspaceBuild.h"
-#include "BuildGraph.h"
 #include "Umk.h"
 #include "UiBackend.h"
 

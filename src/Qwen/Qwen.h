@@ -2,7 +2,7 @@
 #define _Qwen_Qwen_h_
 
 #include <Core/Core.h>
-#include <CtrlLib/CtrlLib.h>
+// Not in this package: #include <CtrlLib/CtrlLib.h>
 
 using namespace Upp;
 

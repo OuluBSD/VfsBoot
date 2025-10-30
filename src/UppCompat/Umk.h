@@ -1,36 +1,37 @@
 #ifndef _UppCompat_Umk_h_
 #define _UppCompat_Umk_h_
 
-// All includes have been moved to UppCompat.h - the main header
-// This header is not self-contained as per U++ convention
-// For reference: This header needs types from VfsShell.h, UppBuilder.h, BuildGraph.h, and upp_toolchain.h
-// #include "../VfsShell/VfsShell.h"        // Commented for U++ convention - included in main header
-// #include "../UppCompat/UppBuilder.h"     // Commented for U++ convention - included in main header
-// #include "../VfsShell/BuildGraph.h"      // Commented for U++ convention - included in main header
-// #include "upp_toolchain.h"               // Commented for U++ convention - included in main header
+#include <string>
+#include <vector>
+#include <memory>
+#include <unordered_set>
 
 // Forward declarations
 struct Vfs;
+struct UppWorkspace;
+struct UppPackage;
+struct UppBuildMethod;
+struct BuildResult;
+class BuildGraph;
 
 // Options for U++ build process
 struct UppBuildOptions {
-    String build_type = "debug"; // debug or release
-    String output_dir;
-    Vector<String> extra_includes;
+    std::string build_type = "debug"; // debug or release
+    std::string output_dir;
+    std::vector<std::string> extra_includes;
     bool verbose = false;
     bool dry_run = false;
-    String target_package;  // Specific package to build (empty = primary)
-    String builder_name;    // Specific builder to use (empty = active)
-    typedef UppBuildOptions CLASSNAME;  // Required for THISBACK macros if used
+    std::string target_package;  // Specific package to build (empty = primary)
+    std::string builder_name;    // Specific builder to use (empty = active)
 };
 
 // Summary of U++ build process
 struct UppBuildSummary {
     BuildResult result;
     BuildGraph plan;
-    Vector<String> package_order;
-    String builder_used;
-    typedef UppBuildSummary CLASSNAME;  // Required for THISBACK macros if used
+    std::vector<std::string> package_order;
+    std::string builder_used;
+    std::map<std::string, std::string> package_outputs;
 };
 
 // Main function to build a U++ workspace using the internal umk pipeline
@@ -38,11 +39,24 @@ UppBuildSummary build_upp_workspace(UppAssembly& assembly,
                                    Vfs& vfs,
                                    const UppBuildOptions& options);
 
-// Helper function to get host filesystem path from VFS path
+// Helper functions
 std::string prefer_host_path(Vfs& vfs, const std::string& path);
-
-// Helper function to quote shell arguments
 std::string g_shell_quote(const std::string& value);
-std::string g_shell_quote(const String& value);  // Overload for U++ String
+std::string package_target(const std::string& name);
+
+void collect_packages(const std::shared_ptr<UppWorkspace>& workspace,
+                     const std::string& pkg_name,
+                     std::unordered_set<std::string>& visiting,
+                     std::unordered_set<std::string>& visited,
+                     std::vector<std::string>& order);
+
+std::vector<std::string> build_asmlist(const UppWorkspace& workspace,
+                                       const UppPackage& pkg,
+                                       const UppBuildOptions& options,
+                                       Vfs& vfs,
+                                       const UppBuildMethod* builder);
+
+// Forward declarations for assembly-related types
+struct UppAssembly;
 
 #endif

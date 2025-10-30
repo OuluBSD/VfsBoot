@@ -18,8 +18,7 @@ file
 	UppToolchain.cpp,
 	UppWorkspaceBuild.h,
 	UppWorkspaceBuild.cpp,
-	UiBackend.h,
-	BuildGraph.h;
+	UiBackend.h;
 
 mainconfig
 	"" = "";
