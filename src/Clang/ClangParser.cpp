@@ -898,27 +898,27 @@ std::shared_ptr<AstNode> deserialize_ast_node(const std::string& type,
 std::pair<String, String> serialize_s_ast_node(const Shared<AstNode>& node){
     if(!node) throw std::runtime_error("cannot serialize null AST node");
 
-    if(auto n = node.dynamic_pointer_cast<AstInt>()){
+    if(Shared<AstInt> n = Shared<AstInt>().dynamic_pointer_cast(node)){
         BinaryWriter w;
         w.i64(n->val);
         return {"AstInt", std::move(w.data)};
     }
-    if(auto n = node.dynamic_pointer_cast<AstBool>()){
+    if(Shared<AstBool> n = Shared<AstBool>().dynamic_pointer_cast(node)){
         BinaryWriter w;
         w.u8(n->val ? 1 : 0);
         return {"AstBool", std::move(w.data)};
     }
-    if(auto n = node.dynamic_pointer_cast<AstStr>()){
+    if(Shared<AstStr> n = Shared<AstStr>().dynamic_pointer_cast(node)){
         BinaryWriter w;
         w.str(n->val);
         return {"AstStr", std::move(w.data)};
     }
-    if(auto n = node.dynamic_pointer_cast<AstSym>()){
+    if(Shared<AstSym> n = Shared<AstSym>().dynamic_pointer_cast(node)){
         BinaryWriter w;
         w.str(n->id);
         return {"AstSym", std::move(w.data)};
     }
-    if(auto n = node.dynamic_pointer_cast<AstIf>()){
+    if(Shared<AstIf> n = Shared<AstIf>().dynamic_pointer_cast(node)){
         BinaryWriter w;
         auto c = serialize_s_ast_node(n->c);
         auto a = serialize_s_ast_node(n->a);
@@ -928,7 +928,7 @@ std::pair<String, String> serialize_s_ast_node(const Shared<AstNode>& node){
         w.str(b.first); w.str(b.second);
         return {"AstIf", std::move(w.data)};
     }
-    if(auto n = node.dynamic_pointer_cast<AstLambda>()){
+    if(Shared<AstLambda> n = Shared<AstLambda>().dynamic_pointer_cast(node)){
         BinaryWriter w;
         if(n->params.size() > std::numeric_limits<uint32_t>::max())
             throw std::runtime_error("lambda parameter list too large to serialize");
@@ -939,7 +939,7 @@ std::pair<String, String> serialize_s_ast_node(const Shared<AstNode>& node){
         w.str(body.second);
         return {"AstLambda", std::move(w.data)};
     }
-    if(auto n = node.dynamic_pointer_cast<AstCall>()){
+    if(Shared<AstCall> n = Shared<AstCall>().dynamic_pointer_cast(node)){
         BinaryWriter w;
         auto fn = serialize_s_ast_node(n->fn);
         w.str(fn.first);
