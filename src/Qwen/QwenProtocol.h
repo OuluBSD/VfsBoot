@@ -110,26 +110,11 @@ struct ToolCall {
 
 struct ToolGroup {
     int id;
-    Vector<ToolCall> tools;
+    std::vector<ToolCall> tools;  // Use std::vector instead of U++ Vector to avoid type system issues
 
-    // U++ containers require explicit copy/pick semantics
+    // Default constructors work fine with std::vector
     ToolGroup() : id(0) {}
-    ToolGroup(const ToolGroup& other) : id(other.id), tools(clone(other.tools)) {}
-    ToolGroup& operator=(const ToolGroup& other) {
-        if (this != &other) {
-            id = other.id;
-            tools = clone(other.tools);
-        }
-        return *this;
-    }
-
-    // U++ pick semantics
-    ToolGroup(ToolGroup&& other) : id(other.id), tools(pick(other.tools)) {}
 };
-
-// Declare these types as moveable for U++ containers
-NTL_MOVEABLE(ToolCall)
-NTL_MOVEABLE(ToolGroup)
 
 struct StatusUpdate {
     AppState state;

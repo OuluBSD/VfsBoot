@@ -362,7 +362,7 @@ void test_tool_groups(QwenStateManager& mgr) {
     tool1.status = ToolStatus::PENDING;
     tool1.args.Add("path", "/test.txt");
 
-    group.tools.Add(tool1);
+    group.tools.push_back(tool1);
 
     // Add tool group
     if (!mgr.add_tool_group(group)) {

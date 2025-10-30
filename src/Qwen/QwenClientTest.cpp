@@ -53,8 +53,8 @@ int qwen_client_test(int argc, char* argv[]) {
 
     handlers.on_tool_group = [](const ToolGroup& msg) {
         Cout() << "[TOOL_GROUP] id=" << msg.id
-               << ", tools=" << msg.tools.GetCount() << "\n";
-        for (int i = 0; i < msg.tools.GetCount(); i++) {
+               << ", tools=" << msg.tools.size() << "\n";
+        for (size_t i = 0; i < msg.tools.size(); i++) {
             const auto& tool = msg.tools[i];
             Cout() << "  - " << tool.tool_name
                    << " (status=" << tool_status_to_string(tool.status) << ")\n";

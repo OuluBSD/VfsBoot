@@ -283,7 +283,7 @@ One<StateMessage> ProtocolParser::parse_message(const String& json_str) {
         msg->type = MessageType::TOOL_GROUP;
 
         // Parse tools array
-        Vector<ToolCall> tools;
+        std::vector<ToolCall> tools;
 
         if (!tools_json.empty()) {
             const char* tp = tools_json.c_str();
@@ -414,7 +414,7 @@ One<StateMessage> ProtocolParser::parse_message(const String& json_str) {
 
         ToolGroup tg;
         tg.id = tool_group_id;
-        tg.tools = pick(tools);
+        tg.tools = std::move(tools);
         msg->data = RawToValue(tg);
     } else if (type_str == "status") {
         msg->type = MessageType::STATUS;
