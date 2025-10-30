@@ -895,30 +895,30 @@ std::shared_ptr<AstNode> deserialize_ast_node(const std::string& type,
     throw std::runtime_error("deserialize_ast_node: unsupported node type '" + type + "'");
 }
 
-std::pair<std::string, std::string> serialize_s_ast_node(const std::shared_ptr<AstNode>& node){
+std::pair<String, String> serialize_s_ast_node(const Shared<AstNode>& node){
     if(!node) throw std::runtime_error("cannot serialize null AST node");
 
-    if(auto n = std::dynamic_pointer_cast<AstInt>(node)){
+    if(auto n = node.dynamic_pointer_cast<AstInt>()){
         BinaryWriter w;
         w.i64(n->val);
         return {"AstInt", std::move(w.data)};
     }
-    if(auto n = std::dynamic_pointer_cast<AstBool>(node)){
+    if(auto n = node.dynamic_pointer_cast<AstBool>()){
         BinaryWriter w;
         w.u8(n->val ? 1 : 0);
         return {"AstBool", std::move(w.data)};
     }
-    if(auto n = std::dynamic_pointer_cast<AstStr>(node)){
+    if(auto n = node.dynamic_pointer_cast<AstStr>()){
         BinaryWriter w;
         w.str(n->val);
         return {"AstStr", std::move(w.data)};
     }
-    if(auto n = std::dynamic_pointer_cast<AstSym>(node)){
+    if(auto n = node.dynamic_pointer_cast<AstSym>()){
         BinaryWriter w;
         w.str(n->id);
         return {"AstSym", std::move(w.data)};
     }
-    if(auto n = std::dynamic_pointer_cast<AstIf>(node)){
+    if(auto n = node.dynamic_pointer_cast<AstIf>()){
         BinaryWriter w;
         auto c = serialize_s_ast_node(n->c);
         auto a = serialize_s_ast_node(n->a);
@@ -928,7 +928,7 @@ std::pair<std::string, std::string> serialize_s_ast_node(const std::shared_ptr<A
         w.str(b.first); w.str(b.second);
         return {"AstIf", std::move(w.data)};
     }
-    if(auto n = std::dynamic_pointer_cast<AstLambda>(node)){
+    if(auto n = node.dynamic_pointer_cast<AstLambda>()){
         BinaryWriter w;
         if(n->params.size() > std::numeric_limits<uint32_t>::max())
             throw std::runtime_error("lambda parameter list too large to serialize");
@@ -939,7 +939,7 @@ std::pair<std::string, std::string> serialize_s_ast_node(const std::shared_ptr<A
         w.str(body.second);
         return {"AstLambda", std::move(w.data)};
     }
-    if(auto n = std::dynamic_pointer_cast<AstCall>(node)){
+    if(auto n = node.dynamic_pointer_cast<AstCall>()){
         BinaryWriter w;
         auto fn = serialize_s_ast_node(n->fn);
         w.str(fn.first);

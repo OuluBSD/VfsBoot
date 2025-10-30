@@ -434,11 +434,14 @@ bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& ba
         // First, try to list through VFS
         auto overlay_ids = vfs.overlaysForPath(base_path);
         auto dir_listing = vfs.listDir(base_path, overlay_ids);
-        
+
         // Process entries found through VFS
-        for (const auto& [entry_name, entry] : dir_listing) {
+        for (size_t i = 0; i < dir_listing.entries.size(); ++i) {
+            const std::string& entry_name = dir_listing.entries[i];
+            char type = dir_listing.types[i];
+
             // Only process directories
-            if (entry.types.count('d') > 0) {  // 'd' indicates directory
+            if (type == 'd') {  // 'd' indicates directory
                 std::string package_dir_path = base_path + "/" + entry_name;
                 
                 if (verbose) {
@@ -499,8 +502,11 @@ bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& ba
             
             // Try to find any .upp file in the base directory
             auto base_dir_listing = vfs.listDir(base_path, overlay_ids);
-            for (const auto& [entry_name, entry] : base_dir_listing) {
-                if (entry.types.count('-') > 0) { // If it's a file (indicated by '-')
+            for (size_t i = 0; i < base_dir_listing.entries.size(); ++i) {
+                const std::string& entry_name = base_dir_listing.entries[i];
+                char type = base_dir_listing.types[i];
+
+                if (type == '-') { // If it's a file (indicated by '-')
                     if (entry_name.length() > 4 && entry_name.substr(entry_name.length() - 4) == ".upp") {
                         std::string pkg_name = entry_name.substr(0, entry_name.length() - 4); // Remove .upp extension
                         

@@ -140,7 +140,7 @@ uint64_t fnv1a64(const String& data);
 String hash_hex(uint64_t value);
 String sanitize_component(const String& s);
 String unescape_meta(const String& s);
-std::pair<String, String> serialize_s_ast_node(const One<AstNode>& node);
+std::pair<String, String> serialize_s_ast_node(const Shared<AstNode>& node);
 One<AstNode> deserialize_s_ast_node(const String& type, const String& payload);
 bool is_s_ast_type(const String& type);
 void serialize_cpp_expr(BinaryWriter& w, const One<CppExpr>& expr);

@@ -515,12 +515,15 @@ std::vector<std::string> get_path_completions(Vfs& vfs, const std::string& parti
 
         // Get directory listing
         auto listing = vfs.listDir(search_dir, listingOverlays);
-        for(const auto& [name, entry] : listing){
+        for(size_t i = 0; i < listing.entries.size(); ++i){
+            const std::string& name = listing.entries[i];
+            char type = listing.types[i];
+
             if(name.empty() || name[0] == '.') continue; // skip hidden
             if(prefix.empty() || name.find(prefix) == 0){
                 std::string completion = name;
                 // Check if entry is a directory
-                if(entry.types.count('d') > 0){
+                if(type == 'd'){
                     completion += '/';
                 }
                 results.push_back(completion);
