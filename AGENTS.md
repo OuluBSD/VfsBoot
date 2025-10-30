@@ -16,9 +16,10 @@
 **Implementation notes.**
 - Source is organized into U++ packages under `src/`: `VfsCore/`, `VfsShell/`, `Clang/`, `UppCompat/`, `Qwen/`, `Logic/`, `WebServer/`.
 - Build system uses U++ `umk` (Ultimate++ make) with package dependencies defined in `.upp` files.
+- **Package dependency constraint**: VfsShell and its dependencies should ONLY use U++ Core package. Do NOT use CtrlLib or CtrlCore recursively in the "uses" sections of .upp files. Do NOT include CtrlLib/CtrlCore headers. This keeps VfsShell as a pure console application without GUI dependencies.
 - Build VfsShell package: `./umk_build_VfsShell.sh` (builds VfsShell and all dependencies; reference for Core/non-GUI packages).
 - Quick syntax check single file: `c++ -std=gnu++17 -fsyntax-only -I. -I.. -I$HOME/Dev/ai-upp/uppsrc -DGUI -DCLANG -DDEBUG src/VfsShell/Registry.cpp`
-- U++ headers location: `$HOME/Dev/ai-upp/uppsrc` (required for Core, CtrlLib, etc.)
+- U++ headers location: `$HOME/Dev/ai-upp/uppsrc` (required for Core headers)
 - `VfsNode` is the base class; `DirNode`, `FileNode`, `MountNode`, `LibraryNode`, and every AST node derive from it. `AstHolder` lets parsed expressions sit inside the VFS tree.
 - `MountNode` delegates read/write/children operations to the host filesystem, providing transparent access to real directories and files.
 - `LibraryNode` uses `dlopen`/`dlsym` to load shared libraries and expose symbols; mount control commands (`mount.allow`/`mount.disallow`) gate new mounts without affecting existing ones.
