@@ -2,7 +2,7 @@
 #define _VfsShell_VfsShell_h_
 
 #include <Core/Core.h>
-#include <CtrlLib/CtrlLib.h>
+// CtrlLib & CtrlCore shouldn't be used here
 
 using namespace Upp;
 

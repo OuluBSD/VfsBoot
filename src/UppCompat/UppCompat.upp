@@ -3,8 +3,6 @@ description "U++ Compatibility Layer\3770,128,255";
 uses
 	Core,
 	Draw,
-	CtrlCore,
-	CtrlLib,
 	VfsCore,
 	VfsShell;
 
@@ -25,3 +23,4 @@ file
 
 mainconfig
 	"" = "";
+

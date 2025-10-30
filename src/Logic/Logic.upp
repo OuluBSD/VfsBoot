@@ -3,8 +3,6 @@ description "Logic Engine and Tag System\377255,0,255";
 uses
 	Core,
 	Draw,
-	CtrlCore,
-	CtrlLib,
 	VfsCore;
 
 file
@@ -16,3 +14,4 @@ file
 
 mainconfig
 	"" = "";
+

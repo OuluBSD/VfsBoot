@@ -3,8 +3,6 @@ description "Qwen AI Integration\377255,128,0";
 uses
 	Core,
 	Draw,
-	CtrlCore,
-	CtrlLib,
 	VfsCore,
 	VfsShell;
 
@@ -33,3 +31,4 @@ file
 
 mainconfig
 	"" = "";
+

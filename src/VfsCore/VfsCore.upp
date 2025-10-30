@@ -2,9 +2,7 @@ description "VFS Core Components\3770,0,255";
 
 uses
 	Core,
-	Draw,
-	CtrlCore,
-	CtrlLib;
+	Draw;
 
 file
 	VfsCore.h,

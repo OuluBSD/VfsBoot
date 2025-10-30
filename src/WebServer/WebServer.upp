@@ -2,9 +2,7 @@ description "Web Server Components\377128,0,128";
 
 uses
 	Core,
-	Draw,
-	CtrlCore,
-	CtrlLib;
+	Draw;
 
 file
 	WebServer.h,
@@ -12,3 +10,4 @@ file
 
 mainconfig
 	"" = "";
+

@@ -2,7 +2,7 @@
 #define _VfsCore_VfsCore_h_
 
 #include <Core/Core.h>
-#include <CtrlLib/CtrlLib.h>
+// not here #include <CtrlLib/CtrlLib.h>
 #include <fstream>
 #include <sstream>
 #include <streambuf>

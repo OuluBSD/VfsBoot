@@ -3,8 +3,6 @@ description "VfsBoot - Main Shell\377255,165,0";
 uses
 	Core,
 	Draw,
-	CtrlCore,
-	CtrlLib,
 	VfsCore,
 	Clang,
 	UppCompat,
@@ -54,5 +52,6 @@ file
 	HypothesisTestSuite.h;
 
 mainconfig
-	"" = "GUI";
+	"" = "",
+	"" = "";
 
