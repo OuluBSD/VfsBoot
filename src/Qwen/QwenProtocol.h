@@ -81,12 +81,55 @@ struct ToolCall {
     std::optional<String> result;
     std::optional<String> error;
     std::optional<ToolConfirmationDetails> confirmation_details;
+
+    // U++ containers require explicit copy/pick semantics
+    ToolCall() {}
+    ToolCall(const ToolCall& other) : tool_id(other.tool_id), tool_name(other.tool_name),
+                                       status(other.status), args(clone(other.args)),
+                                       result(other.result), error(other.error),
+                                       confirmation_details(other.confirmation_details) {}
+    ToolCall& operator=(const ToolCall& other) {
+        if (this != &other) {
+            tool_id = other.tool_id;
+            tool_name = other.tool_name;
+            status = other.status;
+            args = clone(other.args);
+            result = other.result;
+            error = other.error;
+            confirmation_details = other.confirmation_details;
+        }
+        return *this;
+    }
+
+    // U++ pick semantics
+    ToolCall(ToolCall&& other) : tool_id(pick(other.tool_id)), tool_name(pick(other.tool_name)),
+                                  status(other.status), args(pick(other.args)),
+                                  result(pick(other.result)), error(pick(other.error)),
+                                  confirmation_details(pick(other.confirmation_details)) {}
 };
 
 struct ToolGroup {
     int id;
     Vector<ToolCall> tools;
+
+    // U++ containers require explicit copy/pick semantics
+    ToolGroup() : id(0) {}
+    ToolGroup(const ToolGroup& other) : id(other.id), tools(clone(other.tools)) {}
+    ToolGroup& operator=(const ToolGroup& other) {
+        if (this != &other) {
+            id = other.id;
+            tools = clone(other.tools);
+        }
+        return *this;
+    }
+
+    // U++ pick semantics
+    ToolGroup(ToolGroup&& other) : id(other.id), tools(pick(other.tools)) {}
 };
+
+// Declare these types as moveable for U++ containers
+NTL_MOVEABLE(ToolCall)
+NTL_MOVEABLE(ToolGroup)
 
 struct StatusUpdate {
     AppState state;

@@ -352,6 +352,8 @@ struct OutputLine {
     bool is_box_content = false;  // Whether this line is inside a visual box
 
     OutputLine(const std::string& t, int cp = 0, bool box_content = false) : text(t), color_pair(cp), is_box_content(box_content) {}
+    OutputLine(const char* t, int cp = 0, bool box_content = false) : text(t), color_pair(cp), is_box_content(box_content) {}
+    OutputLine(const String& t, int cp = 0, bool box_content = false) : text(t.ToStd()), color_pair(cp), is_box_content(box_content) {}
 };
 
 // Helper function to draw rounded bordered boxes with color
@@ -1509,13 +1511,13 @@ void cmd_qwen(const std::vector<std::string>& args,
 
     handlers.on_init = [&](const Qwen::InitMessage& msg) {
         std::cout << Color::GRAY << "[Connected to qwen-code]" << Color::RESET << "\n";
-        if (!msg.version.empty()) {
+        if (!msg.version.IsEmpty()) {
             Cout() << Color::GRAY << "[Version: " << msg.version << "]" << Color::RESET << "\n";
         }
         // Update session model from server
-        if (!msg.model.empty()) {
-            state_mgr.set_session_model(msg.model);
-            std::cout << Color::GRAY << "[Model: " << msg.model << "]" << Color::RESET << "\n";
+        if (!msg.model.IsEmpty()) {
+            state_mgr.set_session_model(msg.model.ToStd());
+            Cout() << Color::GRAY << "[Model: " << msg.model << "]" << Color::RESET << "\n";
         }
     };
 
@@ -1550,42 +1552,42 @@ void cmd_qwen(const std::vector<std::string>& args,
                 client.send_tool_approval(tool.tool_id.ToStd(), approved);
 
                 if (approved) {
-                    std::cout << Color::GREEN << "  ✓ Approved: " << tool.tool_name << Color::RESET << "\n";
+                    Cout() << Color::GREEN << "  ✓ Approved: " << tool.tool_name << Color::RESET << "\n";
                 } else {
-                    std::cout << Color::RED << "  ✗ Rejected: " << tool.tool_name << Color::RESET << "\n";
+                    Cout() << Color::RED << "  ✗ Rejected: " << tool.tool_name << Color::RESET << "\n";
                 }
             }
         }
     };
 
     handlers.on_status = [&](const Qwen::StatusUpdate& msg) {
-        std::cout << Color::GRAY << "[Status: " << Qwen::app_state_to_string(msg.state) << "]" << Color::RESET;
+        Cout() << Color::GRAY << "[Status: " << Qwen::app_state_to_string(msg.state) << "]" << Color::RESET;
         if (msg.message.has_value()) {
-            std::cout << " " << msg.message.value();
+            Cout() << " " << msg.message.value();
         }
-        std::cout << "\n";
+        Cout() << "\n";
     };
 
     handlers.on_info = [&](const Qwen::InfoMessage& msg) {
-        std::cout << Color::BLUE << "[Info: " << msg.message << "]" << Color::RESET << "\n";
+        Cout() << Color::BLUE << "[Info: " << msg.message << "]" << Color::RESET << "\n";
     };
 
     handlers.on_error = [&](const Qwen::ErrorMessage& msg) {
-        std::cout << Color::RED << "[Error: " << msg.message << "]" << Color::RESET << "\n";
+        Cout() << Color::RED << "[Error: " << msg.message << "]" << Color::RESET << "\n";
     };
 
     handlers.on_completion_stats = [&](const Qwen::CompletionStats& stats) {
-        std::cout << Color::GRAY << "[Stats";
+        Cout() << Color::GRAY << "[Stats";
         if (stats.prompt_tokens.has_value()) {
-            std::cout << " - Prompt: " << stats.prompt_tokens.value();
+            Cout() << " - Prompt: " << stats.prompt_tokens.value();
         }
         if (stats.completion_tokens.has_value()) {
-            std::cout << ", Completion: " << stats.completion_tokens.value();
+            Cout() << ", Completion: " << stats.completion_tokens.value();
         }
         if (!stats.duration.IsEmpty()) {
-            std::cout << ", Duration: " << stats.duration;
+            Cout() << ", Duration: " << stats.duration;
         }
-        std::cout << "]" << Color::RESET << "\n";
+        Cout() << "]" << Color::RESET << "\n";
     };
 
     // Set handlers
