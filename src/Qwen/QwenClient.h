@@ -6,6 +6,7 @@
 #include <functional>
 #include <memory>
 #include <vector>
+#include <poll.h>
 
 namespace Qwen {
 
