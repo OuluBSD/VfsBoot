@@ -1,9 +1,12 @@
 #pragma once
 
-#include "VfsShell.h"
 #include <map>
 #include <string>
 #include <memory>
+#include <vector>
+
+// Forward declaration
+struct Vfs;
 
 // Registry-like functionality for VFS
 struct Registry {

@@ -1,4 +1,4 @@
-#include "Registry.h"
+#include "VfsShell.h"
 #include <sstream>
 #include <algorithm>
 
