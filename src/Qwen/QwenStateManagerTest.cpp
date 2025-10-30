@@ -1,8 +1,5 @@
 #include "Qwen.h"
 
-// Global instance needed by upp_workspace_build.cpp
-extern UppBuilderRegistry g_upp_builder_registry;
-
 using namespace Qwen;
 
 // Test helpers
@@ -363,9 +360,9 @@ void test_tool_groups(QwenStateManager& mgr) {
     tool1.tool_id = "tool-1";
     tool1.tool_name = "read_file";
     tool1.status = ToolStatus::PENDING;
-    tool1.args["path"] = "/test.txt";
+    tool1.args.Add("path", "/test.txt");
 
-    group.tools.push_back(tool1);
+    group.tools.Add(tool1);
 
     // Add tool group
     if (!mgr.add_tool_group(group)) {

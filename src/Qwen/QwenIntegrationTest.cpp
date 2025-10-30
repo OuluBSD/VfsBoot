@@ -26,7 +26,8 @@ int qwen_integration_test(int argc, char** argv) {
             Cout() << "[YOU] " << msg.content << "\n";
         } else if (msg.role == MessageRole::ASSISTANT) {
             if (msg.is_streaming.value_or(false)) {
-                Cout() << msg.content << Flush;
+                Cout() << msg.content;
+                Cout().Flush();
             } else {
                 if (!msg.content.IsEmpty()) {
                     Cout() << "\n";

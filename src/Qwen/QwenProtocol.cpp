@@ -134,31 +134,31 @@ static void skip_value(const char*& p) {
 // Enum Converters
 // ============================================================================
 
-MessageRole ProtocolParser::parse_role(const std::string& role_str) {
+MessageRole ProtocolParser::parse_role(const String& role_str) {
     if (role_str == "user") return MessageRole::USER;
     if (role_str == "assistant") return MessageRole::ASSISTANT;
     if (role_str == "system") return MessageRole::SYSTEM;
-    throw std::runtime_error("Unknown role: " + role_str);
+    throw std::runtime_error("Unknown role: " + role_str.ToStd());
 }
 
-ToolStatus ProtocolParser::parse_tool_status(const std::string& status_str) {
+ToolStatus ProtocolParser::parse_tool_status(const String& status_str) {
     if (status_str == "pending") return ToolStatus::PENDING;
     if (status_str == "confirming") return ToolStatus::CONFIRMING;
     if (status_str == "executing") return ToolStatus::EXECUTING;
     if (status_str == "success") return ToolStatus::SUCCESS;
     if (status_str == "error") return ToolStatus::ERROR;
     if (status_str == "canceled") return ToolStatus::CANCELED;
-    throw std::runtime_error("Unknown tool status: " + status_str);
+    throw std::runtime_error("Unknown tool status: " + status_str.ToStd());
 }
 
-AppState ProtocolParser::parse_app_state(const std::string& state_str) {
+AppState ProtocolParser::parse_app_state(const String& state_str) {
     if (state_str == "idle") return AppState::IDLE;
     if (state_str == "responding") return AppState::RESPONDING;
     if (state_str == "waiting_for_confirmation") return AppState::WAITING_FOR_CONFIRMATION;
-    throw std::runtime_error("Unknown app state: " + state_str);
+    throw std::runtime_error("Unknown app state: " + state_str.ToStd());
 }
 
-std::string ProtocolParser::role_to_string(MessageRole role) {
+String ProtocolParser::role_to_string(MessageRole role) {
     switch (role) {
         case MessageRole::USER: return "user";
         case MessageRole::ASSISTANT: return "assistant";
@@ -167,7 +167,7 @@ std::string ProtocolParser::role_to_string(MessageRole role) {
     return "unknown";
 }
 
-std::string ProtocolParser::tool_status_to_string(ToolStatus status) {
+String ProtocolParser::tool_status_to_string(ToolStatus status) {
     switch (status) {
         case ToolStatus::PENDING: return "pending";
         case ToolStatus::CONFIRMING: return "confirming";
@@ -179,7 +179,7 @@ std::string ProtocolParser::tool_status_to_string(ToolStatus status) {
     return "unknown";
 }
 
-std::string ProtocolParser::app_state_to_string(AppState state) {
+String ProtocolParser::app_state_to_string(AppState state) {
     switch (state) {
         case AppState::IDLE: return "idle";
         case AppState::RESPONDING: return "responding";
@@ -192,14 +192,15 @@ std::string ProtocolParser::app_state_to_string(AppState state) {
 // Protocol Parser Implementation
 // ============================================================================
 
-std::unique_ptr<StateMessage> ProtocolParser::parse_message(const std::string& json_str) {
-    const char* p = json_str.c_str();
+One<StateMessage> ProtocolParser::parse_message(const String& json_str) {
+    std::string json_std = json_str.ToStd();  // Store to avoid dangling pointer
+    const char* p = json_std.c_str();
     skip_whitespace(p);
 
-    if (*p != '{') return nullptr;
+    if (*p != '{') return One<StateMessage>();
     p++; // Skip '{'
 
-    auto msg = std::make_unique<StateMessage>();
+    One<StateMessage> msg = new StateMessage();
     std::string type_str;
 
     // Storage for conversation message fields
@@ -227,11 +228,11 @@ std::unique_ptr<StateMessage> ProtocolParser::parse_message(const std::string& j
         }
 
         // Parse key
-        if (*p != '"') return nullptr;
+        if (*p != '"') return One<StateMessage>();
         std::string key = parse_string(p);
 
         skip_whitespace(p);
-        if (*p != ':') return nullptr;
+        if (*p != ':') return One<StateMessage>();
         p++; // Skip ':'
         skip_whitespace(p);
 
@@ -270,19 +271,19 @@ std::unique_ptr<StateMessage> ProtocolParser::parse_message(const std::string& j
     if (type_str == "init") {
         msg->type = MessageType::INIT;
         // Use parsed fields from JSON
-        msg->data = InitMessage{version, workspace_root, model};
+        msg->data = RawToValue(InitMessage{String(version), String(workspace_root), String(model)});
     } else if (type_str == "conversation") {
         msg->type = MessageType::CONVERSATION;
         MessageRole role = MessageRole::USER;
         if (!role_str.empty()) {
-            role = parse_role(role_str);
+            role = parse_role(String(role_str));
         }
-        msg->data = ConversationMessage{role, content, id, std::nullopt, is_streaming};
+        msg->data = RawToValue(ConversationMessage{role, String(content), id, std::nullopt, is_streaming});
     } else if (type_str == "tool_group") {
         msg->type = MessageType::TOOL_GROUP;
 
         // Parse tools array
-        std::vector<ToolCall> tools;
+        Vector<ToolCall> tools;
 
         if (!tools_json.empty()) {
             const char* tp = tools_json.c_str();
@@ -326,11 +327,11 @@ std::unique_ptr<StateMessage> ProtocolParser::parse_message(const std::string& j
 
                             // Parse value based on key
                             if (key == "tool_id") {
-                                tool.tool_id = parse_string(tp);
+                                tool.tool_id = String(parse_string(tp));
                             } else if (key == "tool_name") {
-                                tool.tool_name = parse_string(tp);
+                                tool.tool_name = String(parse_string(tp));
                             } else if (key == "status") {
-                                tool.status = parse_tool_status(parse_string(tp));
+                                tool.status = parse_tool_status(String(parse_string(tp)));
                             } else if (key == "args") {
                                 // Parse args object into map
                                 if (*tp == '{') {
@@ -351,7 +352,7 @@ std::unique_ptr<StateMessage> ProtocolParser::parse_message(const std::string& j
                                                 skip_whitespace(tp);
                                                 if (*tp == '"') {
                                                     std::string arg_value = parse_string(tp);
-                                                    tool.args[arg_key] = arg_value;
+                                                    tool.args.Add(String(arg_key), String(arg_value));
                                                 } else {
                                                     skip_value(tp);
                                                 }
@@ -383,7 +384,7 @@ std::unique_ptr<StateMessage> ProtocolParser::parse_message(const std::string& j
                                                 skip_whitespace(tp);
 
                                                 if (detail_key == "message") {
-                                                    details.message = parse_string(tp);
+                                                    details.message = String(parse_string(tp));
                                                 } else if (detail_key == "requires_approval") {
                                                     details.requires_approval = parse_bool(tp);
                                                 } else {
@@ -411,28 +412,31 @@ std::unique_ptr<StateMessage> ProtocolParser::parse_message(const std::string& j
             }
         }
 
-        msg->data = ToolGroup{tool_group_id, tools};
+        ToolGroup tg;
+        tg.id = tool_group_id;
+        tg.tools = pick(tools);
+        msg->data = RawToValue(tg);
     } else if (type_str == "status") {
         msg->type = MessageType::STATUS;
-        msg->data = StatusUpdate{AppState::IDLE, std::nullopt, std::nullopt};
+        msg->data = RawToValue(StatusUpdate{AppState::IDLE, std::nullopt, std::nullopt});
     } else if (type_str == "info") {
         msg->type = MessageType::INFO;
-        msg->data = InfoMessage{"info", 1};
+        msg->data = RawToValue(InfoMessage{String("info"), 1});
     } else if (type_str == "error") {
         msg->type = MessageType::ERROR;
-        msg->data = ErrorMessage{"error", 1};
+        msg->data = RawToValue(ErrorMessage{String("error"), 1});
     } else if (type_str == "completion_stats") {
         msg->type = MessageType::COMPLETION_STATS;
-        msg->data = CompletionStats{"1.5s", std::nullopt, std::nullopt};
+        msg->data = RawToValue(CompletionStats{String("1.5s"), std::nullopt, std::nullopt});
     } else {
-        return nullptr;
+        return One<StateMessage>();
     }
 
     return msg;
 }
 
-std::string ProtocolParser::serialize_command(const Command& cmd) {
-    std::ostringstream ss;
+String ProtocolParser::serialize_command(const Command& cmd) {
+    StringStream ss;
     ss << "{\"type\":\"";
 
     switch (cmd.type) {
@@ -451,8 +455,7 @@ std::string ProtocolParser::serialize_command(const Command& cmd) {
                     else if (c == '\f') ss << "\\f";
                     else if (c < 32) {
                         // Escape other control characters as \uXXXX
-                        ss << "\\u" << std::hex << std::setfill('0') << std::setw(4) << (int)c;
-                        ss << std::dec;  // Reset to decimal
+                        ss << "\\u" << Sprintf("%04x", (int)c);
                     }
                     else ss << c;
                 }
@@ -484,35 +487,35 @@ std::string ProtocolParser::serialize_command(const Command& cmd) {
     }
 
     ss << "}";
-    return ss.str();
+    return ss.GetResult();
 }
 
 // Helper command creators
-Command ProtocolParser::create_user_input(const std::string& content) {
+Command ProtocolParser::create_user_input(const String& content) {
     Command cmd;
     cmd.type = CommandType::USER_INPUT;
-    cmd.data = UserInputCommand{content};
+    cmd.data = RawToValue(UserInputCommand{content});
     return cmd;
 }
 
-Command ProtocolParser::create_tool_approval(const std::string& tool_id, bool approved) {
+Command ProtocolParser::create_tool_approval(const String& tool_id, bool approved) {
     Command cmd;
     cmd.type = CommandType::TOOL_APPROVAL;
-    cmd.data = ToolApprovalCommand{tool_id, approved};
+    cmd.data = RawToValue(ToolApprovalCommand{tool_id, approved});
     return cmd;
 }
 
 Command ProtocolParser::create_interrupt() {
     Command cmd;
     cmd.type = CommandType::INTERRUPT;
-    cmd.data = InterruptCommand{};
+    cmd.data = RawToValue(InterruptCommand{});
     return cmd;
 }
 
-Command ProtocolParser::create_model_switch(const std::string& model_id) {
+Command ProtocolParser::create_model_switch(const String& model_id) {
     Command cmd;
     cmd.type = CommandType::MODEL_SWITCH;
-    cmd.data = ModelSwitchCommand{model_id};
+    cmd.data = RawToValue(ModelSwitchCommand{model_id});
     return cmd;
 }
 

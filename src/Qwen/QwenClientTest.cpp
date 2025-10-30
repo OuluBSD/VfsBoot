@@ -25,50 +25,51 @@ int qwen_client_test(int argc, char* argv[]) {
     MessageHandlers handlers;
 
     handlers.on_init = [](const InitMessage& msg) {
-        std::cout << "[INIT] version=" << msg.version
-                  << ", workspace=" << msg.workspace_root
-                  << ", model=" << msg.model << "\n";
+        Cout() << "[INIT] version=" << msg.version
+               << ", workspace=" << msg.workspace_root
+               << ", model=" << msg.model << "\n";
     };
 
     handlers.on_conversation = [](const ConversationMessage& msg) {
-        std::cout << "[CONVERSATION] role=" << message_role_to_string(msg.role)
-                  << ", content=\"" << msg.content << "\"\n";
+        Cout() << "[CONVERSATION] role=" << message_role_to_string(msg.role)
+               << ", content=\"" << msg.content << "\"\n";
     };
 
     handlers.on_status = [](const StatusUpdate& msg) {
-        std::cout << "[STATUS] state=" << app_state_to_string(msg.state);
+        Cout() << "[STATUS] state=" << app_state_to_string(msg.state);
         if (msg.message) {
-            std::cout << ", message=\"" << *msg.message << "\"";
+            Cout() << ", message=\"" << *msg.message << "\"";
         }
-        std::cout << "\n";
+        Cout() << "\n";
     };
 
     handlers.on_info = [](const InfoMessage& msg) {
-        std::cout << "[INFO] " << msg.message << "\n";
+        Cout() << "[INFO] " << msg.message << "\n";
     };
 
     handlers.on_error = [](const ErrorMessage& msg) {
-        std::cout << "[ERROR] " << msg.message << "\n";
+        Cout() << "[ERROR] " << msg.message << "\n";
     };
 
     handlers.on_tool_group = [](const ToolGroup& msg) {
-        std::cout << "[TOOL_GROUP] id=" << msg.id
-                  << ", tools=" << msg.tools.size() << "\n";
-        for (const auto& tool : msg.tools) {
-            std::cout << "  - " << tool.tool_name
-                      << " (status=" << tool_status_to_string(tool.status) << ")\n";
+        Cout() << "[TOOL_GROUP] id=" << msg.id
+               << ", tools=" << msg.tools.GetCount() << "\n";
+        for (int i = 0; i < msg.tools.GetCount(); i++) {
+            const auto& tool = msg.tools[i];
+            Cout() << "  - " << tool.tool_name
+                   << " (status=" << tool_status_to_string(tool.status) << ")\n";
         }
     };
 
     handlers.on_completion_stats = [](const CompletionStats& msg) {
-        std::cout << "[STATS] duration=" << msg.duration;
+        Cout() << "[STATS] duration=" << msg.duration;
         if (msg.prompt_tokens) {
-            std::cout << ", prompt_tokens=" << *msg.prompt_tokens;
+            Cout() << ", prompt_tokens=" << *msg.prompt_tokens;
         }
         if (msg.completion_tokens) {
-            std::cout << ", completion_tokens=" << *msg.completion_tokens;
+            Cout() << ", completion_tokens=" << *msg.completion_tokens;
         }
-        std::cout << "\n";
+        Cout() << "\n";
     };
 
     client.set_handlers(handlers);

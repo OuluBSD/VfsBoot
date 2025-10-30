@@ -32,6 +32,11 @@ static std::string json_escape(const std::string& str) {
     return oss.str();
 }
 
+// Overload for U++ String
+static std::string json_escape(const String& str) {
+    return json_escape(str.ToStd());
+}
+
 // Unescape JSON string
 static std::string json_unescape(const std::string& str) {
     std::ostringstream oss;
@@ -447,7 +452,7 @@ std::optional<ToolGroup> QwenStateManager::get_tool_group(int group_id) const {
 
     for (const auto& group : groups) {
         if (group.id == group_id) {
-            return group;
+            return clone(group);
         }
     }
 
@@ -457,13 +462,14 @@ std::optional<ToolGroup> QwenStateManager::get_tool_group(int group_id) const {
 bool QwenStateManager::update_tool_status(int group_id, const std::string& tool_id, Qwen::ToolStatus status) {
     // Read all tool groups
     auto groups = get_tool_groups();
+    String tool_id_str(tool_id);  // Convert to String once
 
     // Find and update the specific tool
     bool found = false;
     for (auto& group : groups) {
         if (group.id == group_id) {
             for (auto& tool : group.tools) {
-                if (tool.tool_id == tool_id) {
+                if (tool.tool_id == tool_id_str) {
                     tool.status = status;
                     found = true;
                     break;
@@ -798,7 +804,7 @@ QwenStateManager::StorageStats QwenStateManager::get_storage_stats() const {
 
         // Estimate storage size
         for (const auto& msg : history) {
-            stats.total_bytes += msg.content.size();
+            stats.total_bytes += msg.content.GetCount();
         }
         for (const auto& file : files) {
             auto content = retrieve_file(session.session_id, file);

@@ -33,8 +33,8 @@ TEST(parse_init_message) {
                 << R"(","workspaceRoot":"/test","model":"qwen"})";
     std::string json = json_stream.str();
 
-    auto msg = ProtocolParser::parse_message(json);
-    assert(msg != nullptr);
+    auto msg = ProtocolParser::parse_message(String(json));
+    assert(!msg.IsEmpty());
     assert(msg->type == MessageType::INIT);
 
     auto* init = msg->as_init();
@@ -46,8 +46,8 @@ TEST(parse_init_message) {
 TEST(parse_conversation_message) {
     std::string json = R"({"type":"conversation","role":"user","content":"hello world","id":1})";
 
-    auto msg = ProtocolParser::parse_message(json);
-    assert(msg != nullptr);
+    auto msg = ProtocolParser::parse_message(String(json));
+    assert(!msg.IsEmpty());
     assert(msg->type == MessageType::CONVERSATION);
 
     auto* conv = msg->as_conversation();
@@ -57,8 +57,8 @@ TEST(parse_conversation_message) {
 TEST(parse_tool_group_message) {
     std::string json = R"({"type":"tool_group","id":1,"tools":[]})";
 
-    auto msg = ProtocolParser::parse_message(json);
-    assert(msg != nullptr);
+    auto msg = ProtocolParser::parse_message(String(json));
+    assert(!msg.IsEmpty());
     assert(msg->type == MessageType::TOOL_GROUP);
 
     auto* tools = msg->as_tool_group();
@@ -68,8 +68,8 @@ TEST(parse_tool_group_message) {
 TEST(parse_status_message) {
     std::string json = R"({"type":"status","state":"idle","message":"Ready"})";
 
-    auto msg = ProtocolParser::parse_message(json);
-    assert(msg != nullptr);
+    auto msg = ProtocolParser::parse_message(String(json));
+    assert(!msg.IsEmpty());
     assert(msg->type == MessageType::STATUS);
 
     auto* status = msg->as_status();
@@ -79,24 +79,24 @@ TEST(parse_status_message) {
 TEST(parse_info_message) {
     std::string json = R"({"type":"info","message":"Test info","id":1})";
 
-    auto msg = ProtocolParser::parse_message(json);
-    assert(msg != nullptr);
+    auto msg = ProtocolParser::parse_message(String(json));
+    assert(!msg.IsEmpty());
     assert(msg->type == MessageType::INFO);
 }
 
 TEST(parse_error_message) {
     std::string json = R"({"type":"error","message":"Test error","id":1})";
 
-    auto msg = ProtocolParser::parse_message(json);
-    assert(msg != nullptr);
+    auto msg = ProtocolParser::parse_message(String(json));
+    assert(!msg.IsEmpty());
     assert(msg->type == MessageType::ERROR);
 }
 
 TEST(parse_invalid_json) {
     std::string json = R"({invalid json})";
 
-    auto msg = ProtocolParser::parse_message(json);
-    assert(msg == nullptr);  // Should return nullptr for invalid JSON
+    auto msg = ProtocolParser::parse_message(String(json));
+    assert(msg.IsEmpty());  // Should return empty One for invalid JSON
 }
 
 // ============================================================================
@@ -105,7 +105,7 @@ TEST(parse_invalid_json) {
 
 TEST(serialize_user_input) {
     auto cmd = ProtocolParser::create_user_input("hello world");
-    std::string json = ProtocolParser::serialize_command(cmd);
+    std::string json = ProtocolParser::serialize_command(cmd).ToStd();
 
     assert(json.find("\"type\":\"user_input\"") != std::string::npos);
     assert(json.find("\"content\":\"hello world\"") != std::string::npos);
@@ -113,7 +113,7 @@ TEST(serialize_user_input) {
 
 TEST(serialize_user_input_with_escaping) {
     auto cmd = ProtocolParser::create_user_input("hello \"world\"\ntest");
-    std::string json = ProtocolParser::serialize_command(cmd);
+    std::string json = ProtocolParser::serialize_command(cmd).ToStd();
 
     assert(json.find("\"type\":\"user_input\"") != std::string::npos);
     assert(json.find("\\\"") != std::string::npos);  // Should have escaped quotes
@@ -122,7 +122,7 @@ TEST(serialize_user_input_with_escaping) {
 
 TEST(serialize_tool_approval) {
     auto cmd = ProtocolParser::create_tool_approval("abc123", true);
-    std::string json = ProtocolParser::serialize_command(cmd);
+    std::string json = ProtocolParser::serialize_command(cmd).ToStd();
 
     assert(json.find("\"type\":\"tool_approval\"") != std::string::npos);
     assert(json.find("\"tool_id\":\"abc123\"") != std::string::npos);
@@ -131,21 +131,21 @@ TEST(serialize_tool_approval) {
 
 TEST(serialize_tool_rejection) {
     auto cmd = ProtocolParser::create_tool_approval("def456", false);
-    std::string json = ProtocolParser::serialize_command(cmd);
+    std::string json = ProtocolParser::serialize_command(cmd).ToStd();
 
     assert(json.find("\"approved\":false") != std::string::npos);
 }
 
 TEST(serialize_interrupt) {
     auto cmd = ProtocolParser::create_interrupt();
-    std::string json = ProtocolParser::serialize_command(cmd);
+    std::string json = ProtocolParser::serialize_command(cmd).ToStd();
 
     assert(json.find("\"type\":\"interrupt\"") != std::string::npos);
 }
 
 TEST(serialize_model_switch) {
     auto cmd = ProtocolParser::create_model_switch("qwen2.5-coder-32b");
-    std::string json = ProtocolParser::serialize_command(cmd);
+    std::string json = ProtocolParser::serialize_command(cmd).ToStd();
 
     assert(json.find("\"type\":\"model_switch\"") != std::string::npos);
     assert(json.find("\"model_id\":\"qwen2.5-coder-32b\"") != std::string::npos);

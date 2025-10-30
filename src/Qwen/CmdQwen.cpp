@@ -1391,7 +1391,7 @@ void cmd_qwen(const std::vector<std::string>& args,
 
     // Load configuration
     QwenConfig config;
-    std::map<std::string, std::string> dummy_env;
+    VectorMap<String, String> dummy_env;
     config.load_from_env(dummy_env);
     config.load_from_file("/env/qwen_config.json", vfs);
 
@@ -1415,16 +1415,16 @@ void cmd_qwen(const std::vector<std::string>& args,
     std::string session_id;
     if (opts.attach) {
         Cout() << "Loading session: " << opts.session_id << "\n";
-        bool loaded = state_mgr.load_session(opts.session_id);
+        bool loaded = state_mgr.load_session(opts.session_id.ToStd());
         if (!loaded) {
             std::cout << Color::RED << "Failed to load session." << Color::RESET << "\n";
             return;
         }
-        session_id = opts.session_id;
+        session_id = opts.session_id.ToStd();
         std::cout << Color::GREEN << "Session loaded successfully!" << Color::RESET << "\n";
     } else {
         Cout() << "Creating new session with model: " << config.model << "\n";
-        session_id = state_mgr.create_session(config.model, config.workspace_root);
+        session_id = state_mgr.create_session(config.model.ToStd(), config.workspace_root.ToStd());
         if (session_id.empty()) {
             std::cout << Color::RED << "Failed to create session." << Color::RESET << "\n";
             return;
@@ -1454,15 +1454,15 @@ void cmd_qwen(const std::vector<std::string>& args,
         client_config.mode = Qwen::CommunicationMode::STDIN_STDOUT;
 
         // Add model if specified (only for spawned process)
-        if (!config.model.empty()) {
+        if (!config.model.IsEmpty()) {
             client_config.qwen_args.push_back("--model");
-            client_config.qwen_args.push_back(config.model);
+            client_config.qwen_args.push_back(config.model.ToStd());
         }
 
         // Add workspace argument if specified (only for spawned process)
-        if (!config.workspace_root.empty()) {
+        if (!config.workspace_root.IsEmpty()) {
             client_config.qwen_args.push_back("--workspace-root");
-            client_config.qwen_args.push_back(config.workspace_root);
+            client_config.qwen_args.push_back(config.workspace_root.ToStd());
         }
 
         // Add OpenAI flag if specified (only for spawned process)

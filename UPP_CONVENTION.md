@@ -113,3 +113,5 @@ So, because we use RAII, avoid using new operator everywhere. If it is being use
 You should use Upp::Cout() for std::cout replacement. You decompose with iterator i and GetKey and operator[]. copy constructor deletion   is intentional: you must use pick semantics or deep copy for clarity.
 
 std::string::substr -> Upp::String::Mid
+std::stringstream::str() -> Upp::StringStream::GetResult()
+
