@@ -1,7 +1,9 @@
 #include "VfsShell.h"
 #include "../Clang/ClangParser.h"
+#include "../Clang/CppAst.h"
 #include "../Qwen/CmdQwen.h"
 #include "../UppCompat/UppAssembly.h"
+#include "../UppCompat/UppBuilder.h"
 #ifdef flagMAIN
 
 WINDOW* stdscr;
@@ -1869,7 +1871,7 @@ int main(int argc, char** argv){
                         auto complete_tags = vfs.logic_engine->inferTags(*current_tags_ptr, 0.8f);
                         std::vector<std::string> tag_names;
                         for(auto tag_id : complete_tags.toVector()){
-                            tag_names.push_back(vfs.tag_registry->getTagName(tag_id));
+                            tag_names.push_back(vfs.tag_registry->getTagName(tag_id).ToStd());
                         }
                         context_str += "=== Tag Constraints ===\n";
                         context_str += "This plan has the following requirements/constraints: ";
@@ -2261,7 +2263,7 @@ int main(int argc, char** argv){
                         const TagSet& tags = *tags_ptr;
                         std::vector<std::string> tag_names;
                         for(auto tag_id : tags.toVector()){
-                            tag_names.push_back(vfs.tag_registry->getTagName(tag_id));
+                            tag_names.push_back(vfs.tag_registry->getTagName(tag_id).ToStd());
                         }
                         std::cout << "📋 Tags on " << vfs_path << ": ";
                         for(size_t i = 0; i < tag_names.size(); ++i){
@@ -2321,7 +2323,7 @@ int main(int argc, char** argv){
                         // Show initial tags
                         std::vector<std::string> initial_names;
                         for(auto tag_id : initial_tags.toVector()){
-                            initial_names.push_back(vfs.tag_registry->getTagName(tag_id));
+                            initial_names.push_back(vfs.tag_registry->getTagName(tag_id).ToStd());
                         }
                         std::cout << "📋 Initial tags: ";
                         for(size_t i = 0; i < initial_names.size(); ++i){
@@ -2346,7 +2348,7 @@ int main(int argc, char** argv){
                         } else {
                             std::vector<std::string> new_names;
                             for(auto tag_id : new_tags.toVector()){
-                                new_names.push_back(vfs.tag_registry->getTagName(tag_id));
+                                new_names.push_back(vfs.tag_registry->getTagName(tag_id).ToStd());
                             }
                             std::cout << "🔍 Inferred tags (only new): ";
                             for(size_t i = 0; i < new_names.size(); ++i){
@@ -2359,7 +2361,7 @@ int main(int argc, char** argv){
                         // Show complete tag set for planner use
                         std::vector<std::string> complete_names;
                         for(auto tag_id : complete_tags.toVector()){
-                            complete_names.push_back(vfs.tag_registry->getTagName(tag_id));
+                            complete_names.push_back(vfs.tag_registry->getTagName(tag_id).ToStd());
                         }
                         std::cout << "📦 Complete tag set (initial + inferred): ";
                         for(size_t i = 0; i < complete_names.size(); ++i){
@@ -2397,7 +2399,7 @@ int main(int argc, char** argv){
                         // Check consistency of complete tag set
                         auto conflict = vfs.logic_engine->checkConsistency(complete_tags);
                         if(conflict){
-                            std::cout << "❌ Conflict detected after tag inference: " << conflict->description << "\n";
+                            std::cout << "❌ Conflict detected after tag inference: " << conflict->description.ToStd() << "\n";
                             if(!conflict->conflicting_tags.empty()){
                                 std::cout << "   Conflicting tags: ";
                                 for(size_t i = 0; i < conflict->conflicting_tags.size(); ++i){
@@ -2543,8 +2545,8 @@ int main(int argc, char** argv){
                         auto listing = vfs.listDir(src_path, vfs.overlaysForPath(src_path));
                         for(const auto& [name, entry] : listing){
                             std::string child_path = src_path == "/" ? "/" + name : src_path + "/" + name;
-                            if(!entry.nodes.empty()){
-                                auto src_node = entry.nodes[0];
+                            if(!entry.overlays.empty()){
+                                auto src_node = vfs.resolveForOverlay(child_path, entry.overlays[0]);
                                 // Directly reference the source node (preserves type)
                                 dst_parent->children()[name] = src_node;
                                 // If it has children, continue cloning
@@ -3029,7 +3031,7 @@ int main(int argc, char** argv){
         } else if(cmd == "cpp.print"){
             if(inv.args.empty()) throw std::runtime_error("cpp.print <scope> <text>");
             auto block = expect_block(vfs.resolveForOverlay(normalize_path(cwd.path, inv.args[0]), cwd.primary_overlay));
-            std::string text = unescape_meta(join_args(inv.args, 1));
+            std::string text = unescape_meta(join_args(inv.args, 1)).ToStd();
             auto s = std::make_shared<CppString>("s", text);
             auto chain = std::vector<std::shared_ptr<CppExpr>>{ s, std::make_shared<CppId>("endl", "std::endl") };
             auto coutline = std::make_shared<CppStreamOut>("cout", chain);
@@ -3046,7 +3048,7 @@ int main(int argc, char** argv){
         } else if(cmd == "cpp.return"){
             if(inv.args.empty()) throw std::runtime_error("cpp.return <scope> [expr]");
             auto block = expect_block(vfs.resolveForOverlay(normalize_path(cwd.path, inv.args[0]), cwd.primary_overlay));
-            std::string trimmed = unescape_meta(trim_copy(join_args(inv.args, 1)));
+            std::string trimmed = unescape_meta(trim_copy(join_args(inv.args, 1))).ToStd();
             std::shared_ptr<CppExpr> expr;
             if(!trimmed.empty()) expr = std::make_shared<CppRawExpr>("rexpr", trimmed);
             block->stmts.push_back(std::make_shared<CppReturn>("ret", expr));
