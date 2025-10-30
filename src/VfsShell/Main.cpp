@@ -3063,7 +3063,7 @@ int main(int argc, char** argv){
         } else if(cmd == "cpp.vardecl"){
             if(inv.args.size() < 3) throw std::runtime_error("cpp.vardecl <scope> <type> <name> [init]");
             auto block = expect_block(vfs.resolveForOverlay(normalize_path(cwd.path, inv.args[0]), cwd.primary_overlay));
-            std::string init = unescape_meta(trim_copy(join_args(inv.args, 3)));
+            std::string init = unescape_meta(trim_copy(join_args(inv.args, 3))).ToStd();
             bool hasInit = !init.empty();
             block->stmts.push_back(std::make_shared<CppVarDecl>("var", inv.args[1], inv.args[2], init, hasInit));
             std::cout << "+vardecl " << inv.args[1] << " " << inv.args[2] << "\n";
@@ -3079,8 +3079,8 @@ int main(int argc, char** argv){
             std::string rest = trim_copy(join_args(inv.args, 2));
             auto bar = rest.find('|');
             if(bar == std::string::npos) throw std::runtime_error("cpp.rangefor expects 'decl | range'");
-            std::string decl = unescape_meta(trim_copy(rest.substr(0, bar)));
-            std::string range = unescape_meta(trim_copy(rest.substr(bar + 1)));
+            std::string decl = unescape_meta(trim_copy(rest.substr(0, bar))).ToStd();
+            std::string range = unescape_meta(trim_copy(rest.substr(bar + 1))).ToStd();
             if(decl.empty() || range.empty()) throw std::runtime_error("cpp.rangefor missing decl or range");
             std::string absScope = normalize_path(cwd.path, inv.args[0]);
             auto block = expect_block(vfs.resolveForOverlay(absScope, cwd.primary_overlay));
