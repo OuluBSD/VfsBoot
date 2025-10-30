@@ -12,6 +12,7 @@ using namespace Upp;
 
 
 struct Env; // forward
+struct AstNode; // forward
 
 //
 // Arvot S-kielelle
@@ -19,7 +20,7 @@ struct Env; // forward
 struct SexpValue : Moveable<SexpValue> {
     struct Closure {
         std::vector<std::string> params;
-        Shared<struct AstNode> body;
+        std::shared_ptr<AstNode> body;
         Shared<Env> env;
     };
     using Builtin = std::function<SexpValue(std::vector<SexpValue>&, Shared<Env>)>;
@@ -95,7 +96,7 @@ struct Env {
 //
 struct Token { std::string s; };
 std::vector<Token> lex(const std::string& src);
-Shared<AstNode> parse(const std::string& src);
+std::shared_ptr<AstNode> parse(const std::string& src);
 
 //
 // Builtins

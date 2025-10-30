@@ -2,6 +2,7 @@
 #include "../UppCompat/Umk.h"
 #include "../UppCompat/UppAssembly.h"
 #include "../UppCompat/UppBuilder.h"
+#include "../UppCompat/UppToolchain.h"
 #include <sstream>
 
 // Helper function to join strings with a delimiter

@@ -395,7 +395,6 @@ void Vfs::link(const std::string& src, const std::string& dst, size_t overlayId)
 Vfs::DirListing Vfs::listDir(const std::string& p, const std::vector<size_t>& overlays) const {
     TRACE_FN("path=", p);
     DirListing listing;
-    std::unordered_set<std::string> seen;
     std::vector<size_t> allowed = overlays;
     if(allowed.empty()) allowed.push_back(0);
     for(size_t overlayId : allowed){
@@ -403,11 +402,9 @@ Vfs::DirListing Vfs::listDir(const std::string& p, const std::vector<size_t>& ov
         auto node = tryResolveForOverlay(p, overlayId);
         if(!node || !node->isDir()) continue;
         for(auto& kv : node->children()){
-            if(seen.find(kv.first) == seen.end()){
-                seen.insert(kv.first);
-                listing.entries.push_back(kv.first);
-                listing.types.push_back(type_char(kv.second));
-            }
+            auto& entry = listing[kv.first];
+            entry.overlays.push_back(overlayId);
+            entry.types.insert(type_char(kv.second));
         }
     }
     return listing;

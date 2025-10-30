@@ -4,142 +4,29 @@
 // Scope Store Implementation - Binary diffs, feature masks, deterministic context
 // ============================================================================
 
-// BinaryDiff::SvnDeltaContext implementation
-BinaryDiff::SvnDeltaContext::SvnDeltaContext() : pool(nullptr), stream(nullptr), window(nullptr) {
-    apr_pool_create(&pool, nullptr);
-}
+// BinaryDiff stub implementations (SVN delta commented out in header)
+// TODO: Re-enable when libsvn-dev is available
 
-BinaryDiff::SvnDeltaContext::~SvnDeltaContext() {
-    if (pool) {
-        apr_pool_destroy(pool);
-    }
-}
-
-// Compute binary diff using SVN delta algorithm
+// Compute binary diff - stub implementation
 std::vector<uint8_t> BinaryDiff::compute(const std::string& old_content,
                                           const std::string& new_content) {
     TRACE_FN("old_size=", old_content.size(), " new_size=", new_content.size());
 
-    SvnDeltaContext ctx;
-    std::vector<uint8_t> diff_data;
-
-    // Create SVN string buffers
-    svn_string_t old_str = {old_content.data(), old_content.size()};
-    svn_string_t new_str = {new_content.data(), new_content.size()};
-
-    // Create text delta stream
-    svn_txdelta_stream_t* stream;
-    svn_txdelta2(&stream,
-                 svn_stream_from_string(&old_str, ctx.pool),
-                 svn_stream_from_string(&new_str, ctx.pool),
-                 TRUE,  // calculate_checksums
-                 ctx.pool);
-
-    // Collect delta windows
-    while (true) {
-        svn_txdelta_window_t* window;
-        svn_error_t* err = svn_txdelta_next_window(&window, stream, ctx.pool);
-        if (err) {
-            throw std::runtime_error(std::string("SVN delta error: ") + err->message);
-        }
-        if (!window) break;
-
-        // Serialize window to binary format
-        // For simplicity, we'll use a compact format:
-        // [sview_offset:8][sview_len:8][tview_len:8][num_ops:4][ops...][new_data_len:4][new_data...]
-        auto write_uint64 = [&](uint64_t val) {
-            for (int i = 0; i < 8; i++) {
-                diff_data.push_back(static_cast<uint8_t>((val >> (i * 8)) & 0xFF));
-            }
-        };
-        auto write_uint32 = [&](uint32_t val) {
-            for (int i = 0; i < 4; i++) {
-                diff_data.push_back(static_cast<uint8_t>((val >> (i * 8)) & 0xFF));
-            }
-        };
-
-        write_uint64(window->sview_offset);
-        write_uint64(window->sview_len);
-        write_uint64(window->tview_len);
-        write_uint32(window->num_ops);
-
-        // Write operations
-        for (int i = 0; i < window->num_ops; i++) {
-            diff_data.push_back(static_cast<uint8_t>(window->ops[i].action_code));
-            write_uint64(window->ops[i].offset);
-            write_uint64(window->ops[i].length);
-        }
-
-        // Write new data
-        write_uint32(window->new_data->len);
-        diff_data.insert(diff_data.end(),
-                        window->new_data->data,
-                        window->new_data->data + window->new_data->len);
-    }
-
-    return diff_data;
+    // Simple placeholder: just store the new content
+    // In a real implementation, this would use SVN delta or similar
+    std::vector<uint8_t> result(new_content.begin(), new_content.end());
+    return result;
 }
 
-// Apply binary diff to reconstruct content
+// Apply binary diff - stub implementation
 std::string BinaryDiff::apply(const std::string& base_content,
                               const std::vector<uint8_t>& diff) {
     TRACE_FN("base_size=", base_content.size(), " diff_size=", diff.size());
 
-    std::string result;
-    size_t offset = 0;
-
-    auto read_uint64 = [&]() -> uint64_t {
-        uint64_t val = 0;
-        for (int i = 0; i < 8; i++) {
-            val |= static_cast<uint64_t>(diff[offset++]) << (i * 8);
-        }
-        return val;
-    };
-    auto read_uint32 = [&]() -> uint32_t {
-        uint32_t val = 0;
-        for (int i = 0; i < 4; i++) {
-            val |= static_cast<uint32_t>(diff[offset++]) << (i * 8);
-        }
-        return val;
-    };
-
-    // Process windows
-    while (offset < diff.size()) {
-        uint64_t sview_offset = read_uint64();
-        uint64_t sview_len = read_uint64();
-        uint64_t tview_len = read_uint64();
-        uint32_t num_ops = read_uint32();
-
-        std::string target_view;
-        target_view.reserve(tview_len);
-
-        // Process operations
-        for (uint32_t i = 0; i < num_ops; i++) {
-            uint8_t action = diff[offset++];
-            uint64_t op_offset = read_uint64();
-            uint64_t op_length = read_uint64();
-
-            if (action == svn_txdelta_source) {
-                // Copy from source (base_content)
-                target_view.append(base_content.substr(sview_offset + op_offset, op_length));
-            } else if (action == svn_txdelta_target) {
-                // Copy from target (already constructed)
-                target_view.append(target_view.substr(op_offset, op_length));
-            } else if (action == svn_txdelta_new) {
-                // Will be added from new_data below
-            }
-        }
-
-        // Add new data
-        uint32_t new_data_len = read_uint32();
-        if (new_data_len > 0) {
-            target_view.append(reinterpret_cast<const char*>(&diff[offset]), new_data_len);
-            offset += new_data_len;
-        }
-
-        result.append(target_view);
-    }
-
+    // Simple placeholder: diff contains the full new content
+    // In a real implementation, this would apply SVN delta operations
+    (void)base_content;  // Unused in stub
+    std::string result(diff.begin(), diff.end());
     return result;
 }
 
@@ -175,7 +62,7 @@ uint64_t ScopeStore::createSnapshot(Vfs& vfs, const std::string& description) {
     snapshot.timestamp = std::time(nullptr);
     snapshot.description = description;
     snapshot.parent_snapshot_id = current_snapshot_id;
-    snapshot.feature_mask.mask <<= clone(active_features.mask);  // U++ pick semantics with clone
+    snapshot.feature_mask.mask = active_features.mask;  // Deep copy via copy assignment
 
     // Serialize current VFS state
     std::string current_state = serializeVfs(vfs);
@@ -381,7 +268,7 @@ void ScopeStore::load(const std::string& path) {
         snap.description = line.substr(13);  // Skip "description: "
 
         std::getline(in, line);  // feature_mask
-        snap.feature_mask <<= FeatureMask::fromString(line.substr(14));  // U++ pick semantics
+        snap.feature_mask = FeatureMask::fromString(line.substr(14));  // Move assignment from temporary
 
         std::getline(in, line);  // affected_paths count
         size_t path_count;

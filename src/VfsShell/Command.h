@@ -24,7 +24,7 @@ extern FeedbackLoop* G_FEEDBACK_LOOP;
 size_t select_overlay(const Vfs& vfs, const WorkingDirectory& cwd, const std::vector<size_t>& overlays);
 std::string overlay_suffix(const Vfs& vfs, const std::vector<size_t>& overlays, size_t primary);
 
-void run_daemon_server(int port, Vfs&, std::shared_ptr<Env>, WorkingDirectory&);
+void run_daemon_server(int port, Vfs&, Shared<Env>, WorkingDirectory&);
 
 struct CommandResult {
     bool success = true;

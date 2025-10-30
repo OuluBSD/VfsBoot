@@ -32,6 +32,24 @@ public:
         chunks.SetCount((bits + BITS_PER_CHUNK - 1) / BITS_PER_CHUNK, 0);
     }
 
+    // Copy and move constructors for U++ Vector compatibility
+    BitVector(const BitVector& other) : chunks(other.chunks, 1), num_bits(other.num_bits) {}
+    BitVector(BitVector&& other) : chunks(pick(other.chunks)), num_bits(other.num_bits) {}
+    BitVector& operator=(const BitVector& other) {
+        if(this != &other) {
+            chunks = clone(other.chunks);
+            num_bits = other.num_bits;
+        }
+        return *this;
+    }
+    BitVector& operator=(BitVector&& other) {
+        if(this != &other) {
+            chunks = pick(other.chunks);
+            num_bits = other.num_bits;
+        }
+        return *this;
+    }
+
     void set(int bit) {
         if (bit < num_bits) {
             int idx = chunkIndex(bit);

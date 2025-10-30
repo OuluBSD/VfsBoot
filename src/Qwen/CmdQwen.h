@@ -59,7 +59,7 @@ QwenOptions parse_args(const Vector<String>& args);
 void show_help();
 
 // Main qwen command entry point
-void cmd_qwen(const Vector<String>& args,
+void cmd_qwen(const std::vector<std::string>& args,
               Vfs& vfs);
 
 // List all sessions

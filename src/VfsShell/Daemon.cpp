@@ -1,9 +1,9 @@
 #include "VfsShell.h"
-
+#include <arpa/inet.h>
 
 // ====== Daemon Server Mode ======
 
-void run_daemon_server(int port, Vfs&, std::shared_ptr<Env>, WorkingDirectory&) {
+void run_daemon_server(int port, Vfs&, Shared<Env>, WorkingDirectory&) {
     TRACE_FN("port=", port);
 
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);

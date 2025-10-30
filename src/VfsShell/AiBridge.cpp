@@ -380,8 +380,8 @@ static std::filesystem::path ai_cache_root(){
 }
 
 static std::filesystem::path ai_cache_base_path(const std::string& providerLabel, const std::string& key_material){
-    std::filesystem::path dir = ai_cache_root() / sanitize_component(providerLabel);
-    std::string hash = hash_hex(fnv1a64(key_material));
+    std::filesystem::path dir = ai_cache_root() / std::string(sanitize_component(providerLabel));
+    std::string hash = hash_hex(fnv1a64(key_material)).ToStd();
     return dir / hash;
 }
 
@@ -398,8 +398,8 @@ static std::filesystem::path ai_cache_input_path(const std::string& providerLabe
 }
 
 static std::filesystem::path ai_cache_legacy_output_path(const std::string& providerLabel, const std::string& key_material){
-    std::filesystem::path dir = ai_cache_root() / sanitize_component(providerLabel);
-    std::string hash = hash_hex(fnv1a64(key_material));
+    std::filesystem::path dir = ai_cache_root() / std::string(sanitize_component(providerLabel));
+    std::string hash = hash_hex(fnv1a64(key_material)).ToStd();
     return dir / (hash + ".txt");
 }
 

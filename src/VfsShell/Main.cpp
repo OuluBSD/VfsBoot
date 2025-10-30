@@ -1,6 +1,7 @@
 #include "VfsShell.h"
 #include "../Clang/ClangParser.h"
 #include "../Qwen/CmdQwen.h"
+#include "../UppCompat/UppAssembly.h"
 #ifdef flagMAIN
 
 WINDOW* stdscr;
@@ -444,7 +445,7 @@ int main(int argc, char** argv){
             if(title.empty()) title = "autoload";
             auto overlay_name = make_unique_overlay_name(vfs, title);
             mount_overlay_from_file(vfs, overlay_name, abs_vfs_path.string());
-            std::cout << "auto-loaded " << abs_vfs_path.filename().string() << " as overlay '" << overlay_name << "'\n";
+            std::cout << "auto-loaded " << abs_vfs_path.filename().string() << " as overlay '" << overlay_name.ToStd() << "'\n";
             maybe_extend_context(vfs, cwd);
         }
     } catch(const std::exception& e){
@@ -658,7 +659,7 @@ int main(int argc, char** argv){
             if(auto node = vfs.tryResolveForOverlay(abs, cwd.primary_overlay)){
                 if(node->kind == VfsNode::Kind::Dir)
                     throw std::runtime_error("cannot read directory: " + operand);
-                return node->read();
+                return node->read().ToStd();
             }
             auto hits = vfs.resolveMulti(abs);
             if(hits.empty()) throw std::runtime_error("path not found: " + operand);
@@ -672,7 +673,7 @@ int main(int argc, char** argv){
             size_t chosen = select_overlay(vfs, cwd, overlays);
             auto node = vfs.resolveForOverlay(abs, chosen);
             if(node->kind == VfsNode::Kind::Dir) throw std::runtime_error("cannot read directory: " + operand);
-            return node->read();
+            return node->read().ToStd();
         };
 
         if(cmd == "pwd"){
@@ -1473,17 +1474,17 @@ int main(int argc, char** argv){
             TagSet inferred = vfs.logic_engine->inferTags(initial_tags);
 
             std::cout << "initial tags: ";
-            for(TagId tid : initial_tags){
+            for(TagId tid : initial_tags.toVector()){
                 std::cout << vfs.getTagName(tid) << " ";
             }
             std::cout << "\ninferred tags (only new): ";
-            for(TagId tid : inferred){
+            for(TagId tid : inferred.toVector()){
                 if(initial_tags.count(tid) == 0){
                     std::cout << vfs.getTagName(tid) << " ";
                 }
             }
             std::cout << "\ncomplete tag set (initial + inferred): ";
-            for(TagId tid : inferred){
+            for(TagId tid : inferred.toVector()){
                 std::cout << vfs.getTagName(tid) << " ";
             }
             std::cout << "\n";
@@ -1499,14 +1500,14 @@ int main(int argc, char** argv){
 
             auto conflict = vfs.logic_engine->checkConsistency(tags);
             if(conflict){
-                std::cout << "CONFLICT: " << conflict->description << "\n";
+                std::cout << "CONFLICT: " << std::string(conflict->description) << "\n";
                 std::cout << "conflicting tags: ";
                 for(const auto& tag : conflict->conflicting_tags){
-                    std::cout << tag << " ";
+                    std::cout << std::string(tag) << " ";
                 }
                 std::cout << "\nsuggestions:\n";
                 for(const auto& suggestion : conflict->suggestions){
-                    std::cout << "  - " << suggestion << "\n";
+                    std::cout << "  - " << std::string(suggestion) << "\n";
                 }
             } else {
                 std::cout << "tags are consistent\n";
@@ -1526,7 +1527,7 @@ int main(int argc, char** argv){
 
             auto explanations = vfs.logic_engine->explainInference(target_tag, source_tags);
             for(const auto& exp : explanations){
-                std::cout << exp << "\n";
+                std::cout << std::string(exp) << "\n";
             }
 
         } else if(cmd == "logic.listrules"){
@@ -1535,10 +1536,10 @@ int main(int argc, char** argv){
             } else {
                 std::cout << "loaded rules (" << vfs.logic_engine->rules.size() << "):\n";
                 for(const auto& rule : vfs.logic_engine->rules){
-                    std::cout << "  " << rule.name << ": "
-                             << rule.premise->toString(*vfs.tag_registry) << " => "
-                             << rule.conclusion->toString(*vfs.tag_registry)
-                             << " [" << int(rule.confidence * 100) << "%, " << rule.source << "]\n";
+                    std::cout << "  " << std::string(rule.name) << ": "
+                             << std::string(rule.premise->toString(*vfs.tag_registry)) << " => "
+                             << std::string(rule.conclusion->toString(*vfs.tag_registry))
+                             << " [" << int(rule.confidence * 100) << "%, " << std::string(rule.source) << "]\n";
                 }
             }
 
@@ -1598,14 +1599,14 @@ int main(int argc, char** argv){
             if(inv.args.empty()) throw std::runtime_error("logic.sat <tag> [tag...]");
 
             // Build a conjunction of all tags
-            std::vector<std::shared_ptr<LogicFormula>> vars;
+            Vector<One<LogicFormula>> vars;
             for(const auto& tag_name : inv.args){
                 TagId tid = vfs.registerTag(tag_name);
-                vars.push_back(LogicFormula::makeVar(tid));
+                vars.Add(LogicFormula::makeVar(tid));
             }
-            auto formula = LogicFormula::makeAnd(vars);
+            auto formula = LogicFormula::makeAnd(pick(vars));
 
-            bool sat = vfs.logic_engine->isSatisfiable(formula);
+            bool sat = vfs.logic_engine->isSatisfiable(pick(formula));
             std::cout << "formula is " << (sat ? "satisfiable" : "unsatisfiable") << "\n";
 
         } else if(cmd == "tag.mine.start"){
@@ -1621,7 +1622,7 @@ int main(int argc, char** argv){
             vfs.tag_mining_session->inferred_tags = vfs.logic_engine->inferTags(vfs.tag_mining_session->user_provided_tags);
 
             // Generate questions for user
-            for(TagId tid : vfs.tag_mining_session->inferred_tags){
+            for(TagId tid : vfs.tag_mining_session->inferred_tags.toVector()){
                 if(vfs.tag_mining_session->user_provided_tags.count(tid) == 0){
                     vfs.tag_mining_session->pending_questions.push_back(
                         "Do you also want tag '" + vfs.getTagName(tid) + "'?");
@@ -1630,18 +1631,18 @@ int main(int argc, char** argv){
 
             std::cout << "started tag mining session\n";
             std::cout << "user provided: ";
-            for(TagId tid : vfs.tag_mining_session->user_provided_tags){
+            for(TagId tid : vfs.tag_mining_session->user_provided_tags.toVector()){
                 std::cout << vfs.getTagName(tid) << " ";
             }
             std::cout << "\ninferred tags: ";
-            for(TagId tid : vfs.tag_mining_session->inferred_tags){
+            for(TagId tid : vfs.tag_mining_session->inferred_tags.toVector()){
                 if(vfs.tag_mining_session->user_provided_tags.count(tid) == 0){
                     std::cout << vfs.getTagName(tid) << " ";
                 }
             }
             std::cout << "\npending questions: " << vfs.tag_mining_session->pending_questions.size() << "\n";
             if(!vfs.tag_mining_session->pending_questions.empty()){
-                std::cout << "\nnext question: " << vfs.tag_mining_session->pending_questions[0] << "\n";
+                std::cout << "\nnext question: " << vfs.tag_mining_session->pending_questions[0].ToStd() << "\n";
                 std::cout << "use: tag.mine.feedback <tag-name> yes|no\n";
             }
 
@@ -1670,11 +1671,11 @@ int main(int argc, char** argv){
             } else {
                 std::cout << "mining session active\n";
                 std::cout << "user tags: ";
-                for(TagId tid : vfs.tag_mining_session->user_provided_tags){
+                for(TagId tid : vfs.tag_mining_session->user_provided_tags.toVector()){
                     std::cout << vfs.getTagName(tid) << " ";
                 }
                 std::cout << "\ninferred tags: ";
-                for(TagId tid : vfs.tag_mining_session->inferred_tags){
+                for(TagId tid : vfs.tag_mining_session->inferred_tags.toVector()){
                     if(vfs.tag_mining_session->user_provided_tags.count(tid) == 0){
                         std::cout << vfs.getTagName(tid) << " ";
                     }
@@ -1734,7 +1735,7 @@ int main(int argc, char** argv){
                     auto conflict = vfs.logic_engine->checkConsistency(complete_parent_tags);
                     if(conflict){
                         std::cout << "⚠️  Warning: Parent plan node has conflicting tags\n";
-                        std::cout << "   " << conflict->description << "\n";
+                        std::cout << "   " << conflict->description.ToStd() << "\n";
                         std::cout << "   Use 'plan.verify " << parent_path << "' to see details\n";
                     }
                 }
@@ -1867,7 +1868,7 @@ int main(int argc, char** argv){
                     if(current_tags_ptr && !current_tags_ptr->empty()){
                         auto complete_tags = vfs.logic_engine->inferTags(*current_tags_ptr, 0.8f);
                         std::vector<std::string> tag_names;
-                        for(auto tag_id : complete_tags){
+                        for(auto tag_id : complete_tags.toVector()){
                             tag_names.push_back(vfs.tag_registry->getTagName(tag_id));
                         }
                         context_str += "=== Tag Constraints ===\n";
@@ -1893,7 +1894,7 @@ int main(int argc, char** argv){
                     context_str += "=== Current Node ===\n";
                     context_str += node->name + "\n";
                     if(!node->isDir()){
-                        std::string content = node->read();
+                        std::string content = node->read().ToStd();
                         if(!content.empty()){
                             context_str += "Content:\n" + content + "\n";
                         }
@@ -2127,7 +2128,7 @@ int main(int argc, char** argv){
                     std::string hyp_type = inv.args.empty() ? "" : inv.args[0];
 
                     // Read plan content to determine what to test
-                    std::string plan_content = node->read();
+                    std::string plan_content = std::string(node->read());
 
                     std::cout << "🔬 Generating hypothesis for: " << planner.current_path << "\n";
 
@@ -2189,7 +2190,7 @@ int main(int argc, char** argv){
 
                         auto parent = vfs.tryResolveForOverlay(planner.current_path, cwd.primary_overlay);
                         if(parent && parent->isDir()){
-                            parent->children()[hyp_node->name] = hyp_node;
+                            parent->children()[hyp_node->name.ToStd()] = hyp_node;
                             hyp_node->parent = parent;
                             std::string hyp_path = planner.current_path + "/" + hyp_name;
                             std::cout << "✅ Created hypothesis node at: " << hyp_path << "\n";
@@ -2259,7 +2260,7 @@ int main(int argc, char** argv){
                         // Convert TagIds to names and show them
                         const TagSet& tags = *tags_ptr;
                         std::vector<std::string> tag_names;
-                        for(auto tag_id : tags){
+                        for(auto tag_id : tags.toVector()){
                             tag_names.push_back(vfs.tag_registry->getTagName(tag_id));
                         }
                         std::cout << "📋 Tags on " << vfs_path << ": ";
@@ -2272,12 +2273,12 @@ int main(int argc, char** argv){
                         // Check consistency
                         auto conflict = vfs.logic_engine->checkConsistency(tags);
                         if(conflict){
-                            std::cout << "❌ Conflict detected: " << conflict->description << "\n";
+                            std::cout << "❌ Conflict detected: " << conflict->description.ToStd() << "\n";
                             if(!conflict->conflicting_tags.empty()){
                                 std::cout << "   Conflicting tags: ";
                                 for(size_t i = 0; i < conflict->conflicting_tags.size(); ++i){
                                     if(i > 0) std::cout << ", ";
-                                    std::cout << conflict->conflicting_tags[i];
+                                    std::cout << conflict->conflicting_tags[i].ToStd();
                                 }
                                 std::cout << "\n";
                             }
@@ -2285,7 +2286,7 @@ int main(int argc, char** argv){
                                 std::cout << "   Suggestions: ";
                                 for(size_t i = 0; i < conflict->suggestions.size(); ++i){
                                     if(i > 0) std::cout << " OR ";
-                                    std::cout << conflict->suggestions[i];
+                                    std::cout << conflict->suggestions[i].ToStd();
                                 }
                                 std::cout << "\n";
                             }
@@ -2319,7 +2320,7 @@ int main(int argc, char** argv){
                         const TagSet& initial_tags = *initial_tags_ptr;
                         // Show initial tags
                         std::vector<std::string> initial_names;
-                        for(auto tag_id : initial_tags){
+                        for(auto tag_id : initial_tags.toVector()){
                             initial_names.push_back(vfs.tag_registry->getTagName(tag_id));
                         }
                         std::cout << "📋 Initial tags: ";
@@ -2334,7 +2335,7 @@ int main(int argc, char** argv){
 
                         // Find only the newly inferred tags
                         TagSet new_tags;
-                        for(auto tag_id : complete_tags){
+                        for(auto tag_id : complete_tags.toVector()){
                             if(initial_tags.count(tag_id) == 0){
                                 new_tags.insert(tag_id);
                             }
@@ -2344,7 +2345,7 @@ int main(int argc, char** argv){
                             std::cout << "🔍 No additional tags inferred\n";
                         } else {
                             std::vector<std::string> new_names;
-                            for(auto tag_id : new_tags){
+                            for(auto tag_id : new_tags.toVector()){
                                 new_names.push_back(vfs.tag_registry->getTagName(tag_id));
                             }
                             std::cout << "🔍 Inferred tags (only new): ";
@@ -2357,7 +2358,7 @@ int main(int argc, char** argv){
 
                         // Show complete tag set for planner use
                         std::vector<std::string> complete_names;
-                        for(auto tag_id : complete_tags){
+                        for(auto tag_id : complete_tags.toVector()){
                             complete_names.push_back(vfs.tag_registry->getTagName(tag_id));
                         }
                         std::cout << "📦 Complete tag set (initial + inferred): ";
@@ -2401,7 +2402,7 @@ int main(int argc, char** argv){
                                 std::cout << "   Conflicting tags: ";
                                 for(size_t i = 0; i < conflict->conflicting_tags.size(); ++i){
                                     if(i > 0) std::cout << ", ";
-                                    std::cout << conflict->conflicting_tags[i];
+                                    std::cout << conflict->conflicting_tags[i].ToStd();
                                 }
                                 std::cout << "\n";
                             }
@@ -2409,7 +2410,7 @@ int main(int argc, char** argv){
                                 std::cout << "   Suggestions: ";
                                 for(size_t i = 0; i < conflict->suggestions.size(); ++i){
                                     if(i > 0) std::cout << " OR ";
-                                    std::cout << conflict->suggestions[i];
+                                    std::cout << conflict->suggestions[i].ToStd();
                                 }
                                 std::cout << "\n";
                             }
@@ -2736,7 +2737,7 @@ int main(int argc, char** argv){
 
                 ReplacementStrategy strategy = ReplacementStrategy::replaceAll("/test/replace.txt", "new content");
                 bool success = strategy.apply(vfs);
-                std::string new_content = test_file->read();
+                std::string new_content = test_file->read().ToStd();
                 return success && new_content == "new content";
             });
 
@@ -2747,7 +2748,7 @@ int main(int argc, char** argv){
 
                 ReplacementStrategy strategy = ReplacementStrategy::insertBefore("/test/insert.txt", "target", "inserted");
                 bool success = strategy.apply(vfs);
-                std::string new_content = test_file->read();
+                std::string new_content = test_file->read().ToStd();
                 return success && new_content.find("inserted") != std::string::npos;
             });
 

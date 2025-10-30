@@ -16,13 +16,13 @@ AstInt::AstInt(std::string n, int64_t v) : AstNode(std::move(n)), val(v) { kind=
 AstBool::AstBool(std::string n, bool v)  : AstNode(std::move(n)), val(v) { kind=Kind::Ast; }
 AstStr::AstStr(std::string n, std::string v): AstNode(std::move(n)), val(std::move(v)) { kind=Kind::Ast; }
 AstSym::AstSym(std::string n, std::string s): AstNode(std::move(n)), id(std::move(s)) { kind=Kind::Ast; }
-AstIf::AstIf(std::string n, Shared<AstNode> C, Shared<AstNode> A, Shared<AstNode> B)
+AstIf::AstIf(std::string n, std::shared_ptr<AstNode> C, std::shared_ptr<AstNode> A, std::shared_ptr<AstNode> B)
     : AstNode(std::move(n)), c(std::move(C)), a(std::move(A)), b(std::move(B)) { kind=Kind::Ast; }
-AstLambda::AstLambda(std::string n, std::vector<std::string> ps, Shared<AstNode> b)
+AstLambda::AstLambda(std::string n, std::vector<std::string> ps, std::shared_ptr<AstNode> b)
     : AstNode(std::move(n)), params(std::move(ps)), body(std::move(b)){ kind=Kind::Ast; }
-AstCall::AstCall(std::string n, Shared<AstNode> f, std::vector<Shared<AstNode>> a)
+AstCall::AstCall(std::string n, std::shared_ptr<AstNode> f, std::vector<std::shared_ptr<AstNode>> a)
     : AstNode(std::move(n)), fn(std::move(f)), args(std::move(a)){ kind=Kind::Ast; }
-AstHolder::AstHolder(std::string n, Shared<AstNode> in)
+AstHolder::AstHolder(std::string n, std::shared_ptr<AstNode> in)
     : AstNode(std::move(n)), inner(std::move(in)){ kind=Kind::Ast; }
 
 // ====== AST eval ======
@@ -67,7 +67,7 @@ SexpValue AstHolder::eval(Shared<Env> e){ return inner->eval(e); }
 
 // ====== Parser ======
 static size_t POS;
-static Shared<AstNode> parseExpr(const std::vector<Token>& T);
+static std::shared_ptr<AstNode> parseExpr(const std::vector<Token>& T);
 
 std::vector<Token> lex(const std::string& src){
     std::vector<Token> t; std::string cur;
@@ -95,22 +95,22 @@ static bool isInt(const std::string& s){
     return true;
 }
 
-static Shared<AstNode> atom(const std::string& s){
-    if (s=="#t") return Shared<AstNode>(new AstBool("<b>", true));
-    if (s=="#f") return Shared<AstNode>(new AstBool("<b>", false));
+static std::shared_ptr<AstNode> atom(const std::string& s){
+    if (s=="#t") return std::make_shared<AstBool>("<b>", true);
+    if (s=="#f") return std::make_shared<AstBool>("<b>", false);
     if (s.size()>=2 && s.front()=='"' && s.back()=='"')
-        return Shared<AstNode>(new AstStr("<s>", s.substr(1, s.size()-2)));
-    if (isInt(s)) return Shared<AstNode>(new AstInt("<i>", std::stoll(s)));
-    return Shared<AstNode>(new AstSym("<sym>", s));
+        return std::make_shared<AstStr>("<s>", s.substr(1, s.size()-2));
+    if (isInt(s)) return std::make_shared<AstInt>("<i>", std::stoll(s));
+    return std::make_shared<AstSym>("<sym>", s);
 }
 
-static Shared<AstNode> parseList(const std::vector<Token>& T){
+static std::shared_ptr<AstNode> parseList(const std::vector<Token>& T){
     if (POS>=T.size() || T[POS].s!="(") throw std::runtime_error("expected (");
     ++POS;
-    if (POS<T.size() && T[POS].s==")"){ ++POS; return Shared<AstNode>(new AstStr("<s>","")); }
+    if (POS<T.size() && T[POS].s==")"){ ++POS; return std::make_shared<AstStr>("<s>",""); }
     auto head = parseExpr(T);
-    auto sym  = dynamic_cast<AstSym*>(head.get());  // Note: dynamic_pointer_cast not available with U++ Shared, using raw pointer method
-    std::vector<Shared<AstNode>> items;
+    auto sym  = dynamic_cast<AstSym*>(head.get());
+    std::vector<std::shared_ptr<AstNode>> items;
     while (POS<T.size() && T[POS].s!=")") items.push_back(parseExpr(T));
     if (POS>=T.size()) throw std::runtime_error("missing )");
     ++POS;
@@ -118,22 +118,22 @@ static Shared<AstNode> parseList(const std::vector<Token>& T){
     std::string H = sym? sym->id : std::string();
     if (H=="if"){
         if (items.size()!=3) throw std::runtime_error("if needs 3 args");
-        return Shared<AstNode>(new AstIf("<if>", items[0], items[1], items[2]));
+        return std::make_shared<AstIf>("<if>", items[0], items[1], items[2]);
     }
     if (H=="lambda"){
         if (items.size()<2) throw std::runtime_error("lambda needs params and body");
         // proto: single param only: (lambda x body)
         std::vector<std::string> ps;
-        if (auto sp=dynamic_cast<AstSym*>(items[0].get())) ps.push_back(sp->id);  // Note: dynamic_pointer_cast not available with U++ Shared
+        if (auto sp=dynamic_cast<AstSym*>(items[0].get())) ps.push_back(sp->id);
         else throw std::runtime_error("lambda single param only");
         auto body=items.back();
-        return Shared<AstNode>(new AstLambda("<lam>", ps, body));
+        return std::make_shared<AstLambda>("<lam>", ps, body);
     }
     // generic call
-    return Shared<AstNode>(new AstCall("<call>", head, items));
+    return std::make_shared<AstCall>("<call>", head, items);
 }
 
-static Shared<AstNode> parseExpr(const std::vector<Token>& T){
+static std::shared_ptr<AstNode> parseExpr(const std::vector<Token>& T){
     if (POS>=T.size()) throw std::runtime_error("unexpected EOF");
     auto s = T[POS].s;
     if (s=="(") return parseList(T);
@@ -142,7 +142,7 @@ static Shared<AstNode> parseExpr(const std::vector<Token>& T){
     return atom(s);
 }
 
-Shared<AstNode> parse(const std::string& src){
+std::shared_ptr<AstNode> parse(const std::string& src){
     POS=0; auto T = lex(src);
     auto n = parseExpr(T);
     if (POS!=T.size()) throw std::runtime_error("extra tokens");

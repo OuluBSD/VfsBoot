@@ -436,9 +436,9 @@ bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& ba
         auto dir_listing = vfs.listDir(base_path, overlay_ids);
 
         // Process entries found through VFS
-        for (size_t i = 0; i < dir_listing.entries.size(); ++i) {
-            const std::string& entry_name = dir_listing.entries[i];
-            char type = dir_listing.types[i];
+        for (const auto& [entry_name, entry_info] : dir_listing) {
+            // Get the type - prefer 'd' if it's in the types set
+            char type = entry_info.types.count('d') > 0 ? 'd' : (entry_info.types.empty() ? 'f' : *entry_info.types.begin());
 
             // Only process directories
             if (type == 'd') {  // 'd' indicates directory
@@ -502,9 +502,9 @@ bool UppAssembly::detect_packages_from_directory(Vfs& vfs, const std::string& ba
             
             // Try to find any .upp file in the base directory
             auto base_dir_listing = vfs.listDir(base_path, overlay_ids);
-            for (size_t i = 0; i < base_dir_listing.entries.size(); ++i) {
-                const std::string& entry_name = base_dir_listing.entries[i];
-                char type = base_dir_listing.types[i];
+            for (const auto& [entry_name, entry_info] : base_dir_listing) {
+                // Get the type - prefer '-' if it's in the types set
+                char type = entry_info.types.count('-') > 0 ? '-' : (entry_info.types.empty() ? 'f' : *entry_info.types.begin());
 
                 if (type == '-') { // If it's a file (indicated by '-')
                     if (entry_name.length() > 4 && entry_name.substr(entry_name.length() - 4) == ".upp") {

@@ -266,9 +266,8 @@ void Registry::syncFromVFS(Vfs& vfs, const std::string& registry_path) {
         auto dir_listing = vfs.listDir(registry_path, empty_overlays);
 
         // Iterate using indices over parallel arrays
-        for (size_t i = 0; i < dir_listing.entries.size(); ++i) {
-            const std::string& name = dir_listing.entries[i];
-            char type = dir_listing.types[i];
+        for (const auto& [name, entry_info] : dir_listing) {
+            char type = entry_info.types.count('d') > 0 ? 'd' : (entry_info.types.empty() ? 'f' : *entry_info.types.begin());
 
             std::string full_path = registry_path + "/" + name;
 

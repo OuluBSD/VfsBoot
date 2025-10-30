@@ -166,6 +166,7 @@ struct LogicEngine;
 struct MetricsCollector;
 struct RulePatchStaging;
 struct FeedbackLoop;
+struct TagMiningSession;
 
 struct WorkingDirectory {
     enum class ConflictPolicy { Manual, Oldest, Newest };
@@ -220,10 +221,12 @@ struct Vfs {
         std::shared_ptr<VfsNode> node;
     };
 
-    struct DirListing {
-        std::vector<std::string> entries;
-        std::vector<char> types;
+    struct DirEntry {
+        std::vector<size_t> overlays;
+        std::set<char> types;
     };
+
+    using DirListing = std::map<std::string, DirEntry>;
 
     struct MountInfo {
         std::string vfs_path;
@@ -240,6 +243,7 @@ struct Vfs {
     TagRegistry* tag_registry = nullptr;
     TagStorage* tag_storage = nullptr;
     LogicEngine* logic_engine = nullptr;
+    TagMiningSession* tag_mining_session = nullptr;
 
     // Mount system members
     bool mount_allowed = false;
