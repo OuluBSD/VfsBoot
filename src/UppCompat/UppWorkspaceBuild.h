@@ -64,6 +64,14 @@ struct UppBuildResult {
     void merge(const UppBuildResult& other);
 };
 
+// Forward declarations from Umk.h
+struct UppBuildOptions;
+struct UppBuildSummary;
+struct UppAssembly;
+
+// Build workspace using UppAssembly
+UppBuildSummary build_workspace(UppAssembly& assembly, Vfs& vfs, const UppBuildOptions& options);
+
 // Parse build options from command-line arguments
 UppWorkspaceBuild parse_build_options(const std::vector<std::string>& args);
 

@@ -4,6 +4,10 @@
 #include "../Qwen/CmdQwen.h"
 #include "../UppCompat/UppAssembly.h"
 #include "../UppCompat/UppBuilder.h"
+#include "../UppCompat/Umk.h"
+#include "../UppCompat/UppWorkspaceBuild.h"
+#include "Make.h"
+#include "../WebServer/WebServer.h"
 #ifdef flagMAIN
 
 WINDOW* stdscr;
@@ -4721,7 +4725,7 @@ int main(int argc, char** argv){
                              "  --help,    -h            Show this help message\n";
             };
 
-            WorkspaceBuildOptions build_opts;
+            UppBuildOptions build_opts;
             bool show_plan = false;
             bool show_help = false;
 
@@ -5459,19 +5463,19 @@ int main(int argc, char** argv){
 
     // Register command callback for web server
     if(web_server_mode){
-        WebServer::set_command_callback([&](const std::string& command_line) -> std::pair<bool, std::string> {
+        WebServer::set_command_callback([&](const String& command_line) -> std::pair<bool, String> {
             try {
-                auto tokens = tokenize_command_line(command_line);
-                if(tokens.empty()) return {true, ""};
+                auto tokens = tokenize_command_line(command_line.ToStd());
+                if(tokens.empty()) return {true, String("")};
 
                 // Skip comment lines
                 if(!tokens.empty() && !tokens[0].empty() && tokens[0][0] == '#') {
-                    return {true, ""};
+                    return {true, String("")};
                 }
 
                 auto chain = parse_command_chain(tokens);
                 bool last_success = true;
-                std::string combined_output;
+                String combined_output;
 
                 for(const auto& entry : chain){
                     if(entry.logical == "&&" && !last_success) continue;
@@ -5479,7 +5483,7 @@ int main(int argc, char** argv){
 
                     CommandResult res = run_pipeline(entry.pipeline, "");
                     if(!res.output.empty()){
-                        combined_output += res.output;
+                        combined_output += res.output.c_str();
                     }
                     last_success = res.success;
 
@@ -5491,7 +5495,7 @@ int main(int argc, char** argv){
 
                 return {last_success, combined_output};
             } catch(const std::exception& e){
-                return {false, std::string("error: ") + e.what() + "\r\n"};
+                return {false, String("error: ") + e.what() + "\r\n"};
             }
         });
 

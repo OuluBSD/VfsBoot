@@ -594,9 +594,9 @@ private:
 };
 
 // Shell commands for parsing
-void cmd_parse_file(Vfs& vfs, const Vector<String>& args);
-void cmd_parse_dump(Vfs& vfs, const Vector<String>& args);
-void cmd_parse_generate(Vfs& vfs, const Vector<String>& args);
+void cmd_parse_file(Vfs& vfs, const std::vector<std::string>& args);
+void cmd_parse_dump(Vfs& vfs, const std::vector<std::string>& args);
+void cmd_parse_generate(Vfs& vfs, const std::vector<std::string>& args);
 
 
 void save_overlay_to_file(Vfs& vfs, size_t overlayId, const String& hostPath);
