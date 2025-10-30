@@ -5463,14 +5463,14 @@ int main(int argc, char** argv){
 
     // Register command callback for web server
     if(web_server_mode){
-        WebServer::set_command_callback([&](const String& command_line) -> std::pair<bool, String> {
+        WebServer::set_command_callback([&](const String& command_line) -> Tuple<bool, String> {
             try {
                 auto tokens = tokenize_command_line(command_line.ToStd());
-                if(tokens.empty()) return {true, String("")};
+                if(tokens.empty()) return MakeTuple(true, String(""));
 
                 // Skip comment lines
                 if(!tokens.empty() && !tokens[0].empty() && tokens[0][0] == '#') {
-                    return {true, String("")};
+                    return MakeTuple(true, String(""));
                 }
 
                 auto chain = parse_command_chain(tokens);
@@ -5493,9 +5493,9 @@ int main(int argc, char** argv){
                     }
                 }
 
-                return {last_success, combined_output};
+                return MakeTuple(last_success, combined_output);
             } catch(const std::exception& e){
-                return {false, String("error: ") + e.what() + "\r\n"};
+                return MakeTuple(false, String("error: ") + e.what() + "\r\n");
             }
         });
 

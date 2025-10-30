@@ -9,7 +9,7 @@ using namespace Upp;
 namespace WebServer {
 
 // Function type for handling commands
-using CommandCallback = std::function<std::pair<bool, String>(const String&)>;
+using CommandCallback = std::function<Tuple<bool, String>(const String&)>;
 
 // Public API functions
 bool start(int port);
