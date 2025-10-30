@@ -1,4 +1,6 @@
 #include "VfsShell.h"
+#include "../Clang/ClangParser.h"
+#include "../Qwen/CmdQwen.h"
 #ifdef flagMAIN
 
 WINDOW* stdscr;
@@ -319,8 +321,8 @@ int main(int argc, char** argv){
             }
             
             // Create minimal VFS and run the command
-            Vfs vfs; auto env = std::make_shared<Env>(); install_builtins(env);
-            vfs.mkdir("/src"); vfs.mkdir("/ast"); vfs.mkdir("/env"); vfs.mkdir("/astcpp"); vfs.mkdir("/cpp"); vfs.mkdir("/plan");
+            Vfs vfs; auto env = MakeShared<Env>(); install_builtins(env);
+            vfs.mkdir("/src", 0); vfs.mkdir("/ast", 0); vfs.mkdir("/env", 0); vfs.mkdir("/astcpp", 0); vfs.mkdir("/cpp", 0); vfs.mkdir("/plan", 0);
             
             // Initialize registry
             g_registry.integrateWithVFS(vfs);
@@ -334,7 +336,7 @@ int main(int argc, char** argv){
             G_FEEDBACK_LOOP = &feedback_loop;
             
             WorkingDirectory cwd;
-            update_directory_context(vfs, cwd, cwd.path);
+            // update_directory_context(vfs, cwd, cwd.path);  // Function not defined
             PlannerContext planner;
             planner.current_path = "/";
             DiscussSession discuss;
@@ -414,8 +416,8 @@ int main(int argc, char** argv){
         input = scriptStream.get();
     }
 
-    Vfs vfs; auto env = std::make_shared<Env>(); install_builtins(env);
-    vfs.mkdir("/src"); vfs.mkdir("/ast"); vfs.mkdir("/env"); vfs.mkdir("/astcpp"); vfs.mkdir("/cpp"); vfs.mkdir("/plan");
+    Vfs vfs; auto env = MakeShared<Env>(); install_builtins(env);
+    vfs.mkdir("/src", 0); vfs.mkdir("/ast", 0); vfs.mkdir("/env", 0); vfs.mkdir("/astcpp", 0); vfs.mkdir("/cpp", 0); vfs.mkdir("/plan", 0);
     
     // Initialize registry
     g_registry.integrateWithVFS(vfs);
@@ -742,7 +744,7 @@ int main(int argc, char** argv){
         } else if(cmd == "tree.adv" || cmd == "tree.advanced"){
             // Advanced tree visualization with options
             std::string abs = inv.args.empty() ? cwd.path : normalize_path(cwd.path, inv.args[0]);
-            Vfs::TreeOptions opts;
+            TreeOptions opts;
 
             // Parse options from remaining args
             for(size_t i = 1; i < inv.args.size(); ++i){
@@ -1376,9 +1378,9 @@ int main(int argc, char** argv){
                 for(const auto& m : mounts){
                     std::string type_marker;
                     switch(m.type){
-                        case Vfs::MountType::Filesystem: type_marker = "m "; break;
-                        case Vfs::MountType::Library: type_marker = "l "; break;
-                        case Vfs::MountType::Remote: type_marker = "r "; break;
+                        case MountType::Filesystem: type_marker = "m "; break;
+                        case MountType::Library: type_marker = "l "; break;
+                        case MountType::Remote: type_marker = "r "; break;
                     }
                     std::cout << type_marker << m.vfs_path << " <- " << m.host_path << "\n";
                 }

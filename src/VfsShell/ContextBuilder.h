@@ -143,8 +143,8 @@ struct ContextBuilder {
 private:
     void visitNode(const std::string& path, VfsNode* node);
     bool matchesAnyFilter(const std::string& path, VfsNode* node) const;
-    Index<std::string> seen_content;  // For deduplication (fallback)
-    Index<uint64_t> seen_fingerprints;  // Fast hash-based deduplication
+    std::unordered_set<std::string> seen_content;  // For deduplication (fallback)
+    std::unordered_set<uint64_t> seen_fingerprints;  // Fast hash-based deduplication
 };
 
 // Code replacement strategy for determining what statements to remove/modify

@@ -95,7 +95,7 @@ struct PlanNotes : PlanNode {
 struct PlannerContext {
     std::string current_path;  // Current location in /plan tree
     std::vector<std::string> navigation_history;  // Breadcrumbs for backtracking
-    Index<std::string> visible_nodes;  // Paths of nodes currently "in view" for AI context
+    std::unordered_set<std::string> visible_nodes;  // Paths of nodes currently "in view" for AI context
 
     enum class Mode { Forward, Backward };
     Mode mode = Mode::Forward;

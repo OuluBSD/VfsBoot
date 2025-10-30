@@ -43,16 +43,58 @@ struct ImplicationRule {
     ImplicationRule(String n, One<LogicFormula> p, One<LogicFormula> c,
                    float conf = 1.0f, String src = "hardcoded")
         : name(pick(n)), premise(pick(p)), conclusion(pick(c)), confidence(conf), source(pick(src)) {}
+
+    // Copy constructor - clones the formulas
+    ImplicationRule(const ImplicationRule& r)
+        : name(r.name), premise(r.premise->clone()), conclusion(r.conclusion->clone()),
+          confidence(r.confidence), source(r.source) {}
+
+    // Move constructor
+    ImplicationRule(ImplicationRule&& r)
+        : name(pick(r.name)), premise(pick(r.premise)), conclusion(pick(r.conclusion)),
+          confidence(r.confidence), source(pick(r.source)) {}
+
+    // Assignment operators
+    ImplicationRule& operator=(const ImplicationRule& r) {
+        if(this != &r) {
+            name = r.name;
+            premise = r.premise->clone();
+            conclusion = r.conclusion->clone();
+            confidence = r.confidence;
+            source = r.source;
+        }
+        return *this;
+    }
+
+    ImplicationRule& operator=(ImplicationRule&& r) {
+        name = pick(r.name);
+        premise = pick(r.premise);
+        conclusion = pick(r.conclusion);
+        confidence = r.confidence;
+        source = pick(r.source);
+        return *this;
+    }
+
+    // U++ type traits - mark as moveable with pick semantics
+    friend void Pick_(ImplicationRule& a, ImplicationRule&& b) {
+        a.name = pick(b.name);
+        a.premise = pick(b.premise);
+        a.conclusion = pick(b.conclusion);
+        a.confidence = b.confidence;
+        a.source = pick(b.source);
+    }
+
+    typedef ImplicationRule CLASSNAME;  // Required for U++ type system
 };
 
 struct LogicEngine {
-    Vector<ImplicationRule> rules;
+    Array<ImplicationRule> rules;
     TagRegistry* tag_registry;
 
     explicit LogicEngine(TagRegistry* reg) : tag_registry(reg) {}
 
     // Add rules
-    void addRule(const ImplicationRule& rule);
+    void addRule(ImplicationRule&& rule);
     void addHardcodedRules();  // built-in domain knowledge
 
     // Forward chaining: infer all implied tags from given tags

@@ -2,34 +2,34 @@
 #include "../VfsShell/VfsShell.h"
 
 // ====== Tag Registry & Storage ======
-TagId TagRegistry::registerTag(const std::string& name){
-    auto it = name_to_id.find(name);
-    if(it != name_to_id.end()) return it->second;
+TagId TagRegistry::registerTag(const String& name){
+    int idx = name_to_id.Find(name);
+    if(idx >= 0) return name_to_id[idx];
     TagId id = next_id++;
-    name_to_id[name] = id;
-    id_to_name[id] = name;
+    name_to_id.Add(name, id);
+    id_to_name.Add(id, name);
     return id;
 }
 
-TagId TagRegistry::getTagId(const std::string& name) const {
-    auto it = name_to_id.find(name);
-    return it != name_to_id.end() ? it->second : TAG_INVALID;
+TagId TagRegistry::getTagId(const String& name) const {
+    int idx = name_to_id.Find(name);
+    return idx >= 0 ? name_to_id[idx] : TAG_INVALID;
 }
 
-std::string TagRegistry::getTagName(TagId id) const {
-    auto it = id_to_name.find(id);
-    return it != id_to_name.end() ? it->second : "";
+String TagRegistry::getTagName(TagId id) const {
+    int idx = id_to_name.Find(id);
+    return idx >= 0 ? id_to_name[idx] : String();
 }
 
-bool TagRegistry::hasTag(const std::string& name) const {
-    return name_to_id.find(name) != name_to_id.end();
+bool TagRegistry::hasTag(const String& name) const {
+    return name_to_id.Find(name) >= 0;
 }
 
-std::vector<std::string> TagRegistry::allTags() const {
-    std::vector<std::string> tags;
-    tags.reserve(name_to_id.size());
-    for(const auto& pair : name_to_id){
-        tags.push_back(pair.first);
+Vector<String> TagRegistry::allTags() const {
+    Vector<String> tags;
+    tags.SetCount(name_to_id.GetCount());
+    for(int i = 0; i < name_to_id.GetCount(); i++){
+        tags[i] = name_to_id.GetKey(i);
     }
     return tags;
 }
@@ -65,39 +65,40 @@ void TagStorage::clearTags(VfsNode* node){
     if(node) node_tags.erase(node);
 }
 
-std::vector<VfsNode*> TagStorage::findByTag(TagId tag) const {
-    std::vector<VfsNode*> result;
+Vector<VfsNode*> TagStorage::findByTag(TagId tag) const {
+    Vector<VfsNode*> result;
     for(const auto& pair : node_tags){
         if(pair.second.count(tag) > 0){
-            result.push_back(pair.first);
+            result.Add(pair.first);
         }
     }
     return result;
 }
 
-std::vector<VfsNode*> TagStorage::findByTags(const TagSet& tags, bool match_all) const {
-    std::vector<VfsNode*> result;
+Vector<VfsNode*> TagStorage::findByTags(const TagSet& tags, bool match_all) const {
+    Vector<VfsNode*> result;
+    Vector<TagId> tag_vec = tags.toVector();
     for(const auto& pair : node_tags){
         if(match_all){
             // All tags must be present
             bool has_all = true;
-            for(TagId tag : tags){
-                if(pair.second.count(tag) == 0){
+            for(int i = 0; i < tag_vec.GetCount(); i++){
+                if(pair.second.count(tag_vec[i]) == 0){
                     has_all = false;
                     break;
                 }
             }
-            if(has_all) result.push_back(pair.first);
+            if(has_all) result.Add(pair.first);
         } else {
             // Any tag can be present
             bool has_any = false;
-            for(TagId tag : tags){
-                if(pair.second.count(tag) > 0){
+            for(int i = 0; i < tag_vec.GetCount(); i++){
+                if(pair.second.count(tag_vec[i]) > 0){
                     has_any = true;
                     break;
                 }
             }
-            if(has_any) result.push_back(pair.first);
+            if(has_any) result.Add(pair.first);
         }
     }
     return result;
@@ -108,8 +109,13 @@ void TagMiningSession::addUserTag(TagId tag){
     user_provided_tags.insert(tag);
 }
 
-void TagMiningSession::recordFeedback(const std::string& tag_name, bool confirmed){
-    user_feedback[tag_name] = confirmed;
+void TagMiningSession::recordFeedback(const String& tag_name, bool confirmed){
+    int idx = user_feedback.Find(tag_name);
+    if(idx >= 0){
+        user_feedback[idx] = confirmed;
+    } else {
+        user_feedback.Add(tag_name, confirmed);
+    }
 }
 
 // VFS tag helpers

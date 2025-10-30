@@ -1,5 +1,20 @@
 #include "VfsShell.h"
 #include "../UppCompat/Umk.h"
+#include "../UppCompat/UppAssembly.h"
+#include "../UppCompat/UppBuilder.h"
+#include <sstream>
+
+// Helper function to join strings with a delimiter
+static std::string join_with(const std::vector<std::string>& items, char delimiter) {
+    if (items.empty()) return "";
+    std::ostringstream oss;
+    oss << items[0];
+    for (size_t i = 1; i < items.size(); ++i) {
+        oss << delimiter << items[i];
+    }
+    return oss.str();
+}
+
 std::string make_command_for_package(const UppWorkspace& workspace,
                                      const UppPackage& pkg,
                                      const UppBuildOptions& options,

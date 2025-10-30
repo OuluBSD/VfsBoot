@@ -93,6 +93,18 @@ public:
     Vector<uint64_t> chunks;  // Bit vector in 64-bit chunks - public for copying
 
     TagSet() = default;
+    TagSet(const TagSet& other) : chunks(other.chunks, 1) {}  // Deep copy using U++ copy
+    TagSet(TagSet&& other) : chunks(pick(other.chunks)) {}    // Move
+    TagSet& operator=(const TagSet& other) {
+        if(this != &other) {
+            chunks = clone(other.chunks);
+        }
+        return *this;
+    }
+    TagSet& operator=(TagSet&& other) {
+        chunks = pick(other.chunks);
+        return *this;
+    }
     TagSet(std::initializer_list<TagId> tags) {
         for(TagId tag : tags) insert(tag);
     }

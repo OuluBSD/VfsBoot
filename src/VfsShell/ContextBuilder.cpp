@@ -380,8 +380,8 @@ void ContextBuilder::deduplicateEntries(){
     std::vector<ContextEntry> unique_entries;
     for(auto& entry : entries){
         std::string content_hash = compute_string_hash(entry.content);
-        if(seen_content.Find(content_hash) < 0){
-            seen_content.Add(content_hash);
+        if(seen_content.find(content_hash) == seen_content.end()){
+            seen_content.insert(content_hash);
             unique_entries.push_back(std::move(entry));
         }
     }

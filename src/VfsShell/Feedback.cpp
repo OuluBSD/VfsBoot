@@ -334,14 +334,14 @@ bool RulePatchStaging::applyPatch(size_t index) {
             case RulePatch::Operation::Add: {
                 ImplicationRule rule(patch.rule_name, patch.new_premise->clone(), patch.new_conclusion->clone(),
                                     patch.new_confidence, patch.source);
-                logic_engine->addRule(rule);
+                logic_engine->addRule(std::move(rule));
                 break;
             }
             case RulePatch::Operation::Modify: {
                 logic_engine->removeRule(patch.rule_name);
                 ImplicationRule rule(patch.rule_name, patch.new_premise->clone(), patch.new_conclusion->clone(),
                                     patch.new_confidence, patch.source);
-                logic_engine->addRule(rule);
+                logic_engine->addRule(std::move(rule));
                 break;
             }
             case RulePatch::Operation::Remove: {

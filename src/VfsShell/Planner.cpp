@@ -230,15 +230,15 @@ void PlannerContext::backward(){
 }
 
 void PlannerContext::addToContext(const std::string& vfs_path){
-    visible_nodes.FindAdd(String(vfs_path.c_str()));
+    visible_nodes.insert(vfs_path);
 }
 
 void PlannerContext::removeFromContext(const std::string& vfs_path){
-    visible_nodes.RemoveKey(String(vfs_path.c_str()));
+    visible_nodes.erase(vfs_path);
 }
 
 void PlannerContext::clearContext(){
-    visible_nodes.Clear();
+    visible_nodes.clear();
 }
 
 // ====== DiscussSession implementation ======

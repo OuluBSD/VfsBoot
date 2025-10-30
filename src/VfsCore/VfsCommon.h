@@ -330,4 +330,7 @@ void vfs_add(Vfs& vfs, const std::string& path, std::shared_ptr<VfsNode> node, s
 // Global VFS instance pointer
 extern Vfs* G_VFS;
 
+// Global utility functions
+char type_char(const std::shared_ptr<VfsNode>& node);
+
 #endif

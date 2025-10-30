@@ -65,28 +65,28 @@ bool LogicFormula::evaluate(const TagSet& tags) const {
 }
 
 // Convert formula to string for debugging
-std::string LogicFormula::toString(const TagRegistry& reg) const {
+String LogicFormula::toString(const TagRegistry& reg) const {
     switch(op){
         case LogicOp::VAR:
-            return reg.getTagName(var_id).ToStd();
+            return reg.getTagName(var_id);
         case LogicOp::NOT:
-            return "(not " + children[0]->toString(reg) + ")";
+            return String("(not ") + children[0]->toString(reg) + ")";
         case LogicOp::AND:{
-            std::string result = "(and";
+            String result = "(and";
             for(const auto& child : children){
-                result += " " + child->toString(reg);
+                result += String(" ") + child->toString(reg);
             }
             return result + ")";
         }
         case LogicOp::OR:{
-            std::string result = "(or";
+            String result = "(or";
             for(const auto& child : children){
-                result += " " + child->toString(reg);
+                result += String(" ") + child->toString(reg);
             }
             return result + ")";
         }
         case LogicOp::IMPLIES:
-            return "(implies " + children[0]->toString(reg) + " " + children[1]->toString(reg) + ")";
+            return String("(implies ") + children[0]->toString(reg) + " " + children[1]->toString(reg) + ")";
     }
     return "?";
 }
@@ -102,74 +102,68 @@ One<LogicFormula> LogicFormula::clone() const {
 }
 
 // LogicEngine implementation
-void LogicEngine::addRule(const ImplicationRule& rule){
-    rules.push_back(rule);
+void LogicEngine::addRule(ImplicationRule&& rule){
+    rules.Add(pick(rule));
 }
 
 void LogicEngine::addHardcodedRules(){
     // Rule: offline implies not network
     TagId offline_id = tag_registry->registerTag("offline");
     TagId network_id = tag_registry->registerTag("network");
-    auto rule1 = ImplicationRule(
+    addRule(ImplicationRule(
         "offline-no-network",
         LogicFormula::makeVar(offline_id),
         LogicFormula::makeNot(LogicFormula::makeVar(network_id)),
         1.0f, "hardcoded"
-    );
-    addRule(rule1);
+    ));
 
     // Rule: fast usually implies cached (high confidence learned pattern)
     TagId fast_id = tag_registry->registerTag("fast");
     TagId cached_id = tag_registry->registerTag("cached");
-    auto rule2 = ImplicationRule(
+    addRule(ImplicationRule(
         "fast-cached",
         LogicFormula::makeVar(fast_id),
         LogicFormula::makeVar(cached_id),
         0.87f, "learned"
-    );
-    addRule(rule2);
+    ));
 
     // Rule: cached implies not remote
     TagId remote_id = tag_registry->registerTag("remote");
-    auto rule3 = ImplicationRule(
+    addRule(ImplicationRule(
         "cached-not-remote",
         LogicFormula::makeVar(cached_id),
         LogicFormula::makeNot(LogicFormula::makeVar(remote_id)),
         1.0f, "hardcoded"
-    );
-    addRule(rule3);
+    ));
 
     // Rule: no-network implies offline
     TagId no_network_id = tag_registry->registerTag("no-network");
-    auto rule4 = ImplicationRule(
+    addRule(ImplicationRule(
         "no-network-offline",
         LogicFormula::makeVar(no_network_id),
         LogicFormula::makeVar(offline_id),
         1.0f, "hardcoded"
-    );
-    addRule(rule4);
+    ));
 
     // Rule: local-only implies offline
     TagId local_only_id = tag_registry->registerTag("local-only");
-    auto rule5 = ImplicationRule(
+    addRule(ImplicationRule(
         "local-only-offline",
         LogicFormula::makeVar(local_only_id),
         LogicFormula::makeVar(offline_id),
         1.0f, "hardcoded"
-    );
-    addRule(rule5);
+    ));
 
     // Mutually exclusive: cache-write-through and cache-write-back cannot coexist
     TagId write_through_id = tag_registry->registerTag("cache-write-through");
     TagId write_back_id = tag_registry->registerTag("cache-write-back");
     // This is expressed as: write-through implies not write-back
-    auto rule6 = ImplicationRule(
+    addRule(ImplicationRule(
         "write-through-not-write-back",
         LogicFormula::makeVar(write_through_id),
         LogicFormula::makeNot(LogicFormula::makeVar(write_back_id)),
         1.0f, "hardcoded"
-    );
-    addRule(rule6);
+    ));
 }
 
 // Forward chaining inference
@@ -220,27 +214,27 @@ std::optional<LogicEngine::ConflictInfo> LogicEngine::checkConsistency(const Tag
         // If premise is true but conclusion is false, we have a conflict
         if(rule.premise->evaluate(tags) && !rule.conclusion->evaluate(tags)){
             ConflictInfo conflict;
-            conflict.description = "Rule '" + rule.name + "' violated";
+            conflict.description = String("Rule '") + rule.name + "' violated";
 
             // Collect conflicting tags
             if(rule.premise->op == LogicOp::VAR){
-                conflict.conflicting_tags.push_back(tag_registry->getTagName(rule.premise->var_id));
+                conflict.conflicting_tags.Add(tag_registry->getTagName(rule.premise->var_id));
             }
             if(rule.conclusion->op == LogicOp::NOT &&
                rule.conclusion->children[0]->op == LogicOp::VAR){
                 TagId forbidden = rule.conclusion->children[0]->var_id;
                 if(tags.count(forbidden) > 0){
-                    conflict.conflicting_tags.push_back(tag_registry->getTagName(forbidden));
+                    conflict.conflicting_tags.Add(tag_registry->getTagName(forbidden));
                 }
             }
 
             // Generate suggestions
-            conflict.suggestions.push_back("Remove tag: " + tag_registry->getTagName(rule.premise->var_id));
+            conflict.suggestions.Add(String("Remove tag: ") + tag_registry->getTagName(rule.premise->var_id));
             if(rule.conclusion->op == LogicOp::VAR){
-                conflict.suggestions.push_back("Add tag: " + tag_registry->getTagName(rule.conclusion->var_id));
+                conflict.suggestions.Add(String("Add tag: ") + tag_registry->getTagName(rule.conclusion->var_id));
             } else if(rule.conclusion->op == LogicOp::NOT &&
                       rule.conclusion->children[0]->op == LogicOp::VAR){
-                conflict.suggestions.push_back("Remove tag: " +
+                conflict.suggestions.Add(String("Remove tag: ") +
                     tag_registry->getTagName(rule.conclusion->children[0]->var_id));
             }
 
@@ -251,31 +245,36 @@ std::optional<LogicEngine::ConflictInfo> LogicEngine::checkConsistency(const Tag
 }
 
 // Simple SAT solver for basic formulas (brute force for small tag sets)
-bool LogicEngine::isSatisfiable(std::shared_ptr<LogicFormula> formula) const {
+bool LogicEngine::isSatisfiable(One<LogicFormula> formula) const {
     // Collect all variables in formula
-    std::set<TagId> vars;
-    std::function<void(const LogicFormula*)> collectVars = [&](const LogicFormula* f){
+    Index<TagId> vars;
+
+    // Lambda to collect variables recursively
+    auto collectVars = [&](const LogicFormula* f, auto& collectRef) -> void {
         if(f->op == LogicOp::VAR){
-            vars.insert(f->var_id);
+            vars.FindAdd(f->var_id);
         }
         for(const auto& child : f->children){
-            collectVars(child.get());
+            collectRef(~child, collectRef);
         }
     };
-    collectVars(formula.get());
+    collectVars(~formula, collectVars);
 
     // Try all possible assignments (brute force for up to 20 variables)
-    if(vars.size() > 20) return true;  // Too large, assume satisfiable
+    if(vars.GetCount() > 20) return true;  // Too large, assume satisfiable
 
-    std::vector<TagId> var_list(vars.begin(), vars.end());
-    size_t n = var_list.size();
+    Vector<TagId> var_list;
+    for(int i = 0; i < vars.GetCount(); i++){
+        var_list.Add(vars[i]);
+    }
+    size_t n = var_list.GetCount();
     size_t total_assignments = 1ULL << n;
 
     for(size_t assignment = 0; assignment < total_assignments; assignment++){
         TagSet test_tags;
         for(size_t i = 0; i < n; i++){
             if(assignment & (1ULL << i)){
-                test_tags.insert(var_list[i]);
+                test_tags.insert(var_list[(int)i]);
             }
         }
         if(formula->evaluate(test_tags)){
@@ -287,12 +286,12 @@ bool LogicEngine::isSatisfiable(std::shared_ptr<LogicFormula> formula) const {
 }
 
 // Explain inference chain
-std::vector<std::string> LogicEngine::explainInference(TagId tag, const TagSet& initial_tags) const {
-    std::vector<std::string> explanation;
+Vector<String> LogicEngine::explainInference(TagId tag, const TagSet& initial_tags) const {
+    Vector<String> explanation;
 
     // Check if tag is in initial set
     if(initial_tags.count(tag) > 0){
-        explanation.push_back("Tag '" + tag_registry->getTagName(tag) + "' was provided by user");
+        explanation.Add(String("Tag '") + tag_registry->getTagName(tag) + "' was provided by user");
         return explanation;
     }
 
@@ -300,16 +299,16 @@ std::vector<std::string> LogicEngine::explainInference(TagId tag, const TagSet& 
     for(const auto& rule : rules){
         if(rule.conclusion->op == LogicOp::VAR && rule.conclusion->var_id == tag){
             if(rule.premise->evaluate(initial_tags)){
-                explanation.push_back("Inferred via rule '" + rule.name + "': " +
+                explanation.Add(String("Inferred via rule '") + rule.name + "': " +
                     rule.premise->toString(*tag_registry) + " => " +
                     rule.conclusion->toString(*tag_registry) +
-                    " (confidence: " + std::to_string(int(rule.confidence * 100)) + "%, source: " + rule.source + ")");
+                    " (confidence: " + AsString(int(rule.confidence * 100)) + "%, source: " + rule.source + ")");
             }
         }
     }
 
-    if(explanation.empty()){
-        explanation.push_back("Tag '" + tag_registry->getTagName(tag) + "' cannot be inferred from given tags");
+    if(explanation.IsEmpty()){
+        explanation.Add(String("Tag '") + tag_registry->getTagName(tag) + "' cannot be inferred from given tags");
     }
 
     return explanation;
@@ -318,20 +317,20 @@ std::vector<std::string> LogicEngine::explainInference(TagId tag, const TagSet& 
 // Rule serialization format:
 // name|premise_formula|conclusion_formula|confidence|source
 // Formulas are serialized as S-expressions
-std::string LogicEngine::serializeRule(const ImplicationRule& rule) const {
-    std::ostringstream oss;
-    oss << rule.name << "|"
-        << rule.premise->toString(*tag_registry).ToStd() << "|"
-        << rule.conclusion->toString(*tag_registry).ToStd() << "|"
-        << rule.confidence << "|"
-        << rule.source;
-    return oss.str();
+String LogicEngine::serializeRule(const ImplicationRule& rule) const {
+    return rule.name + "|" +
+        rule.premise->toString(*tag_registry) + "|" +
+        rule.conclusion->toString(*tag_registry) + "|" +
+        AsString(rule.confidence) + "|" +
+        rule.source;
 }
 
 // Helper function to parse formula from string (S-expression format)
-static std::shared_ptr<LogicFormula> parseFormulaFromString(const std::string& str, TagRegistry* reg) {
+static One<LogicFormula> parseFormulaFromString(const String& str, TagRegistry* reg) {
     // Simple recursive descent parser for logic formulas
     // Format: (not X), (and X Y...), (or X Y...), (implies X Y), tagname
+
+    std::string str_std = str.ToStd();  // Convert to std::string for easier parsing
 
     auto trim = [](const std::string& s) {
         size_t start = s.find_first_not_of(" \t\n\r");
@@ -339,9 +338,9 @@ static std::shared_ptr<LogicFormula> parseFormulaFromString(const std::string& s
         return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);
     };
 
-    std::string trimmed = trim(str);
+    std::string trimmed = trim(str_std);
 
-    if (trimmed.empty()) return nullptr;
+    if (trimmed.empty()) return One<LogicFormula>();
 
     // Check if it's a compound formula (starts with '(')
     if (trimmed[0] == '(') {
@@ -364,17 +363,17 @@ static std::shared_ptr<LogicFormula> parseFormulaFromString(const std::string& s
 
         // Split by first space to get operator
         size_t space_pos = content.find(' ');
-        if (space_pos == std::string::npos) return nullptr;
+        if (space_pos == std::string::npos) return One<LogicFormula>();
 
         std::string op = content.substr(0, space_pos);
         std::string rest = trim(content.substr(space_pos + 1));
 
         if (op == "not") {
-            auto child = parseFormulaFromString(rest, reg);
-            return child ? LogicFormula::makeNot(child) : nullptr;
+            auto child = parseFormulaFromString(String(rest.c_str()), reg);
+            return child ? LogicFormula::makeNot(pick(child)) : One<LogicFormula>();
         } else if (op == "and") {
             // Parse multiple children
-            std::vector<std::shared_ptr<LogicFormula>> children;
+            Vector<One<LogicFormula>> children;
             size_t pos = 0;
             while (pos < rest.length()) {
                 // Skip whitespace
@@ -401,13 +400,13 @@ static std::shared_ptr<LogicFormula> parseFormulaFromString(const std::string& s
                 }
 
                 std::string child_str = trim(rest.substr(start, pos - start));
-                auto child = parseFormulaFromString(child_str, reg);
-                if (child) children.push_back(child);
+                auto child = parseFormulaFromString(String(child_str.c_str()), reg);
+                if (child) children.Add(pick(child));
             }
-            return children.empty() ? nullptr : LogicFormula::makeAnd(children);
+            return children.IsEmpty() ? One<LogicFormula>() : LogicFormula::makeAnd(pick(children));
         } else if (op == "or") {
             // Similar to 'and', parse multiple children
-            std::vector<std::shared_ptr<LogicFormula>> children;
+            Vector<One<LogicFormula>> children;
             size_t pos = 0;
             while (pos < rest.length()) {
                 while (pos < rest.length() && std::isspace(rest[pos])) pos++;
@@ -432,10 +431,10 @@ static std::shared_ptr<LogicFormula> parseFormulaFromString(const std::string& s
                 }
 
                 std::string child_str = trim(rest.substr(start, pos - start));
-                auto child = parseFormulaFromString(child_str, reg);
-                if (child) children.push_back(child);
+                auto child = parseFormulaFromString(String(child_str.c_str()), reg);
+                if (child) children.Add(pick(child));
             }
-            return children.empty() ? nullptr : LogicFormula::makeOr(children);
+            return children.IsEmpty() ? One<LogicFormula>() : LogicFormula::makeOr(pick(children));
         } else if (op == "implies") {
             // Parse exactly 2 children
             size_t pos = 0;
@@ -465,161 +464,171 @@ static std::shared_ptr<LogicFormula> parseFormulaFromString(const std::string& s
             while (pos < rest.length() && std::isspace(rest[pos])) pos++;
             std::string child2_str = trim(rest.substr(pos));
 
-            auto lhs = parseFormulaFromString(child1_str, reg);
-            auto rhs = parseFormulaFromString(child2_str, reg);
-            return (lhs && rhs) ? LogicFormula::makeImplies(lhs, rhs) : nullptr;
+            auto lhs = parseFormulaFromString(String(child1_str.c_str()), reg);
+            auto rhs = parseFormulaFromString(String(child2_str.c_str()), reg);
+            return (lhs && rhs) ? LogicFormula::makeImplies(pick(lhs), pick(rhs)) : One<LogicFormula>();
         }
 
-        return nullptr;
+        return One<LogicFormula>();
     } else {
         // It's a tag name variable
-        TagId id = reg->registerTag(trimmed);
+        TagId id = reg->registerTag(String(trimmed.c_str()));
         return LogicFormula::makeVar(id);
     }
 }
 
-ImplicationRule LogicEngine::deserializeRule(const std::string& serialized) const {
+ImplicationRule LogicEngine::deserializeRule(const String& serialized) const {
     // Split by '|'
-    std::vector<std::string> parts;
-    size_t start = 0;
-    size_t pos = 0;
-    while ((pos = serialized.find('|', start)) != std::string::npos) {
-        parts.push_back(serialized.substr(start, pos - start));
-        start = pos + 1;
-    }
-    parts.push_back(serialized.substr(start));
+    Vector<String> parts = Split(serialized, '|');
 
-    if (parts.size() != 5) {
-        throw std::runtime_error("invalid rule format: expected 5 parts separated by |");
+    if (parts.GetCount() != 5) {
+        throw Exc("invalid rule format: expected 5 parts separated by |");
     }
 
-    std::string name = parts[0];
+    String name = parts[0];
     auto premise = parseFormulaFromString(parts[1], tag_registry);
     auto conclusion = parseFormulaFromString(parts[2], tag_registry);
-    float confidence = std::stof(parts[3]);
-    std::string source = parts[4];
+    float confidence = atof(~parts[3]);
+    String source = parts[4];
 
     if (!premise || !conclusion) {
-        throw std::runtime_error("failed to parse formula in rule: " + name);
+        throw Exc(String("failed to parse formula in rule: ") + name);
     }
 
-    return ImplicationRule(name, premise, conclusion, confidence, source);
+    return ImplicationRule(pick(name), pick(premise), pick(conclusion), confidence, pick(source));
 }
 
-void LogicEngine::saveRulesToVfs(Vfs& vfs, const std::string& base_path) const {
+void LogicEngine::saveRulesToVfs(Vfs& vfs, const String& base_path) const {
     // Create /plan/rules directory structure
     // Note: mkdir creates parent directories automatically via ensureDirForOverlay
-    vfs.mkdir(base_path, 0);
-    vfs.mkdir(base_path + "/hardcoded", 0);
-    vfs.mkdir(base_path + "/learned", 0);
-    vfs.mkdir(base_path + "/ai-generated", 0);
-    vfs.mkdir(base_path + "/user", 0);
+    vfs.mkdir(base_path.ToStd(), 0);
+    vfs.mkdir((base_path + "/hardcoded").ToStd(), 0);
+    vfs.mkdir((base_path + "/learned").ToStd(), 0);
+    vfs.mkdir((base_path + "/ai-generated").ToStd(), 0);
+    vfs.mkdir((base_path + "/user").ToStd(), 0);
 
     // Group rules by source
-    std::map<std::string, std::vector<const ImplicationRule*>> rules_by_source;
-    for (const auto& rule : rules) {
-        rules_by_source[rule.source].push_back(&rule);
+    VectorMap<String, Vector<const ImplicationRule*>> rules_by_source;
+    for (int i = 0; i < rules.GetCount(); i++) {
+        const ImplicationRule& rule = rules[i];
+        int idx = rules_by_source.Find(rule.source);
+        if(idx < 0) {
+            idx = rules_by_source.GetCount();
+            rules_by_source.Add(rule.source);
+            rules_by_source[idx].Clear();  // Ensure it's initialized
+        }
+        rules_by_source[idx].Add(&rule);
     }
 
     // Write rules to appropriate files
-    for (const auto& [source, source_rules] : rules_by_source) {
-        std::ostringstream content;
-        content << "# Logic rules - source: " << source << "\n";
-        content << "# Format: name|premise|conclusion|confidence|source\n\n";
+    for(int i = 0; i < rules_by_source.GetCount(); i++) {
+        String source = rules_by_source.GetKey(i);
+        const Vector<const ImplicationRule*>& source_rules = rules_by_source[i];
+
+        String content = String("# Logic rules - source: ") + source + "\n";
+        content += "# Format: name|premise|conclusion|confidence|source\n\n";
 
         for (const auto* rule_ptr : source_rules) {
-            content << serializeRule(*rule_ptr) << "\n";
+            content += serializeRule(*rule_ptr) + "\n";
         }
 
-        std::string file_path = base_path + "/" + source + "/rules.txt";
-        vfs.write(file_path, content.str(), 0);
+        String file_path = base_path + "/" + source + "/rules.txt";
+        vfs.write(file_path.ToStd(), content.ToStd(), 0);
     }
 
     // Also create a summary file
-    std::ostringstream summary;
-    summary << "# Logic Rules Summary\n\n";
-    summary << "Total rules: " << rules.size() << "\n\n";
+    String summary = "# Logic Rules Summary\n\n";
+    summary += String("Total rules: ") + AsString(rules.GetCount()) + "\n\n";
 
-    for (const auto& [source, source_rules] : rules_by_source) {
-        summary << "## " << source << " (" << source_rules.size() << " rules)\n";
+    for(int i = 0; i < rules_by_source.GetCount(); i++) {
+        String source = rules_by_source.GetKey(i);
+        const Vector<const ImplicationRule*>& source_rules = rules_by_source[i];
+
+        summary += String("## ") + source + " (" + AsString(source_rules.GetCount()) + " rules)\n";
         for (const auto* rule_ptr : source_rules) {
-            summary << "  - " << rule_ptr->name << " (confidence: "
-                    << static_cast<int>(rule_ptr->confidence * 100) << "%)\n";
+            summary += String("  - ") + rule_ptr->name + " (confidence: " +
+                    AsString(int(rule_ptr->confidence * 100)) + "%)\n";
         }
-        summary << "\n";
+        summary += "\n";
     }
 
-    vfs.write(base_path + "/summary.txt", summary.str(), 0);
+    vfs.write((base_path + "/summary.txt").ToStd(), summary.ToStd(), 0);
 }
 
-void LogicEngine::loadRulesFromVfs(Vfs& vfs, const std::string& base_path) {
+void LogicEngine::loadRulesFromVfs(Vfs& vfs, const String& base_path) {
     // Clear existing rules
-    rules.clear();
+    rules.Clear();
 
     // Load rules from each source directory
-    std::vector<std::string> sources = {"hardcoded", "learned", "ai-generated", "user"};
+    Vector<String> sources = {"hardcoded", "learned", "ai-generated", "user"};
 
     for (const auto& source : sources) {
-        std::string file_path = base_path + "/" + source + "/rules.txt";
+        String file_path = base_path + "/" + source + "/rules.txt";
         try {
-            std::string content = vfs.read(file_path, std::nullopt);
+            std::string content = vfs.read(file_path.ToStd(), std::nullopt);
 
             // Parse line by line
-            std::istringstream iss(content);
-            std::string line;
-            while (std::getline(iss, line)) {
+            Vector<String> lines = Split(String(content.c_str()), '\n');
+            for(const String& line : lines) {
                 // Skip empty lines and comments
-                if (line.empty() || line[0] == '#') continue;
+                if (line.IsEmpty() || line[0] == '#') continue;
 
                 try {
-                    ImplicationRule rule = deserializeRule(line);
-                    addRule(rule);
-                } catch (const std::exception& e) {
+                    addRule(deserializeRule(line));
+                } catch (Exc e) {
                     // Skip invalid rules, continue loading
-                    std::cerr << "Warning: skipping invalid rule in " << file_path
-                              << ": " << e.what() << "\n";
+                    LOG("Warning: skipping invalid rule in " << file_path << ": " << e);
                 }
             }
-        } catch (const std::exception&) {
+        } catch (Exc) {
             // File doesn't exist or can't be read - that's OK
         }
     }
 }
 
 // Dynamic rule creation methods
-void LogicEngine::addSimpleRule(const std::string& name, const std::string& premise_tag,
-                                 const std::string& conclusion_tag, float confidence, const std::string& source) {
+void LogicEngine::addSimpleRule(const String& name, const String& premise_tag,
+                                 const String& conclusion_tag, float confidence, const String& source) {
     TagId premise_id = tag_registry->registerTag(premise_tag);
     TagId conclusion_id = tag_registry->registerTag(conclusion_tag);
 
-    auto premise = LogicFormula::makeVar(premise_id);
-    auto conclusion = LogicFormula::makeVar(conclusion_id);
-
-    ImplicationRule rule(name, premise, conclusion, confidence, source);
-    addRule(rule);
+    addRule(ImplicationRule(
+        clone(name),
+        LogicFormula::makeVar(premise_id),
+        LogicFormula::makeVar(conclusion_id),
+        confidence,
+        clone(source)
+    ));
 }
 
-void LogicEngine::addExclusionRule(const std::string& name, const std::string& tag1,
-                                    const std::string& tag2, const std::string& source) {
+void LogicEngine::addExclusionRule(const String& name, const String& tag1,
+                                    const String& tag2, const String& source) {
     // Exclusion: tag1 implies NOT tag2
     TagId tag1_id = tag_registry->registerTag(tag1);
     TagId tag2_id = tag_registry->registerTag(tag2);
 
-    auto premise = LogicFormula::makeVar(tag1_id);
-    auto conclusion = LogicFormula::makeNot(LogicFormula::makeVar(tag2_id));
-
-    ImplicationRule rule(name, premise, conclusion, 1.0f, source);
-    addRule(rule);
+    addRule(ImplicationRule(
+        clone(name),
+        LogicFormula::makeVar(tag1_id),
+        LogicFormula::makeNot(LogicFormula::makeVar(tag2_id)),
+        1.0f,
+        clone(source)
+    ));
 }
 
-void LogicEngine::removeRule(const std::string& name) {
-    auto it = std::remove_if(rules.begin(), rules.end(),
-                             [&name](const ImplicationRule& r) { return r.name == name; });
-    rules.erase(it, rules.end());
+void LogicEngine::removeRule(const String& name) {
+    // Remove all rules with matching name
+    for(int i = rules.GetCount() - 1; i >= 0; i--) {
+        if(rules[i].name == name) {
+            rules.Remove(i);
+        }
+    }
 }
 
-bool LogicEngine::hasRule(const std::string& name) const {
-    return std::any_of(rules.begin(), rules.end(),
-                      [&name](const ImplicationRule& r) { return r.name == name; });
+bool LogicEngine::hasRule(const String& name) const {
+    for(int i = 0; i < rules.GetCount(); i++) {
+        if(rules[i].name == name) return true;
+    }
+    return false;
 }
 

@@ -11,6 +11,7 @@ struct Vfs;
 struct UppWorkspace;
 struct UppPackage;
 struct UppBuildMethod;
+struct UppAssembly;
 struct BuildResult;
 class BuildGraph;
 
@@ -56,7 +57,20 @@ std::vector<std::string> build_asmlist(const UppWorkspace& workspace,
                                        Vfs& vfs,
                                        const UppBuildMethod* builder);
 
-// Forward declarations for assembly-related types
-struct UppAssembly;
+std::string umk_flags(const UppBuildOptions& options, bool verbose);
+
+std::string default_output_path(const UppWorkspace& workspace,
+                                const UppPackage& pkg,
+                                const UppBuildOptions& options,
+                                Vfs& vfs);
+
+std::string render_command_template(const std::string& tpl,
+                                    const std::map<std::string, std::string>& vars);
+
+std::string generate_internal_upp_build_command_impl(const UppWorkspace& workspace,
+                                                     const UppPackage& pkg,
+                                                     const UppBuildOptions& options,
+                                                     Vfs& vfs,
+                                                     const UppBuildMethod* builder);
 
 #endif

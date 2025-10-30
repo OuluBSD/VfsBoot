@@ -57,12 +57,7 @@ std::string join_with(const std::vector<std::string>& items, char delimiter) {
     return result;
 }
 
-// Forward declarations
-std::string umk_flags(const UppBuildOptions& options, bool verbose);
-std::string default_output_path(const UppWorkspace& workspace,
-                                const UppPackage& pkg,
-                                const UppBuildOptions& options,
-                                Vfs& vfs);
+// Forward declarations (umk_flags, default_output_path, and other functions are declared in Umk.h)
 std::string render_command_template(const std::string& tpl,
                                     const std::map<std::string, std::string>& vars);
 
@@ -105,40 +100,9 @@ std::string generate_internal_upp_workspace_build_command(const UppWorkspace& wo
     return cmd;
 }
 
-std::string umk_flags(const UppBuildOptions& options, bool verbose) {
-    std::string flags;
-    if(options.build_type == "release") {
-        flags = "-r";
-    } else {
-        flags = "-d";
-    }
-    if(verbose || options.verbose) flags += "v";
-    return flags;
-}
+// Removed umk_flags definition - using one from Umk.cpp
 
-std::string default_output_path(const UppWorkspace& workspace,
-                                const UppPackage& pkg,
-                                const UppBuildOptions& options,
-                                Vfs& vfs) {
-    if(!options.output_dir.empty()) {
-        std::filesystem::path base(options.output_dir);
-        if(base.is_relative()) {
-            if(!workspace.base_dir.empty()) {
-                base = std::filesystem::path(workspace.base_dir) / base;
-            }
-        }
-        base /= pkg.name;
-        return prefer_host_path(vfs, base.lexically_normal().string());
-    }
-
-    if(!workspace.base_dir.empty()) {
-        std::filesystem::path out_dir = std::filesystem::path(workspace.base_dir) / "out";
-        out_dir /= pkg.name;
-        return prefer_host_path(vfs, out_dir.lexically_normal().string());
-    }
-
-    return {};
-}
+// Removed default_output_path definition - using one from Umk.cpp
 
 std::string render_command_template(const std::string& tpl,
                                     const std::map<std::string, std::string>& vars) {
