@@ -14,7 +14,11 @@
 - AI bridge: `ai <prompt>` posts to OpenAI Responses API using environment variables (`OPENAI_API_KEY`, optional `OPENAI_MODEL`, `OPENAI_BASE_URL`). `tools` echoes the active command surface for the assistant.
 
 **Implementation notes.**
-- Source lives in `VfsShell/codex.cpp` and `VfsShell/codex.h`; build with `c++ -std=gnu++17 -O2 VfsShell/codex.cpp -o codex`.
+- Source is organized into U++ packages under `src/`: `VfsCore/`, `VfsShell/`, `Clang/`, `UppCompat/`, `Qwen/`, `Logic/`, `WebServer/`.
+- Build system uses U++ `umk` (Ultimate++ make) with package dependencies defined in `.upp` files.
+- Build VfsShell package: `./umk_build_VfsShell.sh` (builds VfsShell and all dependencies; reference for Core/non-GUI packages).
+- Quick syntax check single file: `c++ -std=gnu++17 -fsyntax-only -I. -I.. -I$HOME/Dev/ai-upp/uppsrc -DGUI -DCLANG -DDEBUG src/VfsShell/Registry.cpp`
+- U++ headers location: `$HOME/Dev/ai-upp/uppsrc` (required for Core, CtrlLib, etc.)
 - `VfsNode` is the base class; `DirNode`, `FileNode`, `MountNode`, `LibraryNode`, and every AST node derive from it. `AstHolder` lets parsed expressions sit inside the VFS tree.
 - `MountNode` delegates read/write/children operations to the host filesystem, providing transparent access to real directories and files.
 - `LibraryNode` uses `dlopen`/`dlsym` to load shared libraries and expose symbols; mount control commands (`mount.allow`/`mount.disallow`) gate new mounts without affecting existing ones.
