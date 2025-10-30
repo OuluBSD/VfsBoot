@@ -296,9 +296,10 @@ size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const std::str
             for(const auto& part : parts) dirPath = join_path(dirPath, part);
             dir = ensure_dir(dirPath);
         }
-        auto node = deserialize_ast_node(type, payload, path, ast_fixups, path_map);
-        node->name = namePart;
-        node->parent = dir;
+        auto node_one = deserialize_ast_node(type, payload, path, ast_fixups, path_map);
+        node_one->name = namePart;
+        node_one->parent = dir;
+        auto node = std::shared_ptr<VfsNode>(node_one.Detach());
         dir->children()[namePart] = node;
         path_map[path] = node;
     };
@@ -679,15 +680,16 @@ std::shared_ptr<AstNode> deserialize_ast_node(const std::string& type,
         auto innerType = r.str();
         auto innerPayload = r.str();
         r.expect_eof();
-        auto inner = deserialize_s_ast_node(innerType, innerPayload);
+        auto inner_one = deserialize_s_ast_node(innerType, innerPayload);
+        auto inner = std::shared_ptr<AstNode>(inner_one.Detach());
         auto holder = std::make_shared<AstHolder>(basename, inner);
         return holder;
     }
 
     if(is_s_ast_type(type)){
-        auto node = deserialize_s_ast_node(type, payload);
-        node->name = basename;
-        return node;
+        auto node_one = deserialize_s_ast_node(type, payload);
+        node_one->name = basename;
+        return std::shared_ptr<AstNode>(node_one.Detach());
     }
 
     if(type == "CppTranslationUnit"){
@@ -895,62 +897,62 @@ std::shared_ptr<AstNode> deserialize_ast_node(const std::string& type,
     throw std::runtime_error("deserialize_ast_node: unsupported node type '" + type + "'");
 }
 
-std::pair<String, String> serialize_s_ast_node(const Shared<AstNode>& node){
+std::pair<String, String> serialize_s_ast_node(const std::shared_ptr<AstNode>& node){
     if(!node) throw std::runtime_error("cannot serialize null AST node");
 
-    if(Shared<AstInt> n = Shared<AstInt>().dynamic_pointer_cast(node)){
+    if(auto n = std::dynamic_pointer_cast<AstInt>(node)){
         BinaryWriter w;
         w.i64(n->val);
         return {"AstInt", std::move(w.data)};
     }
-    if(Shared<AstBool> n = Shared<AstBool>().dynamic_pointer_cast(node)){
+    if(auto n = std::dynamic_pointer_cast<AstBool>(node)){
         BinaryWriter w;
         w.u8(n->val ? 1 : 0);
         return {"AstBool", std::move(w.data)};
     }
-    if(Shared<AstStr> n = Shared<AstStr>().dynamic_pointer_cast(node)){
+    if(auto n = std::dynamic_pointer_cast<AstStr>(node)){
         BinaryWriter w;
         w.str(n->val);
         return {"AstStr", std::move(w.data)};
     }
-    if(Shared<AstSym> n = Shared<AstSym>().dynamic_pointer_cast(node)){
+    if(auto n = std::dynamic_pointer_cast<AstSym>(node)){
         BinaryWriter w;
         w.str(n->id);
         return {"AstSym", std::move(w.data)};
     }
-    if(Shared<AstIf> n = Shared<AstIf>().dynamic_pointer_cast(node)){
+    if(auto n = std::dynamic_pointer_cast<AstIf>(node)){
         BinaryWriter w;
         auto c = serialize_s_ast_node(n->c);
         auto a = serialize_s_ast_node(n->a);
         auto b = serialize_s_ast_node(n->b);
-        w.str(c.first); w.str(c.second);
-        w.str(a.first); w.str(a.second);
-        w.str(b.first); w.str(b.second);
+        w.str(c.first.ToStd()); w.str(c.second.ToStd());
+        w.str(a.first.ToStd()); w.str(a.second.ToStd());
+        w.str(b.first.ToStd()); w.str(b.second.ToStd());
         return {"AstIf", std::move(w.data)};
     }
-    if(Shared<AstLambda> n = Shared<AstLambda>().dynamic_pointer_cast(node)){
+    if(auto n = std::dynamic_pointer_cast<AstLambda>(node)){
         BinaryWriter w;
         if(n->params.size() > std::numeric_limits<uint32_t>::max())
             throw std::runtime_error("lambda parameter list too large to serialize");
         w.u32(static_cast<uint32_t>(n->params.size()));
         for(const auto& p : n->params) w.str(p);
         auto body = serialize_s_ast_node(n->body);
-        w.str(body.first);
-        w.str(body.second);
+        w.str(body.first.ToStd());
+        w.str(body.second.ToStd());
         return {"AstLambda", std::move(w.data)};
     }
-    if(Shared<AstCall> n = Shared<AstCall>().dynamic_pointer_cast(node)){
+    if(auto n = std::dynamic_pointer_cast<AstCall>(node)){
         BinaryWriter w;
         auto fn = serialize_s_ast_node(n->fn);
-        w.str(fn.first);
-        w.str(fn.second);
+        w.str(fn.first.ToStd());
+        w.str(fn.second.ToStd());
         if(n->args.size() > std::numeric_limits<uint32_t>::max())
             throw std::runtime_error("call argument list too large to serialize");
         w.u32(static_cast<uint32_t>(n->args.size()));
         for(const auto& arg : n->args){
             auto ap = serialize_s_ast_node(arg);
-            w.str(ap.first);
-            w.str(ap.second);
+            w.str(ap.first.ToStd());
+            w.str(ap.second.ToStd());
         }
         return {"AstCall", std::move(w.data)};
     }
@@ -1102,13 +1104,14 @@ std::pair<std::string, std::string> serialize_ast_node(const std::shared_ptr<Ast
         if(!holder->inner) throw std::runtime_error("AstHolder missing inner node");
         BinaryWriter w;
         auto inner = serialize_s_ast_node(holder->inner);
-        w.str(inner.first);
-        w.str(inner.second);
+        w.str(inner.first.ToStd());
+        w.str(inner.second.ToStd());
         return {"AstHolder", std::move(w.data)};
     }
 
     if(is_s_ast_instance(node)){
-        return serialize_s_ast_node(node);
+        auto result = serialize_s_ast_node(node);
+        return {result.first.ToStd(), result.second.ToStd()};
     }
 
     if(auto tu = std::dynamic_pointer_cast<CppTranslationUnit>(node)){
@@ -1118,7 +1121,7 @@ std::pair<std::string, std::string> serialize_ast_node(const std::shared_ptr<Ast
         w.u32(static_cast<uint32_t>(tu->includes.size()));
         for(const auto& inc : tu->includes){
             if(!inc) throw std::runtime_error("serialize_ast_node: null include");
-            w.str(inc->header);
+            w.str(inc->header.ToStd());
             w.u8(inc->angled ? 1 : 0);
         }
         if(tu->funcs.size() > std::numeric_limits<uint32_t>::max())
@@ -1126,37 +1129,37 @@ std::pair<std::string, std::string> serialize_ast_node(const std::shared_ptr<Ast
         w.u32(static_cast<uint32_t>(tu->funcs.size()));
         for(const auto& fn : tu->funcs){
             if(!fn) throw std::runtime_error("serialize_ast_node: null function pointer");
-            w.str(fn->name);
+            w.str(fn->name.ToStd());
         }
         return {"CppTranslationUnit", std::move(w.data)};
     }
 
     if(auto fn = std::dynamic_pointer_cast<CppFunction>(node)){
         BinaryWriter w;
-        w.str(fn->retType);
-        w.str(fn->name);
+        w.str(fn->retType.ToStd());
+        w.str(fn->name.ToStd());
         if(fn->params.size() > std::numeric_limits<uint32_t>::max())
             throw std::runtime_error("serialize_ast_node: function parameter list too large");
         w.u32(static_cast<uint32_t>(fn->params.size()));
         for(const auto& p : fn->params){
-            w.str(p.type);
-            w.str(p.name);
+            w.str(p.type.ToStd());
+            w.str(p.name.ToStd());
         }
-        std::string bodyName = (fn->body ? fn->body->name : std::string("body"));
+        std::string bodyName = (fn->body ? fn->body->name.ToStd() : std::string("body"));
         w.str(bodyName);
         return {"CppFunction", std::move(w.data)};
     }
 
     if(auto compound = std::dynamic_pointer_cast<CppCompound>(node)){
         auto payload = serialize_cpp_compound_payload(compound);
-        return {"CppCompound", std::move(payload)};
+        return std::pair<std::string, std::string>("CppCompound", std::move(payload));
     }
 
     if(auto loop = std::dynamic_pointer_cast<CppRangeFor>(node)){
         BinaryWriter w;
-        w.str(loop->decl);
-        w.str(loop->range);
-        std::string bodyName = (loop->body ? loop->body->name : std::string("body"));
+        w.str(loop->decl.ToStd());
+        w.str(loop->range.ToStd());
+        std::string bodyName = (loop->body ? loop->body->name.ToStd() : std::string("body"));
         w.str(bodyName);
         return {"CppRangeFor", std::move(w.data)};
     }
@@ -1211,25 +1214,25 @@ std::pair<std::string, std::string> serialize_ast_node(const std::shared_ptr<Ast
 
     if(std::dynamic_pointer_cast<PlanRoot>(node)){
         BinaryWriter w;
-        w.str(node->read());
+        w.str(node->read().ToStd());
         return {"PlanRoot", std::move(w.data)};
     }
 
     if(std::dynamic_pointer_cast<PlanSubPlan>(node)){
         BinaryWriter w;
-        w.str(node->read());
+        w.str(node->read().ToStd());
         return {"PlanSubPlan", std::move(w.data)};
     }
 
     if(std::dynamic_pointer_cast<PlanStrategy>(node)){
         BinaryWriter w;
-        w.str(node->read());
+        w.str(node->read().ToStd());
         return {"PlanStrategy", std::move(w.data)};
     }
 
     if(std::dynamic_pointer_cast<PlanNotes>(node)){
         BinaryWriter w;
-        w.str(node->read());
+        w.str(node->read().ToStd());
         return {"PlanNotes", std::move(w.data)};
     }
 
@@ -1292,16 +1295,16 @@ std::string serialize_cpp_compound_payload(const std::shared_ptr<CppCompound>& c
             if(ret->e) serialize_cpp_expr(w, ret->e);
         } else if(auto raw = std::dynamic_pointer_cast<CppRawStmt>(stmt)){
             w.u8(static_cast<uint8_t>(CppStmtTag::Raw));
-            w.str(raw->text);
+            w.str(raw->text.ToStd());
         } else if(auto var = std::dynamic_pointer_cast<CppVarDecl>(stmt)){
             w.u8(static_cast<uint8_t>(CppStmtTag::VarDecl));
-            w.str(var->type);
-            w.str(var->name);
+            w.str(var->type.ToStd());
+            w.str(var->name.ToStd());
             w.u8(var->hasInit ? 1 : 0);
-            if(var->hasInit) w.str(var->init);
+            if(var->hasInit) w.str(var->init.ToStd());
         } else if(auto loop = std::dynamic_pointer_cast<CppRangeFor>(stmt)){
             w.u8(static_cast<uint8_t>(CppStmtTag::RangeForRef));
-            w.str(loop->name);
+            w.str(loop->name.ToStd());
         } else {
             throw std::runtime_error("serialize_cpp_compound_payload: unsupported statement type");
         }
@@ -1314,12 +1317,12 @@ void serialize_cpp_expr(BinaryWriter& w, const std::shared_ptr<CppExpr>& expr){
 
     if(auto id = std::dynamic_pointer_cast<CppId>(expr)){
         w.u8(static_cast<uint8_t>(CppExprTag::Id));
-        w.str(id->id);
+        w.str(id->id.ToStd());
         return;
     }
     if(auto s = std::dynamic_pointer_cast<CppString>(expr)){
         w.u8(static_cast<uint8_t>(CppExprTag::String));
-        w.str(s->s);
+        w.str(s->s.ToStd());
         return;
     }
     if(auto i = std::dynamic_pointer_cast<CppInt>(expr)){
@@ -1338,7 +1341,7 @@ void serialize_cpp_expr(BinaryWriter& w, const std::shared_ptr<CppExpr>& expr){
     }
     if(auto bin = std::dynamic_pointer_cast<CppBinOp>(expr)){
         w.u8(static_cast<uint8_t>(CppExprTag::BinOp));
-        w.str(bin->op);
+        w.str(bin->op.ToStd());
         serialize_cpp_expr(w, bin->a);
         serialize_cpp_expr(w, bin->b);
         return;
@@ -1353,7 +1356,7 @@ void serialize_cpp_expr(BinaryWriter& w, const std::shared_ptr<CppExpr>& expr){
     }
     if(auto raw = std::dynamic_pointer_cast<CppRawExpr>(expr)){
         w.u8(static_cast<uint8_t>(CppExprTag::Raw));
-        w.str(raw->text);
+        w.str(raw->text.ToStd());
         return;
     }
 

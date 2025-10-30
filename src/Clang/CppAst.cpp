@@ -99,31 +99,30 @@ String CppString::dump(int) const {
 }
 CppInt::CppInt(String n, long long x): CppExpr(pick(n)), v(x) { kind=Kind::Ast; }
 String CppInt::dump(int) const { return IntStr(v); }  // Using U++ IntStr function
-One<CppExpr> make_shared_cppexpr(One<CppExpr> e) { return e; }
-One<CppCompound> make_shared_cppcompound(String name) { return One<CppCompound>(new CppCompound(pick(name))); }
-CppCall::CppCall(String n, One<CppExpr> f, Vector<One<CppExpr>> a)
-    : CppExpr(pick(n)), fn(pick(f)), args(pick(a)) { kind=Kind::Ast; }
+std::shared_ptr<CppCompound> make_shared_cppcompound(String name) { return std::make_shared<CppCompound>(pick(name)); }
+CppCall::CppCall(String n, std::shared_ptr<CppExpr> f, std::vector<std::shared_ptr<CppExpr>> a)
+    : CppExpr(pick(n)), fn(std::move(f)), args(std::move(a)) { kind=Kind::Ast; }
 String CppCall::dump(int) const {
     String s = fn->dump(); s+='(';
     bool first=true; for(const auto& a : args){ if(!first) s+=", "; first=false; s+=a->dump(); } s+=')';
     return s;
 }
-CppBinOp::CppBinOp(String n, String o, One<CppExpr> A, One<CppExpr> B)
-    : CppExpr(pick(n)), op(pick(o)), a(pick(A)), b(pick(B)) { kind=Kind::Ast; }
+CppBinOp::CppBinOp(String n, String o, std::shared_ptr<CppExpr> A, std::shared_ptr<CppExpr> B)
+    : CppExpr(pick(n)), op(pick(o)), a(std::move(A)), b(std::move(B)) { kind=Kind::Ast; }
 String CppBinOp::dump(int) const { return a->dump()+" "+op+" "+b->dump(); }
-CppStreamOut::CppStreamOut(String n, Vector<One<CppExpr>> xs)
-    : CppExpr(pick(n)), chain(pick(xs)) { kind=Kind::Ast; }
+CppStreamOut::CppStreamOut(String n, std::vector<std::shared_ptr<CppExpr>> xs)
+    : CppExpr(pick(n)), chain(std::move(xs)) { kind=Kind::Ast; }
 String CppStreamOut::dump(int) const {
     String s="std::cout"; for(const auto& e : chain){ s+=" << "; s+=e->dump(); } return s;
 }
 CppRawExpr::CppRawExpr(String n, String t)
     : CppExpr(pick(n)), text(pick(t)) { kind=Kind::Ast; }
 String CppRawExpr::dump(int) const { return text; }
-CppExprStmt::CppExprStmt(String n, One<CppExpr> E)
-    : CppStmt(pick(n)), e(pick(E)) { kind=Kind::Ast; }
+CppExprStmt::CppExprStmt(String n, std::shared_ptr<CppExpr> E)
+    : CppStmt(pick(n)), e(std::move(E)) { kind=Kind::Ast; }
 String CppExprStmt::dump(int indent) const { return ind(indent)+e->dump()+";\n"; }
-CppReturn::CppReturn(String n, One<CppExpr> E)
-    : CppStmt(pick(n)), e(pick(E)) { kind=Kind::Ast; }
+CppReturn::CppReturn(String n, std::shared_ptr<CppExpr> E)
+    : CppStmt(pick(n)), e(std::move(E)) { kind=Kind::Ast; }
 String CppReturn::dump(int indent) const {
     String s = ind(indent) + "return";
     if (e) s += " " + e->dump();
@@ -168,7 +167,7 @@ CppFunction::CppFunction(String n, String rt, String nm)
     : CppNode(pick(n)), retType(pick(rt)), name(pick(nm)) { kind=Kind::Ast; body = make_shared_cppcompound("body"); }
 String CppFunction::dump(int indent) const {
     String s; s += retType + " " + name + "(";
-    for(int i=0;i<params.GetCount();++i){ if(i) s += ", "; s += params[i].type + " " + params[i].name; }
+    for(size_t i=0;i<params.size();++i){ if(i) s += ", "; s += params[i].type + " " + params[i].name; }
     s += ")\n"; s += body->dump(indent); return s;
 }
 CppRangeFor::CppRangeFor(String n, String d, String r)
@@ -187,28 +186,28 @@ String CppTranslationUnit::dump(int) const {
     return s;
 }
 
-One<CppTranslationUnit> expect_tu(One<VfsNode> n){
-    auto tu = dynamic_cast<CppTranslationUnit*>(n.Get());
+std::shared_ptr<CppTranslationUnit> expect_tu(std::shared_ptr<VfsNode> n){
+    auto tu = std::dynamic_pointer_cast<CppTranslationUnit>(n);
     if(!tu) throw std::runtime_error("not a CppTranslationUnit node");
-    return pick(n);
+    return tu;
 }
-One<CppFunction> expect_fn(One<VfsNode> n){
-    auto fn = dynamic_cast<CppFunction*>(n.Get());
+std::shared_ptr<CppFunction> expect_fn(std::shared_ptr<VfsNode> n){
+    auto fn = std::dynamic_pointer_cast<CppFunction>(n);
     if(!fn) throw std::runtime_error("not a CppFunction node");
-    return pick(n);
+    return fn;
 }
-One<CppCompound> expect_block(One<VfsNode> n){
-    if(auto fn = dynamic_cast<CppFunction*>(n.Get())) return pick(fn->body);
-    if(auto block = dynamic_cast<CppCompound*>(n.Get())) return pick(n);
-    if(auto loop = dynamic_cast<CppRangeFor*>(n.Get())) return pick(loop->body);
+std::shared_ptr<CppCompound> expect_block(std::shared_ptr<VfsNode> n){
+    if(auto fn = std::dynamic_pointer_cast<CppFunction>(n)) return fn->body;
+    if(auto block = std::dynamic_pointer_cast<CppCompound>(n)) return block;
+    if(auto loop = std::dynamic_pointer_cast<CppRangeFor>(n)) return loop->body;
     throw std::runtime_error("node does not own a compound body");
 }
 void vfs_add(Vfs& vfs, const String& path, One<VfsNode> node, size_t overlayId){
     int last_slash = path.ReverseFind('/');
     String dir = last_slash >= 0 ? path.Mid(0, last_slash) : String("/");
     String name = last_slash >= 0 ? path.Mid(last_slash+1) : path;
-    node->name = name;
-    vfs.addNode(dir.ToStd(), node, overlayId);
+    node->name = name.ToStd();
+    vfs.addNode(dir.ToStd(), std::shared_ptr<VfsNode>(node.Detach()), overlayId);
 }
 void cpp_dump_to_vfs(Vfs& vfs, size_t overlayId, const String& tuPath, const String& filePath){
     auto n = vfs.resolveForOverlay(tuPath.ToStd(), overlayId);

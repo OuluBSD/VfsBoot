@@ -305,6 +305,9 @@ struct Vfs {
     void removeTag(const std::string& vfs_path, const std::string& tag_name);
     bool nodeHasTag(const std::string& vfs_path, const std::string& tag_name) const;
     std::vector<std::string> getNodeTags(const std::string& vfs_path) const;
+    void clearNodeTags(const std::string& vfs_path);
+    std::vector<std::string> findNodesByTag(const std::string& tag_name) const;
+    std::vector<std::string> findNodesByTags(const std::vector<std::string>& tag_names, bool match_all) const;
 
     // Mount system methods
     void mountFilesystem(const std::string& host_path, const std::string& vfs_path, size_t overlayId);

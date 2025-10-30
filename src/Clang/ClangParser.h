@@ -117,7 +117,7 @@ constexpr const char* kAssemblyExtension = ".cxasm";
 extern std::function<void()> g_on_save_shortcut;
 
 // Utility functions
-void sort_unique(Vector<size_t>& ids);
+void sort_unique(std::vector<size_t>& ids);
 bool is_solution_file(const std::filesystem::path& p);
 std::optional<std::filesystem::path> auto_detect_vfs_path();
 std::optional<std::filesystem::path> auto_detect_solution_path();
@@ -128,29 +128,29 @@ bool solution_save(Vfs& vfs, SolutionContext& sol, bool quiet);
 void attach_solution_shortcut(Vfs& vfs, SolutionContext& sol);
 bool load_solution_from_file(Vfs& vfs, WorkingDirectory& cwd, SolutionContext& sol,
                              const std::filesystem::path& file, bool auto_detected);
-std::pair<String, String> serialize_ast_node(const One<AstNode>& node);
+std::pair<std::string, std::string> serialize_ast_node(const std::shared_ptr<AstNode>& node);
 One<AstNode> deserialize_ast_node(const String& data);
 One<AstNode> deserialize_ast_node(const String& type,
                                                      const String& payload,
                                                      const String& path,
-                                                     Vector<std::function<void()>>& fixups,
-                                                     std::unordered_map<String, One<VfsNode>>& path_map);
+                                                     std::vector<std::function<void()>>& fixups,
+                                                     std::unordered_map<std::string, std::shared_ptr<VfsNode>>& path_map);
 One<AstNode> deserialize_s_ast_node(const String& type, const String& payload);
 uint64_t fnv1a64(const String& data);
 String hash_hex(uint64_t value);
 String sanitize_component(const String& s);
 String unescape_meta(const String& s);
-std::pair<String, String> serialize_s_ast_node(const Shared<AstNode>& node);
+std::pair<String, String> serialize_s_ast_node(const std::shared_ptr<AstNode>& node);
 One<AstNode> deserialize_s_ast_node(const String& type, const String& payload);
 bool is_s_ast_type(const String& type);
-void serialize_cpp_expr(BinaryWriter& w, const One<CppExpr>& expr);
-One<CppExpr> deserialize_cpp_expr(BinaryReader& r);
+void serialize_cpp_expr(BinaryWriter& w, const std::shared_ptr<CppExpr>& expr);
+std::shared_ptr<CppExpr> deserialize_cpp_expr(BinaryReader& r);
 void deserialize_cpp_compound_into(const String& payload,
                                           const String& node_path,
-                                          const One<CppCompound>& compound,
-                                          Vector<std::function<void()>>& fixups,
-                                          std::unordered_map<String, One<VfsNode>>& path_map);
-String serialize_cpp_compound_payload(const One<CppCompound>& compound);
+                                          const std::shared_ptr<CppCompound>& compound,
+                                          std::vector<std::function<void()>>& fixups,
+                                          std::unordered_map<std::string, std::shared_ptr<VfsNode>>& path_map);
+std::string serialize_cpp_compound_payload(const std::shared_ptr<CppCompound>& compound);
 
 // libclang AST Nodes - Phase 1: Foundation (Declarations, Statements, Expressions, Types)
 // ============================================================================
