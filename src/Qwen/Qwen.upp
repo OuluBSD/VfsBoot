@@ -27,7 +27,8 @@ file
 	QwenTcpServer.h,
 	QwenTcpServer.cpp,
 	QwenVersion.h,
-	registry.h;
+	registry.h,
+	registry.cpp;
 
 mainconfig
 	"" = "";

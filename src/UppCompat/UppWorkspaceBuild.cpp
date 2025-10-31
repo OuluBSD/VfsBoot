@@ -30,7 +30,9 @@ std::string g_shell_quote(const std::string& value) {
     return result;
 }
 
-std::vector<std::string> split_env_paths(const std::string& value) {
+// Note: split_env_paths and join_with also exist in Umk.cpp's anonymous namespace
+// We use inline functions with different names to avoid collision in BLITZ mode
+inline std::vector<std::string> workspace_split_env_paths(const std::string& value) {
     std::vector<std::string> result;
     std::string current;
     for (char c : value) {
@@ -47,7 +49,7 @@ std::vector<std::string> split_env_paths(const std::string& value) {
     return result;
 }
 
-std::string join_with(const std::vector<std::string>& items, char delimiter) {
+inline std::string workspace_join_with(const std::vector<std::string>& items, char delimiter) {
     if (items.empty()) return "";
     std::string result = items[0];
     for (size_t i = 1; i < items.size(); ++i) {
@@ -124,7 +126,7 @@ std::string make_command_for_package(const UppWorkspace& workspace,
                                      Vfs& vfs,
                                      const UppBuildMethod* builder) {
     auto assembly_dirs = build_asmlist(workspace, pkg, options, vfs, builder);
-    std::string assembly_arg = assembly_dirs.empty() ? "." : join_with(assembly_dirs, ',');
+    std::string assembly_arg = assembly_dirs.empty() ? "." : workspace_join_with(assembly_dirs, ',');
     std::string flags = umk_flags(options, options.verbose);
     std::string output_path = default_output_path(workspace, pkg, options, vfs);
 

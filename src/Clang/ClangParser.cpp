@@ -34,11 +34,12 @@ void maybe_extend_context(Vfs& vfs, WorkingDirectory& cwd){
     }
 }
 
-void update_directory_context(Vfs& vfs, WorkingDirectory& cwd, const std::string& absPath){
-    auto candidates = vfs.overlaysForPath(absPath);
+void update_directory_context(Vfs& vfs, WorkingDirectory& cwd, const String& absPath){
+    std::string path_std = absPath.ToStd();
+    auto candidates = vfs.overlaysForPath(path_std);
     if(candidates.empty()) throw std::runtime_error("cd: not a directory");
     sort_unique(candidates);
-    cwd.path = absPath;
+    cwd.path = path_std;
     cwd.overlays = candidates;
     auto pick_primary = [&]() -> size_t {
         switch(cwd.conflict_policy){
@@ -532,12 +533,12 @@ std::optional<std::filesystem::path> auto_detect_solution_path(){
     return std::nullopt;
 }
 
-std::string make_unique_overlay_name(Vfs& vfs, std::string base){
-    if(base.empty()) base = "solution";
-    std::string candidate = base;
+String make_unique_overlay_name(Vfs& vfs, String base){
+    if(base.IsEmpty()) base = "solution";
+    String candidate = base;
     int counter = 2;
-    while(vfs.findOverlayByName(candidate)){
-        candidate = base + "_" + std::to_string(counter++);
+    while(vfs.findOverlayByName(candidate.ToStd())){
+        candidate = base + "_" + AsString(counter++);
     }
     return candidate;
 }
@@ -579,7 +580,7 @@ bool load_solution_from_file(Vfs& vfs, WorkingDirectory& cwd, SolutionContext& s
         std::cout << "note: solution path '" << file.string() << "' is not a regular file\n";
         return false;
     }
-    std::string overlayName = make_unique_overlay_name(vfs, file.stem().string());
+    std::string overlayName = make_unique_overlay_name(vfs, file.stem().string()).ToStd();
     size_t id = mount_overlay_from_file(vfs, overlayName, file.string());
     maybe_extend_context(vfs, cwd);
     if(std::find(cwd.overlays.begin(), cwd.overlays.end(), id) == cwd.overlays.end()){
@@ -623,27 +624,28 @@ std::string unescape_meta(const std::string& s){
     return out;
 }
 
-std::string sanitize_component(const std::string& s){
-    std::string out;
-    out.reserve(s.size());
-    for(char c : s){
+String sanitize_component(const String& s){
+    String out;
+    for(int i = 0; i < s.GetLength(); ++i){
+        char c = s[i];
         unsigned char uc = static_cast<unsigned char>(c);
         if(std::isalnum(uc) || c=='-' || c=='_'){
-            out.push_back(static_cast<char>(c));
+            out.Cat(c);
         } else {
-            out.push_back('_');
+            out.Cat('_');
         }
     }
-    if(out.empty()) out.push_back('_');
+    if(out.IsEmpty()) out.Cat('_');
     return out;
 }
 
 
-uint64_t fnv1a64(const std::string& data){
+uint64_t fnv1a64(const String& data){
     const uint64_t offset = 1469598103934665603ull;
     const uint64_t prime  = 1099511628211ull;
     uint64_t h = offset;
-    for(unsigned char c : data){
+    for(int i = 0; i < data.GetLength(); ++i){
+        unsigned char c = static_cast<unsigned char>(data[i]);
         h ^= c;
         h *= prime;
     }
@@ -1008,7 +1010,7 @@ std::shared_ptr<AstNode> deserialize_s_ast_node(const std::string& type, const s
     return node;
 }
 
-bool is_s_ast_type(const std::string& type){
+bool is_s_ast_type(const String& type){
     return type == "AstInt" || type == "AstBool" || type == "AstStr" ||
            type == "AstSym" || type == "AstIf" || type == "AstLambda" ||
            type == "AstCall";
@@ -1024,13 +1026,13 @@ bool is_s_ast_instance(const std::shared_ptr<AstNode>& node){
            std::dynamic_pointer_cast<AstCall>(node);
 }
 
-void deserialize_cpp_compound_into(const std::string& payload,
-                                          const std::string& node_path,
+void deserialize_cpp_compound_into(const String& payload,
+                                          const String& node_path,
                                           const std::shared_ptr<CppCompound>& compound,
                                           std::vector<std::function<void()>>& fixups,
                                           std::unordered_map<std::string, std::shared_ptr<VfsNode>>& path_map){
     if(!compound) throw std::runtime_error("deserialize_cpp_compound_into: null compound");
-    BinaryReader r(payload);
+    BinaryReader r(payload.ToStd());
     uint32_t count = r.u32();
     std::vector<std::shared_ptr<CppStmt>> parsed;
     parsed.reserve(count);
@@ -1079,12 +1081,13 @@ void deserialize_cpp_compound_into(const std::string& payload,
 
     if(!pending_rangefor.empty()){
         auto compoundWeak = std::weak_ptr<CppCompound>(compound);
-        fixups.push_back([compoundWeak, node_path, pending_rangefor, &path_map](){
+        std::string node_path_std = node_path.ToStd();
+        fixups.push_back([compoundWeak, node_path_std, pending_rangefor, &path_map](){
             auto locked = compoundWeak.lock();
             if(!locked) return;
             for(const auto& pair : pending_rangefor){
                 const auto& child = pair.second;
-                auto full = join_path(node_path, child);
+                auto full = join_path(node_path_std, child);
                 auto it = path_map.find(full);
                 if(it == path_map.end())
                     throw std::runtime_error("compound fixup missing child node: " + full);
@@ -1363,3 +1366,17 @@ void serialize_cpp_expr(BinaryWriter& w, const std::shared_ptr<CppExpr>& expr){
     throw std::runtime_error("serialize_cpp_expr: unsupported expression type");
 }
 
+// Stub implementations for missing deserialization functions
+One<AstNode> deserialize_ast_node(const String& type,
+                                   const String& payload,
+                                   const String& path,
+                                   std::vector<std::function<void()>>& fixups,
+                                   std::unordered_map<std::string, std::shared_ptr<VfsNode>>& path_map) {
+    // TODO: Implement full deserialization
+    throw std::runtime_error("deserialize_ast_node: not implemented");
+}
+
+One<AstNode> deserialize_s_ast_node(const String& type, const String& payload) {
+    // TODO: Implement S-expression AST deserialization
+    throw std::runtime_error("deserialize_s_ast_node: not implemented");
+}
