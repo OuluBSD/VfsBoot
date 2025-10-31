@@ -89,11 +89,15 @@ const char* policy_label(WorkingDirectory::ConflictPolicy policy){
     return "?";
 }
 
-auto parse_policy(const std::string& name) -> std::optional<WorkingDirectory::ConflictPolicy> {
-    std::string lower = name;
+auto parse_policy(const String& name) -> std::optional<WorkingDirectory::ConflictPolicy> {
+    std::string lower = name.ToStd();
     std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
     if(lower == "manual" || lower == "default") return WorkingDirectory::ConflictPolicy::Manual;
     if(lower == "oldest" || lower == "first") return WorkingDirectory::ConflictPolicy::Oldest;
     if(lower == "newest" || lower == "last") return WorkingDirectory::ConflictPolicy::Newest;
     return std::nullopt;
+}
+
+void vfs_add(Vfs& vfs, const std::string& path, std::shared_ptr<VfsNode> node, size_t overlayId) {
+    vfs.addNode(path, node, overlayId);
 }

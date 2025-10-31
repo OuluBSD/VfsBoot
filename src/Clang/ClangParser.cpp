@@ -200,10 +200,12 @@ static void autosave_thread_func(Vfs* vfs_ptr, AutosaveContext* autosave_ctx){
     }
 }
 
-size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const std::string& hostPath){
-    TRACE_FN("name=", name, ", file=", hostPath);
-    if(name.empty()) throw std::runtime_error("overlay: name required");
-    std::ifstream in(hostPath, std::ios::binary);
+size_t mount_overlay_from_file(Vfs& vfs, const String& name, const String& hostPath){
+    std::string name_std = name.ToStd();
+    std::string hostPath_std = hostPath.ToStd();
+    TRACE_FN("name=", name_std, ", file=", hostPath_std);
+    if(name_std.empty()) throw std::runtime_error("overlay: name required");
+    std::ifstream in(hostPath_std, std::ios::binary);
     if(!in) throw std::runtime_error("overlay: cannot open file");
 
     std::string header;
@@ -376,8 +378,8 @@ size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const std::str
 
     for(auto& fix : ast_fixups) fix();
 
-    auto id = vfs.registerOverlay(name, root);
-    vfs.setOverlaySource(id, hostPath);
+    auto id = vfs.registerOverlay(name_std, root);
+    vfs.setOverlaySource(id, hostPath_std);
 
     // Set source file and hash for version 3
     if(version >= 3 && !source_file.empty()){
@@ -390,7 +392,7 @@ size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const std::str
                 std::filesystem::path src_path = source_file;
                 if(src_path.is_relative()){
                     // Try to resolve relative to the .vfs file location
-                    std::filesystem::path vfs_dir = std::filesystem::path(hostPath).parent_path();
+                    std::filesystem::path vfs_dir = std::filesystem::path(hostPath_std).parent_path();
                     if(!vfs_dir.empty()){
                         src_path = vfs_dir / src_path;
                     }
@@ -414,12 +416,13 @@ size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const std::str
     return id;
 }
 
-void save_overlay_to_file(Vfs& vfs, size_t overlayId, const std::string& hostPath){
-    TRACE_FN("overlayId=", overlayId, ", file=", hostPath);
+void save_overlay_to_file(Vfs& vfs, size_t overlayId, const String& hostPath){
+    std::string hostPath_std = hostPath.ToStd();
+    TRACE_FN("overlayId=", overlayId, ", file=", hostPath_std);
     auto root = vfs.overlayRoot(overlayId);
     if(!root) throw std::runtime_error("overlay.save: overlay missing root");
 
-    std::filesystem::path outPath(hostPath);
+    std::filesystem::path outPath(hostPath_std);
     if(auto parent = outPath.parent_path(); !parent.empty()){
         std::error_code ec;
         std::filesystem::create_directories(parent, ec);
@@ -430,12 +433,12 @@ void save_overlay_to_file(Vfs& vfs, size_t overlayId, const std::string& hostPat
 
     // Create timestamped backup before overwriting
     try{
-        create_timestamped_backup(hostPath);
+        create_timestamped_backup(hostPath_std);
     } catch(const std::exception& e){
         std::cout << "note: backup creation failed: " << e.what() << "\n";
     }
 
-    std::ofstream out(hostPath, std::ios::binary | std::ios::trunc);
+    std::ofstream out(hostPath_std, std::ios::binary | std::ios::trunc);
     if(!out) throw std::runtime_error("overlay.save: cannot open file for writing");
 
     // Write version 3 header with optional hash
@@ -488,7 +491,7 @@ void save_overlay_to_file(Vfs& vfs, size_t overlayId, const std::string& hostPat
     };
 
     dump(root, "/");
-    vfs.setOverlaySource(overlayId, hostPath);
+    vfs.setOverlaySource(overlayId, hostPath_std);
     vfs.clearOverlayDirty(overlayId);
 }
 
@@ -599,26 +602,26 @@ bool load_solution_from_file(Vfs& vfs, WorkingDirectory& cwd, SolutionContext& s
 }
 
 size_t mount_overlay_from_file(Vfs& vfs, const std::string& name, const std::string& hostPath);
-std::string unescape_meta(const std::string& s){
-    std::string out; out.reserve(s.size());
-    for(size_t i=0;i<s.size();++i){
+String unescape_meta(const String& s){
+    String out;
+    for(int i=0;i<s.GetLength();++i){
         char c = s[i];
-        if(c=='\\' && i+1<s.size()){
+        if(c=='\\' && i+1<s.GetLength()){
             char n = s[++i];
             switch(n){
-                case 'n': out.push_back('\n'); break;
-                case 't': out.push_back('\t'); break;
-                case 'r': out.push_back('\r'); break;
-                case '\\': out.push_back('\\'); break;
-                case '"': out.push_back('"'); break;
-                case 'b': out.push_back('\b'); break;
-                case 'f': out.push_back('\f'); break;
-                case 'v': out.push_back('\v'); break;
-                case 'a': out.push_back('\a'); break;
-                default: out.push_back(n); break;
+                case 'n': out.Cat('\n'); break;
+                case 't': out.Cat('\t'); break;
+                case 'r': out.Cat('\r'); break;
+                case '\\': out.Cat('\\'); break;
+                case '"': out.Cat('"'); break;
+                case 'b': out.Cat('\b'); break;
+                case 'f': out.Cat('\f'); break;
+                case 'v': out.Cat('\v'); break;
+                case 'a': out.Cat('\a'); break;
+                default: out.Cat(n); break;
             }
         } else {
-            out.push_back(c);
+            out.Cat(c);
         }
     }
     return out;

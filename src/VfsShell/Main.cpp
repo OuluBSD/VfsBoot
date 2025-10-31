@@ -18,8 +18,8 @@ std::vector<std::shared_ptr<UppAssembly>> g_startup_assemblies;
 // Global reference to the currently active assembly
 std::shared_ptr<UppAssembly> g_current_assembly = nullptr;
 
-// Global U++ builder registry
-UppBuilderRegistry g_upp_builder_registry;
+// Global U++ builder registry (defined in GlobalRegistry.cpp)
+extern UppBuilderRegistry g_upp_builder_registry;
 
 // Global registry instance
 Registry g_registry;
