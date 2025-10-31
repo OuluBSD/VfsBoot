@@ -79,7 +79,13 @@ Quick reference:
 - Inspect `codex_trace.log` for call ordering; use standard tooling (`sort | uniq -c`) if a suspect path emits repeated lines.
 
 ### Memory leak detection with Valgrind
-**Standard command:**
+**IMPORTANT: Build with USEMALLOC first:**
+```bash
+./umk_build_VfsShell.sh --malloc
+```
+This replaces U++ memory allocator with standard malloc, required for Valgrind to properly track allocations. Default builds use U++'s heap tracking which Valgrind cannot analyze.
+
+**Standard Valgrind command:**
 ```bash
 valgrind --show-leak-kinds=all --leak-check=full ./bin/vfsh
 ```
