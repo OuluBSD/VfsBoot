@@ -17,18 +17,18 @@ endif
 
 VFSSHELL_SRC := src/VfsShell/vfs_common.cpp src/VfsShell/tag_system.cpp src/VfsShell/logic_engine.cpp src/VfsShell/vfs_core.cpp src/VfsShell/vfs_mount.cpp src/VfsShell/sexp.cpp src/VfsShell/cpp_ast.cpp src/VfsShell/clang_parser.cpp src/VfsShell/planner.cpp src/VfsShell/ai_bridge.cpp src/VfsShell/context_builder.cpp src/VfsShell/build_graph.cpp src/VfsShell/make.cpp src/VfsShell/hypothesis.cpp src/VfsShell/scope_store.cpp src/VfsShell/feedback.cpp src/VfsShell/shell_commands.cpp src/VfsShell/repl.cpp src/VfsShell/main.cpp src/VfsShell/snippet_catalog.cpp src/VfsShell/utils.cpp src/VfsShell/web_server.cpp src/VfsShell/upp_assembly.cpp src/VfsShell/upp_builder.cpp src/VfsShell/upp_workspace_build.cpp src/VfsShell/command.cpp src/VfsShell/daemon.cpp src/VfsShell/registry.cpp src/VfsShell/qwen_protocol.cpp src/VfsShell/qwen_client.cpp src/VfsShell/qwen_state_manager.cpp src/VfsShell/qwen_manager.cpp src/VfsShell/qwen_tcp_server.cpp src/VfsShell/cmd_qwen.cpp
 VFSSHELL_HDR := src/VfsShell/vfs_common.h src/VfsShell/tag_system.h src/VfsShell/logic_engine.h src/VfsShell/vfs_core.h src/VfsShell/vfs_mount.h src/VfsShell/sexp.h src/VfsShell/cpp_ast.h src/VfsShell/clang_parser.h src/VfsShell/planner.h src/VfsShell/ai_bridge.h src/VfsShell/context_builder.h src/VfsShell/build_graph.h src/VfsShell/make.h src/VfsShell/hypothesis.h src/VfsShell/scope_store.h src/VfsShell/feedback.h src/VfsShell/shell_commands.h src/VfsShell/repl.h src/VfsShell/snippet_catalog.h src/VfsShell/utils.h src/VfsShell/upp_assembly.h src/VfsShell/upp_builder.h src/VfsShell/upp_workspace_build.h src/VfsShell/registry.h src/VfsShell/qwen_protocol.h src/VfsShell/qwen_client.h src/VfsShell/qwen_state_manager.h src/VfsShell/qwen_manager.h src/VfsShell/qwen_tcp_server.h src/VfsShell/cmd_qwen.h
-VFSSHELL_BIN := vfsh
+VFSSHELL_BIN := bin/vfsh
 
 HARNESS_SRC := harness/scenario.cpp harness/runner.cpp
 HARNESS_HDR := harness/scenario.h harness/runner.h
-PLANNER_DEMO_BIN := planner_demo
-PLANNER_TRAIN_BIN := planner_train
+PLANNER_DEMO_BIN := bin/planner_demo
+PLANNER_TRAIN_BIN := bin/planner_train
 
 # Qwen test binaries
-QWEN_PROTOCOL_TEST_BIN := qwen_protocol_test
-QWEN_CLIENT_TEST_BIN := qwen_client_test
-QWEN_STATE_MANAGER_TEST_BIN := qwen_state_manager_test
-QWEN_ECHO_SERVER_BIN := qwen_echo_server
+QWEN_PROTOCOL_TEST_BIN := bin/qwen_protocol_test
+QWEN_CLIENT_TEST_BIN := bin/qwen_client_test
+QWEN_STATE_MANAGER_TEST_BIN := bin/qwen_state_manager_test
+QWEN_ECHO_SERVER_BIN := bin/qwen_echo_server
 
 .PHONY: all clean debug release sample test-lib planner-demo planner-train qwen-tests qwen-protocol-test qwen-client-test qwen-state-manager-test qwen-echo-server
 

@@ -1,0 +1,17 @@
+// U++ Assembly File
+// Test application assembly
+
+[Package: MyApp]
+Path=MyApp/src
+Files=
+  MyApp.cpp
+  MyApp.h
+Dependencies=
+  Core
+  CtrlCore
+  Primary=true
+
+[Package: Core]
+Path=upp/src/Core
+Dependencies=
+  std

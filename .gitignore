@@ -1,10 +1,17 @@
 .aider*
 
+# Executables
 vfsh
 codex
+*.exe
+*.out
+
+# Build directories
 build/
+build-debug/
 tmp/
 cache/
+
 tools/__pycache__/**
 codex_trace.log
 vfsh_trace.log
@@ -16,17 +23,35 @@ trash/**
 
 .vfsh
 build_output.log
-*.var
 
-test_*
+test-*.var
+test-*.cpp
+test-*.py
+test-*.c
+test-*.cxx
+
 build-debug/**
 
 bin/**
 
-# Additional log and temporary files
+# Various file types
+*.var
 *.log
 *.tmp
 *.temp
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+
+# Test executables (compiled outputs)
+test_*
+final_test_*
+
+# Additional log and temporary files
 qwen_debug.log
 history_test.txt
 test-makefile.txt

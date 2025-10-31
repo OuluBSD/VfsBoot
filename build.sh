@@ -162,11 +162,11 @@ build_umk() {
     cd $PWD
     if [ ! -d ~/upp/uppsrc ]; then
         echo -e "${YELLOW}Warning: ~/upp/uppsrc not found, using current directory only${NC}"
-        echo "$umk_cmd" "$PWD" src/VfsShell "$buildmethod" "$flags" "$defines" "$PWD/vfsh"
-        "$umk_cmd" "$PWD" src/VfsShell "$buildmethod" "$flags" "$defines" "$PWD/vfsh"
+        echo "$umk_cmd" "$PWD" src/VfsShell "$buildmethod" "$flags" "$defines" "$PWD/bin/vfsh"
+        "$umk_cmd" "$PWD" src/VfsShell "$buildmethod" "$flags" "$defines" "$PWD/bin/vfsh"
     else
-        echo "$umk_cmd" "$PWD,$HOME/upp/uppsrc" src/VfsShell "$buildmethod" "$flags" "$defines" "$PWD/vfsh"
-        "$umk_cmd" "$PWD,$HOME/upp/uppsrc" src/VfsShell "$buildmethod" "$flags" "$defines" "$PWD/vfsh"
+        echo "$umk_cmd" "$PWD,$HOME/upp/uppsrc" src/VfsShell "$buildmethod" "$flags" "$defines" "$PWD/bin/vfsh"
+        "$umk_cmd" "$PWD,$HOME/upp/uppsrc" src/VfsShell "$buildmethod" "$flags" "$defines" "$PWD/bin/vfsh"
     fi
 }
 
@@ -214,10 +214,11 @@ build_cmake() {
 
         "$cmake_cmd" --build . -j$(nproc 2>/dev/null || echo 4) $make_flags || exit 1
 
-        # Copy binary to root
+        # Copy binary to bin directory
         if [ -f vfsh ]; then
-            cp vfsh .. || exit 1
-            echo -e "${GREEN}Binary copied to: $(pwd)/../vfsh${NC}"
+            mkdir -p ../bin
+            cp vfsh ../bin/ || exit 1
+            echo -e "${GREEN}Binary copied to: $(pwd)/../bin/vfsh${NC}"
         else
             echo -e "${RED}Error: vfsh binary not found after build${NC}" >&2
             exit 1
@@ -390,7 +391,7 @@ build_bootstrap() {
     echo ""
     echo "Step 2: Using internal make to build vfsh..."
 
-    # Use our make to build vfsh
+    # Use our make to build vfsh to bin directory
     local make_target="all"
     if [ "$BUILD_TYPE" = "debug" ]; then
         make_target="debug"
@@ -404,7 +405,12 @@ build_bootstrap() {
         ./vfsh-make $make_target
     fi
 
-    if [ ! -f "./vfsh" ]; then
+    # Check if binary was created in the root (current behavior) or in bin/
+    if [ -f "./vfsh" ]; then
+        # Move to bin directory
+        mkdir -p bin
+        mv vfsh bin/vfsh
+    elif [ ! -f "./bin/vfsh" ]; then
         echo -e "${RED}Error: vfsh binary not created${NC}" >&2
         exit 1
     fi
@@ -553,11 +559,17 @@ main() {
     fi
 
     # Check if binary was created
-    if [ -f "./vfsh" ]; then
+    if [ -f "./vfsh" ] || [ -f "../bin/vfsh" ]; then
         echo ""
-        echo -e "${GREEN}✓ Build successful!${NC}"
-        echo -e "Binary: ${BLUE}./vfsh${NC}"
-        ls -lh ./vfsh
+        if [ -f "./vfsh" ]; then
+            echo -e "${GREEN}✓ Build successful!${NC}"
+            echo -e "Binary: ${BLUE}./vfsh${NC}"
+            ls -lh ./vfsh
+        else
+            echo -e "${GREEN}✓ Build successful!${NC}"
+            echo -e "Binary: ${BLUE}./bin/vfsh${NC}"
+            ls -lh ../bin/vfsh
+        fi
 
         # Prompt for static analysis after successful build
         prompt_static_analysis

@@ -1,0 +1,17 @@
+{
+  "workspace": {
+    "name": "test_assembly",
+    "base_dir": "/tmp",
+    "primary_package": "test_pkg"
+  },
+  "packages": [
+    {
+      "name": "test_pkg",
+      "path": "test_pkg/src",
+      "description": "Test package",
+      "is_primary": true,
+      "files": [],
+      "dependencies": []
+    }
+  ]
+}
