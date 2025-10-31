@@ -78,6 +78,38 @@ Quick reference:
 - When tracing, run scripted interaction via stdin (`printf 'ls /\nls /cpp\nexit\n' | ./vfsh`) so the CLI prompt is satisfied without extra tooling. The macro guards ensure no overhead in normal builds.
 - Inspect `codex_trace.log` for call ordering; use standard tooling (`sort | uniq -c`) if a suspect path emits repeated lines.
 
+### Memory leak detection with Valgrind
+**Standard command:**
+```bash
+valgrind --show-leak-kinds=all --leak-check=full ./bin/vfsh
+```
+
+**What to look for:**
+- `definitely lost`: **MUST be 0** - these are real leaks that need fixing
+- `indirectly lost`: **MUST be 0** - memory lost due to parent leaks
+- `possibly lost`: **Should be 0** - suspicious pointers (investigate if non-zero)
+- `still reachable`: **Acceptable** - global state, library initialization (LLVM, C++ iostreams)
+
+**Current baseline (2025-10-31):**
+```
+LEAK SUMMARY:
+   definitely lost: 0 bytes in 0 blocks      ✅
+   indirectly lost: 0 bytes in 0 blocks      ✅
+      possibly lost: 0 bytes in 0 blocks      ✅
+   still reachable: 272,624 bytes in 2,422 blocks  (LLVM + iostreams)
+
+ERROR SUMMARY: 0 errors from 0 contexts
+```
+
+**Testing forced quit:**
+Add `quit -f` to `~/.vfshrc` to test early termination during config loading. This verifies clean exit paths and proper resource cleanup even when skipping normal shutdown sequences.
+
+**When to run Valgrind:**
+- After implementing new resource allocation (files, sockets, buffers)
+- Before committing major refactors
+- When debugging crashes or suspected memory corruption
+- When investigating performance issues (slow leaks accumulate)
+
 ### Implementation details
 - See **[VfsShell/AGENTS.md](VfsShell/AGENTS.md)** for detailed implementation architecture, file structure, code organization, and extension points.
 
