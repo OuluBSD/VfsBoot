@@ -29,6 +29,7 @@ void run_daemon_server(int port, Vfs&, Shared<Env>, WorkingDirectory&);
 struct CommandResult {
     bool success = true;
     bool exit_requested = false;
+    bool forced_exit = false;  // Force quit even from scripts and config loading
     std::string output;
 };
 

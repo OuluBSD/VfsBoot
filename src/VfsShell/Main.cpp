@@ -5416,6 +5416,10 @@ int main(int argc, char** argv){
 
         } else if(cmd == "quit" || cmd == "exit"){
             result.exit_requested = true;
+            // Check for forced exit flag (-f)
+            if(inv.args.size() > 0 && inv.args[0] == "-f"){
+                result.forced_exit = true;
+            }
 
         } else if(cmd.empty()){
             // nothing
@@ -5435,7 +5439,7 @@ int main(int argc, char** argv){
         std::string next_input = initial_input;
         for(size_t i = 0; i < pipeline.commands.size(); ++i){
             last = execute_single(pipeline.commands[i], next_input);
-            if(last.exit_requested) return last;
+            if(last.exit_requested || last.forced_exit) return last;
             next_input = last.output;
         }
 
@@ -5487,8 +5491,12 @@ int main(int argc, char** argv){
                     }
                     last_success = res.success;
 
-                    if(res.exit_requested){
-                        // Client requested exit - could handle this specially
+                    if(res.exit_requested || res.forced_exit){
+                        // Client requested exit
+                        if(res.forced_exit){
+                            combined_output += "Forced exit requested\r\n";
+                            WebServer::stop();
+                        }
                         break;
                     }
                 }
@@ -5591,8 +5599,12 @@ int main(int argc, char** argv){
                                     std::cout.flush();
                                 }
                                 last_success = res.success;
-                                
-                                if(res.exit_requested){
+
+                                if(res.exit_requested || res.forced_exit){
+                                    if(res.forced_exit){
+                                        std::cout << "Forced exit requested during ~/.vfshrc loading\n";
+                                        return 0;
+                                    }
                                     break;
                                 }
                             }
@@ -5665,7 +5677,7 @@ int main(int argc, char** argv){
                     std::cout.flush();
                 }
                 last_success = res.success;
-                if(res.exit_requested){
+                if(res.exit_requested || res.forced_exit){
                     exit_requested = true;
                     break;
                 }
