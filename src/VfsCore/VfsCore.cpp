@@ -84,6 +84,8 @@ char type_char(const std::shared_ptr<VfsNode>& node){
 
 Vfs::Vfs() {
     TRACE_FN();
+    root = std::make_shared<DirNode>("/");
+    root->name = "/";
     overlay_stack.push_back(Overlay{ "base", root, "", "" });
     overlay_dirty.push_back(false);
     overlay_source.emplace_back();

@@ -171,7 +171,7 @@ struct TagMiningSession;
 struct WorkingDirectory {
     enum class ConflictPolicy { Manual, Oldest, Newest };
 
-    std::string path;
+    std::string path = "/";
     std::vector<size_t> overlays;
     ConflictPolicy conflict_policy = ConflictPolicy::Manual;
     size_t primary_overlay = 0;
