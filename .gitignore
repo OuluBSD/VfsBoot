@@ -23,3 +23,15 @@ build-debug/**
 
 bin/**
 
+# Additional log and temporary files
+*.log
+*.tmp
+*.temp
+qwen_debug.log
+history_test.txt
+test-makefile.txt
+
+# Generated dependency graphs or similar docs that should not be committed
+DEPENDENCY_GRAPH_*.txt
+*_DEPENDENCY_GRAPH.txt
+
